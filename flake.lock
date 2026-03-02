@@ -25,17 +25,17 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1772217034,
-        "narHash": "sha256-bJM0F5aB47BB9K4TPM35+jwsoKOUGY5LnHtKL+BrkVs=",
+        "lastModified": 1772382460,
+        "narHash": "sha256-5rsxkMNWyLus88+TBwJCdHyTv+4QEE+SAAwPqzFcADU=",
         "ref": "refs/heads/main",
-        "rev": "07da6e2decaefed65efa42407cc592be10d6f146",
-        "revCount": 145,
+        "rev": "53302e4373755b72391727de3d5d2b30e1239dbb",
+        "revCount": 146,
         "submodules": true,
         "type": "git",
         "url": "https://github.com/logos-messaging/logos-chat"
       },
       "original": {
-        "rev": "07da6e2decaefed65efa42407cc592be10d6f146",
+        "rev": "53302e4373755b72391727de3d5d2b30e1239dbb",
         "submodules": true,
         "type": "git",
         "url": "https://github.com/logos-messaging/logos-chat"
