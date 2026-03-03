@@ -1,85 +1,96 @@
 # logos-chatsdk-module
 
+A [Logos Core](https://github.com/logos-co/logos-liblogos) module plugin that exposes the [Logos Chat](https://github.com/logos-messaging/logos-chat) to the Logos platform.
+
+Loaded into Logos Core, it wraps `liblogoschat` and bridges its C callback API to Qt signals and invokable methods. Consumers interact with it entirely through the module methods and signals — no direct dependency on `liblogoschat` is required.
+
+> [`logos-chatsdk-ui`](https://github.com/logos-co/logos-chatsdk-ui) is the reference UI built on top of this module.
+
+## What It Provides
+
+- **Identity** — query client ID and identity info, generate introduction bundles
+- **Conversations** — list, retrieve, and open new private (1-to-1) conversations
+- **Messaging** — send messages and receive push events for new messages, new conversations, and delivery acknowledgements
+- **Lifecycle management** — initialise, start, stop, and destroy the chat client
+
+## API
+
+See [chatsdk_module_plugin.h](chatsdk_module_plugin.h) for the full API — methods, async event names, and per-event `data` layouts are documented there.
+
 ## How to Build
 
-### Using Nix (Recommended)
-
-#### Build Complete Module (Library + Headers)
+### Using Nix (recommended)
 
 ```bash
-# Build everything (default)
+# Build everything (plugin + liblogoschat + generated headers)
 nix build
 
-# Or explicitly
-nix build '.#default'
-```
-
-The result will include:
-- `/lib/chatsdk_module_plugin.dylib` (or `.so` on Linux) - The ChatSDK module plugin
-- `/lib/liblogoschat.dylib` (or `.so` on Linux) - The chat library dependency
-- `/include/chatsdk_module_api.h` - Generated header for the module API
-- `/include/chatsdk_module_api.cpp` - Generated implementation for the module API
-
-#### Build Individual Components
-
-```bash
-# Build only the library (plugin + liblogoschat)
+# Build only the plugin library
 nix build '.#lib'
 
-# Build only the generated headers
-nix build '.#logos-chatsdk-module-include'
-```
-
-#### Development Shell
-
-```bash
-# Enter development shell with all dependencies
+# Enter the development shell
 nix develop
 ```
 
-**Note:** In zsh, you need to quote the target (e.g., `'.#default'`) to prevent glob expansion.
+> [!NOTE]
+> If flakes aren't enabled globally, add `--extra-experimental-features 'nix-command flakes'`. \
+> In zsh, quote the target to prevent glob expansion (e.g., `'.#lib'`).
 
-If you don't have flakes enabled globally, add experimental flags:
+### Using CMake
 
 ```bash
-nix build --extra-experimental-features 'nix-command flakes'
+mkdir build && cd build
+cmake .. -GNinja \
+  -DLOGOS_CPP_SDK_ROOT=/path/to/logos-cpp-sdk \
+  -DLOGOS_LIBLOGOS_ROOT=/path/to/logos-liblogos \
+  -DLOGOS_CHAT_ROOT=/path/to/logos-chat
+ninja
 ```
 
-The compiled artifacts can be found at `result/`
+`LOGOS_CHAT_ROOT` must point to a `logos-chat` build output containing `include/liblogoschat.h` and `lib/liblogoschat.{dylib,so}`.
 
-#### Modular Architecture
-
-The nix build system is organized into modular files in the `/nix` directory:
-- `nix/default.nix` - Common configuration (dependencies, flags, metadata)
-- `nix/lib.nix` - Module plugin and liblogoschat library compilation
-- `nix/include.nix` - Header generation using logos-cpp-generator
+If `LOGOS_CPP_SDK_ROOT` and `LOGOS_LIBLOGOS_ROOT` are not set, CMake looks for sibling directories (`../logos-cpp-sdk`, `../logos-liblogos`) and falls back to `vendor/` if those don't exist.
 
 ## Output Structure
-
-When built with Nix, the module produces:
 
 ```
 result/
 ├── lib/
-│   ├── liblogoschat.dylib           # Chat library
-│   └── chatsdk_module_plugin.dylib # Logos module plugin
+│   ├── chatsdk_module_plugin.dylib   # Module plugin (.so on Linux)
+│   └── liblogoschat.dylib            # Chat library dependency (.so on Linux)
 └── include/
-    ├── chatsdk_module_api.h        # Generated API header
-    └── chatsdk_module_api.cpp      # Generated API implementation
+    ├── chatsdk_module_api.h          # Generated C++ API header
+    └── chatsdk_module_api.cpp        # Generated C++ API implementation
 ```
 
-Both libraries must remain in the same directory, as `chatsdk_module_plugin.dylib` is configured with `@loader_path` to find `liblogoschat.dylib` relative to itself.
+Both libraries must be in the same directory — the plugin uses `@loader_path` / `$ORIGIN` to locate `liblogoschat` at runtime.
 
-### Requirements
+## Requirements
 
-#### Build Tools
-- CMake (3.14 or later)
-- Ninja build system
+> [!TIP]
+> When using Nix, all requirements are acquired automatically.
+
+### Build tools
+
+- CMake ≥ 3.14
+- Ninja
 - pkg-config
 
-#### Dependencies
-- Qt6 (qtbase)
-- Qt6 Remote Objects (qtremoteobjects)
-- logos-liblogos
-- logos-cpp-sdk (for header generation)
-- liblogoschat (included in lib/)
+### Dependencies
+
+| Dependency | Purpose |
+|---|---|
+| Qt6 Core | Qt plugin infrastructure |
+| Qt6 RemoteObjects | LogosAPI IPC transport |
+| [`logos-cpp-sdk`](https://github.com/logos-co/logos-cpp-sdk) | LogosAPI bindings, C++ generator |
+| [`logos-liblogos`](https://github.com/logos-co/logos-liblogos) | Logos Core plugin interface |
+| [`logos-chat`](https://github.com/logos-messaging/logos-chat) | Provides `liblogoschat` |
+
+## Related Repositories
+
+| Repository | Role |
+|---|---|
+| [`logos-chatsdk-ui`](https://github.com/logos-co/logos-chatsdk-ui) | Reference Qt UI built on this module |
+| [`logos-chat`](https://github.com/logos-messaging/logos-chat) | Logos Chat application (provides `liblogoschat`) |
+| [`logos-liblogos`](https://github.com/logos-co/logos-liblogos) | Logos Core platform |
+| [`logos-cpp-sdk`](https://github.com/logos-co/logos-cpp-sdk) | LogosAPI and C++ module bindings generator |
