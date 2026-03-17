@@ -35,18 +35,7 @@ void ChatSDKModulePlugin::initLogos(LogosAPI* logosAPIInstance) {
 }
 
 void ChatSDKModulePlugin::emitEvent(const QString& eventName, const QVariantList& data) {
-    if (!logosAPI) {
-        qWarning() << "ChatSDKModulePlugin: LogosAPI not available, cannot emit" << eventName;
-        return;
-    }
-
-    LogosAPIClient* client = logosAPI->getClient("chatsdk_module");
-    if (!client) {
-        qWarning() << "ChatSDKModulePlugin: Failed to get chatsdk_module client for event" << eventName;
-        return;
-    }
-
-    client->onEventResponse(this, eventName, data);
+    emit eventResponse(eventName, data);
 }
 
 // ============================================================================
