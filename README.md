@@ -1,10 +1,10 @@
-# logos-chatsdk-module
+# logos-chat-module
 
 A [Logos Core](https://github.com/logos-co/logos-liblogos) module plugin that exposes the [Logos Chat](https://github.com/logos-messaging/logos-chat) to the Logos platform.
 
 Loaded into Logos Core, it wraps `liblogoschat` and bridges its C callback API to Qt signals and invokable methods. Consumers interact with it entirely through the module methods and signals — no direct dependency on `liblogoschat` is required.
 
-> [`logos-chatsdk-ui`](https://github.com/logos-co/logos-chatsdk-ui) is the reference UI built on top of this module.
+> [`logos-chat-ui`](https://github.com/logos-co/logos-chat-ui) is the reference UI built on top of this module.
 
 ## What It Provides
 
@@ -15,7 +15,7 @@ Loaded into Logos Core, it wraps `liblogoschat` and bridges its C callback API t
 
 ## API
 
-See [chatsdk_module_plugin.h](chatsdk_module_plugin.h) for the full API — methods, async event names, and per-event `data` layouts are documented there.
+See [chat_module_plugin.h](chat_module_plugin.h) for the full API — methods, async event names, and per-event `data` layouts are documented there.
 
 ## How to Build
 
@@ -56,11 +56,11 @@ If `LOGOS_CPP_SDK_ROOT` and `LOGOS_LIBLOGOS_ROOT` are not set, CMake looks for s
 ```
 result/
 ├── lib/
-│   ├── chatsdk_module_plugin.dylib   # Module plugin (.so on Linux)
+│   ├── chat_module_plugin.dylib   # Module plugin (.so on Linux)
 │   └── liblogoschat.dylib            # Chat library dependency (.so on Linux)
 └── include/
-    ├── chatsdk_module_api.h          # Generated C++ API header
-    └── chatsdk_module_api.cpp        # Generated C++ API implementation
+    ├── chat_module_api.h          # Generated C++ API header
+    └── chat_module_api.cpp        # Generated C++ API implementation
 ```
 
 Both libraries must be in the same directory — the plugin uses `@loader_path` / `$ORIGIN` to locate `liblogoschat` at runtime.
@@ -90,7 +90,7 @@ Both libraries must be in the same directory — the plugin uses `@loader_path` 
 
 | Repository | Role |
 |---|---|
-| [`logos-chatsdk-ui`](https://github.com/logos-co/logos-chatsdk-ui) | Reference Qt UI built on this module |
+| [`logos-chat-ui`](https://github.com/logos-co/logos-chat-ui) | Reference Qt UI built on this module |
 | [`logos-chat`](https://github.com/logos-messaging/logos-chat) | Logos Chat application (provides `liblogoschat`) |
 | [`logos-liblogos`](https://github.com/logos-co/logos-liblogos) | Logos Core platform |
 | [`logos-cpp-sdk`](https://github.com/logos-co/logos-cpp-sdk) | LogosAPI and C++ module bindings generator |

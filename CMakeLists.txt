@@ -1,16 +1,16 @@
 cmake_minimum_required(VERSION 3.14)
-project(ChatSDKModulePlugin LANGUAGES CXX)
+project(ChatModulePlugin LANGUAGES CXX)
 
 include(GNUInstallDirs)
 
 set(CMAKE_AUTOMOC ON)
 
-option(LOGOS_CHATSDK_MODULE_USE_VENDOR "Force use of vendored Logos dependencies" OFF)
+option(LOGOS_CHAT_MODULE_USE_VENDOR "Force use of vendored Logos dependencies" OFF)
 
 # Allow override from environment or command line
 if(NOT DEFINED LOGOS_LIBLOGOS_ROOT)
     set(_parent_liblogos "${CMAKE_CURRENT_SOURCE_DIR}/../logos-liblogos")
-    set(_use_vendor ${LOGOS_CHATSDK_MODULE_USE_VENDOR})
+    set(_use_vendor ${LOGOS_CHAT_MODULE_USE_VENDOR})
     if(NOT _use_vendor)
         if(NOT EXISTS "${_parent_liblogos}/interface.h")
             set(_use_vendor ON)
@@ -25,7 +25,7 @@ endif()
 
 if(NOT DEFINED LOGOS_CPP_SDK_ROOT)
     set(_parent_cpp_sdk "${CMAKE_CURRENT_SOURCE_DIR}/../logos-cpp-sdk")
-    set(_use_vendor ${LOGOS_CHATSDK_MODULE_USE_VENDOR})
+    set(_use_vendor ${LOGOS_CHAT_MODULE_USE_VENDOR})
     if(NOT _use_vendor)
         if(NOT EXISTS "${_parent_cpp_sdk}/cpp/logos_api.h")
             set(_use_vendor ON)
@@ -100,18 +100,18 @@ if(_cpp_sdk_is_source)
         )
     endif()
     
-    add_custom_target(run_cpp_generator_chatsdk
+    add_custom_target(run_cpp_generator_chat
         COMMAND "${CPP_GENERATOR}" --metadata "${METADATA_JSON}" --module-dir "${PLUGINS_OUTPUT_DIR}"
         WORKING_DIRECTORY "${LOGOS_DEPS_ROOT}"
         COMMENT "Running logos-cpp-generator on ${METADATA_JSON} with module-dir ${PLUGINS_OUTPUT_DIR}"
         VERBATIM
     )
-    add_dependencies(run_cpp_generator_chatsdk cpp_generator_build)
+    add_dependencies(run_cpp_generator_chat cpp_generator_build)
 else()
     # Installed layout: use the generator from the install path
     find_program(CPP_GENERATOR logos-cpp-generator PATHS ${LOGOS_CPP_SDK_ROOT}/bin NO_DEFAULT_PATH REQUIRED)
     
-    add_custom_target(run_cpp_generator_chatsdk
+    add_custom_target(run_cpp_generator_chat
         COMMAND "${CPP_GENERATOR}" --metadata "${METADATA_JSON}" --module-dir "${PLUGINS_OUTPUT_DIR}"
         WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
         COMMENT "Running logos-cpp-generator on ${METADATA_JSON} with module-dir ${PLUGINS_OUTPUT_DIR}"
@@ -143,9 +143,9 @@ find_library(LIBLOGOSCHAT_PATH NAMES ${LIBLOGOSCHAT_NAMES} PATHS ${LIBLOGOSCHAT_
 
 # Plugin sources
 set(PLUGIN_SOURCES
-    chatsdk_module_plugin.cpp
-    chatsdk_module_plugin.h
-    chatsdk_module_interface.h
+    chat_module_plugin.cpp
+    chat_module_plugin.h
+    chat_module_interface.h
 )
 
 # Add liblogos interface header
@@ -174,17 +174,17 @@ if(_cpp_sdk_is_source)
 endif()
 
 # Create the plugin library
-add_library(chatsdk_module_plugin SHARED ${PLUGIN_SOURCES})
+add_library(chat_module_plugin SHARED ${PLUGIN_SOURCES})
 
 # Set output name without lib prefix
-set_target_properties(chatsdk_module_plugin PROPERTIES
+set_target_properties(chat_module_plugin PROPERTIES
     PREFIX "")
 
 # Ensure generator runs before building the plugin
-add_dependencies(chatsdk_module_plugin run_cpp_generator_chatsdk)
+add_dependencies(chat_module_plugin run_cpp_generator_chat)
 
 # Link Qt libraries
-target_link_libraries(chatsdk_module_plugin PRIVATE 
+target_link_libraries(chat_module_plugin PRIVATE 
     Qt${QT_VERSION_MAJOR}::Core 
     Qt${QT_VERSION_MAJOR}::RemoteObjects
 )
@@ -192,43 +192,43 @@ target_link_libraries(chatsdk_module_plugin PRIVATE
 # Link SDK library if using installed layout
 if(NOT _cpp_sdk_is_source)
     find_library(LOGOS_SDK_LIB logos_sdk PATHS ${LOGOS_CPP_SDK_ROOT}/lib NO_DEFAULT_PATH REQUIRED)
-    target_link_libraries(chatsdk_module_plugin PRIVATE ${LOGOS_SDK_LIB})
+    target_link_libraries(chat_module_plugin PRIVATE ${LOGOS_SDK_LIB})
 endif()
 
 # Link to liblogoschat on all platforms
 if(LIBLOGOSCHAT_PATH)
-    target_link_libraries(chatsdk_module_plugin PRIVATE ${LIBLOGOSCHAT_PATH})
+    target_link_libraries(chat_module_plugin PRIVATE ${LIBLOGOSCHAT_PATH})
 else()
     message(WARNING "liblogoschat not found in ${LOGOS_CHAT_ROOT}/lib/. Check LOGOS_CHAT_ROOT.")
 endif()
 
 # Include directories
-target_include_directories(chatsdk_module_plugin PRIVATE
+target_include_directories(chat_module_plugin PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${LOGOS_CHAT_ROOT}/include
 )
 
 # Add include directories based on layout type
 if(_liblogos_is_source)
-    target_include_directories(chatsdk_module_plugin PRIVATE ${LOGOS_LIBLOGOS_ROOT})
+    target_include_directories(chat_module_plugin PRIVATE ${LOGOS_LIBLOGOS_ROOT})
 else()
-    target_include_directories(chatsdk_module_plugin PRIVATE ${LOGOS_LIBLOGOS_ROOT}/include)
+    target_include_directories(chat_module_plugin PRIVATE ${LOGOS_LIBLOGOS_ROOT}/include)
 endif()
 
 if(_cpp_sdk_is_source)
-    target_include_directories(chatsdk_module_plugin PRIVATE 
+    target_include_directories(chat_module_plugin PRIVATE 
         ${LOGOS_CPP_SDK_ROOT}/cpp
         ${LOGOS_CPP_SDK_ROOT}/cpp/generated
     )
 else()
-    target_include_directories(chatsdk_module_plugin PRIVATE 
+    target_include_directories(chat_module_plugin PRIVATE 
         ${LOGOS_CPP_SDK_ROOT}/include
         ${LOGOS_CPP_SDK_ROOT}/include/cpp
         ${LOGOS_CPP_SDK_ROOT}/include/core
     )
 endif()
 
-set_target_properties(chatsdk_module_plugin PROPERTIES
+set_target_properties(chat_module_plugin PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/modules"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/modules"  # For Windows .dll
     BUILD_WITH_INSTALL_RPATH TRUE
@@ -236,41 +236,41 @@ set_target_properties(chatsdk_module_plugin PROPERTIES
 
 if(APPLE)
     # Allow unresolved symbols at link time; liblogoschat will be provided at runtime
-    target_link_options(chatsdk_module_plugin PRIVATE -undefined dynamic_lookup)
-    set_target_properties(chatsdk_module_plugin PROPERTIES
+    target_link_options(chat_module_plugin PRIVATE -undefined dynamic_lookup)
+    set_target_properties(chat_module_plugin PROPERTIES
         INSTALL_RPATH "@loader_path"
         INSTALL_NAME_DIR "@rpath"
         BUILD_WITH_INSTALL_NAME_DIR TRUE)
 
     if(LIBLOGOSCHAT_PATH)
         get_filename_component(LIBLOGOSCHAT_FILENAME "${LIBLOGOSCHAT_PATH}" NAME)
-        add_custom_command(TARGET chatsdk_module_plugin PRE_LINK
+        add_custom_command(TARGET chat_module_plugin PRE_LINK
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 ${LIBLOGOSCHAT_PATH}
                 ${CMAKE_BINARY_DIR}/modules/${LIBLOGOSCHAT_FILENAME}
             COMMENT "Copying ${LIBLOGOSCHAT_FILENAME} to modules directory"
         )
 
-        add_custom_command(TARGET chatsdk_module_plugin POST_BUILD
-            COMMAND install_name_tool -id "@rpath/chatsdk_module_plugin.dylib" $<TARGET_FILE:chatsdk_module_plugin>
+        add_custom_command(TARGET chat_module_plugin POST_BUILD
+            COMMAND install_name_tool -id "@rpath/chat_module_plugin.dylib" $<TARGET_FILE:chat_module_plugin>
             COMMAND install_name_tool -id "@rpath/${LIBLOGOSCHAT_FILENAME}" "${CMAKE_BINARY_DIR}/modules/${LIBLOGOSCHAT_FILENAME}"
-            COMMAND install_name_tool -change "${LIBLOGOSCHAT_PATH}" "@rpath/${LIBLOGOSCHAT_FILENAME}" $<TARGET_FILE:chatsdk_module_plugin>
+            COMMAND install_name_tool -change "${LIBLOGOSCHAT_PATH}" "@rpath/${LIBLOGOSCHAT_FILENAME}" $<TARGET_FILE:chat_module_plugin>
             COMMENT "Updating library paths for macOS"
         )
     else()
-        add_custom_command(TARGET chatsdk_module_plugin POST_BUILD
-            COMMAND install_name_tool -id "@rpath/chatsdk_module_plugin.dylib" $<TARGET_FILE:chatsdk_module_plugin>
+        add_custom_command(TARGET chat_module_plugin POST_BUILD
+            COMMAND install_name_tool -id "@rpath/chat_module_plugin.dylib" $<TARGET_FILE:chat_module_plugin>
             COMMENT "Updating library paths for macOS (liblogoschat not found)"
         )
     endif()
 else()
-    set_target_properties(chatsdk_module_plugin PROPERTIES
+    set_target_properties(chat_module_plugin PROPERTIES
         INSTALL_RPATH "$ORIGIN"
         INSTALL_RPATH_USE_LINK_PATH FALSE)
 
     if(LIBLOGOSCHAT_PATH)
         get_filename_component(LIBLOGOSCHAT_FILENAME "${LIBLOGOSCHAT_PATH}" NAME)
-        add_custom_command(TARGET chatsdk_module_plugin PRE_LINK
+        add_custom_command(TARGET chat_module_plugin PRE_LINK
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 ${LIBLOGOSCHAT_PATH}
                 ${CMAKE_BINARY_DIR}/modules/${LIBLOGOSCHAT_FILENAME}
@@ -279,17 +279,17 @@ else()
     endif()
 endif()
 
-install(TARGETS chatsdk_module_plugin
+install(TARGETS chat_module_plugin
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/logos/modules
     RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}/logos/modules
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/logos/modules
 )
 
 install(FILES ${METADATA_JSON}
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/logos-chatsdk-module
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/logos-chat-module
 )
 
 install(DIRECTORY "${PLUGINS_OUTPUT_DIR}/"
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/logos-chatsdk-module/generated
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/logos-chat-module/generated
     OPTIONAL
 )

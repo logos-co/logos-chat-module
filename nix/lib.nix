@@ -1,4 +1,4 @@
-# Builds the logos-chatsdk-module library
+# Builds the logos-chat-module library
 { pkgs, common, src, logosChat }:
 
 pkgs.stdenv.mkDerivation {
@@ -27,21 +27,21 @@ pkgs.stdenv.mkDerivation {
       ${pkgs.darwin.cctools}/bin/install_name_tool -id "@rpath/''${liblogoschatLib}" "$out/lib/''${liblogoschatLib}"
     ''}
     
-    # Copy the chatsdk module plugin from the installed location
-    if [ -f "$out/lib/logos/modules/chatsdk_module_plugin.dylib" ]; then
-      cp "$out/lib/logos/modules/chatsdk_module_plugin.dylib" "$out/lib/"
+    # Copy the chat module plugin from the installed location
+    if [ -f "$out/lib/logos/modules/chat_module_plugin.dylib" ]; then
+      cp "$out/lib/logos/modules/chat_module_plugin.dylib" "$out/lib/"
       
       # Fix the plugin's reference to liblogoschat on macOS
       ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
         # Find what liblogoschat path the plugin is referencing and change it to @rpath
-        for dep in $(${pkgs.darwin.cctools}/bin/otool -L "$out/lib/chatsdk_module_plugin.dylib" | grep liblogoschat | awk '{print $1}'); do
-          ${pkgs.darwin.cctools}/bin/install_name_tool -change "$dep" "@rpath/''${liblogoschatLib}" "$out/lib/chatsdk_module_plugin.dylib"
+        for dep in $(${pkgs.darwin.cctools}/bin/otool -L "$out/lib/chat_module_plugin.dylib" | grep liblogoschat | awk '{print $1}'); do
+          ${pkgs.darwin.cctools}/bin/install_name_tool -change "$dep" "@rpath/''${liblogoschatLib}" "$out/lib/chat_module_plugin.dylib"
         done
       ''}
-    elif [ -f "$out/lib/logos/modules/chatsdk_module_plugin.so" ]; then
-      cp "$out/lib/logos/modules/chatsdk_module_plugin.so" "$out/lib/"
+    elif [ -f "$out/lib/logos/modules/chat_module_plugin.so" ]; then
+      cp "$out/lib/logos/modules/chat_module_plugin.so" "$out/lib/"
     else
-      echo "Error: No chatsdk_module_plugin library file found"
+      echo "Error: No chat_module_plugin library file found"
       exit 1
     fi
     
