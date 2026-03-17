@@ -8,7 +8,7 @@
 
 /**
  * @class ChatModulePlugin
- * @brief Qt plugin that exposes the Logos Chat SDK.
+ * @brief Qt plugin that exposes Logos Chat.
  *
  * Most operations are asynchronous. For these methods, the call returns
  * immediately — @c true meaning the request was accepted, @c false meaning it
@@ -49,7 +49,7 @@ public:
      *         no result signal is emitted and the caller must rely on the return value.
      *
      * @note If this function returns @c true, the result is returned asynchronously as
-     *       @c eventResponse("chatsdkInitResult", data)
+    *       @c eventResponse("chatInitResult", data)
      *   - @c data[0] @c bool — @c true on success.
      *   - @c data[1] @c int — status code.
      *   - @c data[2] @c QString — optional message from the SDK.
@@ -65,7 +65,7 @@ public:
      * @return @c true if the request was accepted; @c false if the client is
      *         not yet initialised.
      *
-     * @note Asynchronously returns result: @c eventResponse("chatsdkStartResult", data)
+    * @note Asynchronously returns result: @c eventResponse("chatStartResult", data)
      *   - @c data[0] @c bool — @c true on success.
      *   - @c data[1] @c int — status code.
      *   - @c data[2] @c QString — optional message from the SDK.
@@ -81,7 +81,7 @@ public:
      * @return @c true if the request was accepted; @c false if the client is
      *         not initialised.
      *
-     * @note Asynchronously returns result: @c eventResponse("chatsdkStopResult", data)
+    * @note Asynchronously returns result: @c eventResponse("chatStopResult", data)
      *   - @c data[0] @c bool — @c true on success.
      *   - @c data[1] @c int — status code.
      *   - @c data[2] @c QString — optional message from the SDK.
@@ -98,7 +98,7 @@ public:
      * @return @c true if the request was accepted; @c false if the client is
      *         not initialised.
      *
-     * @note  Asynchronously returns result: @c eventResponse("chatsdkDestroyResult", data) — only emitted
+    * @note  Asynchronously returns result: @c eventResponse("chatDestroyResult", data) — only emitted
      *       when the SDK provides a response message:
      *   - @c data[0] @c QString — message from the SDK.
      *   - @c data[1] @c QString — ISO-8601 timestamp.
@@ -114,9 +114,9 @@ public:
       and before @ref startChat to ensure that no messages are missed.
      *
      * Push events will arrive as:
-     * - @c eventResponse("chatsdkNewMessage", data)
-     * - @c eventResponse("chatsdkNewConversation", data)
-     * - @c eventResponse("chatsdkDeliveryAck", data)
+    * - @c eventResponse("chatNewMessage", data)
+    * - @c eventResponse("chatNewConversation", data)
+    * - @c eventResponse("chatDeliveryAck", data)
      *
      * For all push events @c data is:
      *   - @c data[0] @c QString — JSON payload describing the event.
@@ -140,12 +140,12 @@ public:
      *         not initialised.
      *
      * @note When the SDK provides a non-empty identifier, this call
-     *       asynchronously returns a result via @c eventResponse("chatsdkGetIdResult", data)
+    *       asynchronously returns a result via @c eventResponse("chatGetIdResult", data)
      *   - @c data[0] @c QString — the client identifier.
      *   - @c data[1] @c QString — ISO-8601 timestamp.
      *
      *       On some failures the SDK may not provide an identifier or message,
-     *       and in those cases no @c chatsdkGetIdResult event is emitted. Callers
+    *       and in those cases no @c chatGetIdResult event is emitted. Callers
      *       must not assume that a result signal is always delivered.
      */
     Q_INVOKABLE bool getId() override; // TODO: should not be async
@@ -160,14 +160,14 @@ public:
      * @return @c true if the request was accepted; @c false if the client is
      *         not initialised.
      *
-     * @note Asynchronously returns result (when available): @c eventResponse("chatsdkListConversationsResult", data)
+    * @note Asynchronously returns result (when available): @c eventResponse("chatListConversationsResult", data)
      *   - @c data[0] @c QString — Conversation Ids.
      *   - @c data[1] @c QString — ISO-8601 timestamp.
      *
      * @warning Due to current SDK callback semantics, this event is only emitted
      *          when the underlying SDK provides a non-empty list of conversations
      *          (i.e. when @c msg is non-null and @c len > 0). On certain failures
-     *          or when there are no conversations, no @c chatsdkListConversationsResult
+    *          or when there are no conversations, no @c chatListConversationsResult
      *          event may be emitted. Callers SHOULD NOT rely on this event always
      *          firing; instead, use the synchronous return value from this method
      *          together with appropriate timeout or fallback handling.
@@ -183,12 +183,12 @@ public:
      *         not initialised.
      *
      * @note  When the underlying SDK returns a result message, it is delivered
-     *        asynchronously as: @c eventResponse("chatsdkGetConversationResult", data)
+    *        asynchronously as: @c eventResponse("chatGetConversationResult", data)
      *   - @c data[0] @c QString — JSON object describing the conversation.
      *   - @c data[1] @c QString — ISO-8601 timestamp.
      *
      * @attention On certain internal failures (for example, if no result message
-     *            is produced by the SDK), no @c chatsdkGetConversationResult
+    *            is produced by the SDK), no @c chatGetConversationResult
      *            event will be emitted. Callers MUST NOT rely on this signal
      *            being emitted in all failure cases and should additionally use
      *            the synchronous return value or their own timeout / error
@@ -209,7 +209,7 @@ public:
      * @return @c true if the request was accepted; @c false if the client is
      *         not initialised.
      *
-     * @note  Asynchronously returns result: @c eventResponse("chatsdkNewPrivateConversationResult", data)
+    * @note  Asynchronously returns result: @c eventResponse("chatNewPrivateConversationResult", data)
      *   - @c data[0] @c bool — @c true on success.
      *   - @c data[1] @c int — status code.
      *   - @c data[2] @c QString — JSON object of the newly created conversation.
@@ -225,7 +225,7 @@ public:
      * @return @c true if the request was accepted; @c false if the client is
      *         not initialised.
      *
-     * @note  Asynchronously returns result: @c eventResponse("chatsdkSendMessageResult", data)
+    * @note  Asynchronously returns result: @c eventResponse("chatSendMessageResult", data)
      *   - @c data[0] @c bool — @c true on success.
      *   - @c data[1] @c int — status code.
      *   - @c data[2] @c QString — JSON result, may include the assigned message ID.
@@ -243,13 +243,13 @@ public:
      * @return @c true if the request was accepted; @c false if the client is
      *         not initialised.
      *
-     * @note  On success, asynchronously emits: @c eventResponse("chatsdkGetIdentityResult", data)
+    * @note  On success, asynchronously emits: @c eventResponse("chatGetIdentityResult", data)
      *   - @c data[0] @c QString — JSON object containing identity fields.
      *   - @c data[1] @c QString — ISO-8601 timestamp.
      *
      * @warning On some failure paths (for example, when no identity data is available
      *          or an internal error occurs in the underlying SDK), no
-     *          @c chatsdkGetIdentityResult event may be emitted even if this method
+    *          @c chatGetIdentityResult event may be emitted even if this method
      *          returned @c true. Callers MUST NOT rely on this event always being
      *          delivered and should implement appropriate timeouts or alternative
      *          error handling.
@@ -266,7 +266,7 @@ public:
      * @return @c true if the request was accepted; @c false if the client is
      *         not initialised.
      *
-     * @note  Asynchronously returns result: @c eventResponse("chatsdkCreateIntroBundleResult", data)
+    * @note  Asynchronously returns result: @c eventResponse("chatCreateIntroBundleResult", data)
      *   - @c data[0] @c bool — @c true on success.
      *   - @c data[1] @c int — status code.
      *   - @c data[2] @c QString — the introduction bundle string to share.
@@ -311,36 +311,36 @@ signals:
      * *Lifecycle*
      * | Event | data[0] | data[1] | data[2] | data[3] |
      * |---|---|---|---|---|
-     * | @c chatsdkInitResult       | `bool` success | `int` status code | `QString` SDK message | `QString` ISO-8601 timestamp |
-     * | @c chatsdkStartResult      | `bool` success | `int` status code | `QString` SDK message | `QString` ISO-8601 timestamp |
-     * | @c chatsdkStopResult       | `bool` success | `int` status code | `QString` SDK message | `QString` ISO-8601 timestamp |
-     * | @c chatsdkDestroyResult    | `QString` SDK message | `QString` ISO-8601 timestamp | — | — |
+    * | @c chatInitResult       | `bool` success | `int` status code | `QString` SDK message | `QString` ISO-8601 timestamp |
+    * | @c chatStartResult      | `bool` success | `int` status code | `QString` SDK message | `QString` ISO-8601 timestamp |
+    * | @c chatStopResult       | `bool` success | `int` status code | `QString` SDK message | `QString` ISO-8601 timestamp |
+    * | @c chatDestroyResult    | `QString` SDK message | `QString` ISO-8601 timestamp | — | — |
      *
      * *Client info*
      * | Event | data[0] | data[1] |
      * |---|---|---|
-     * | @c chatsdkGetIdResult | `QString` client identifier | `QString` ISO-8601 timestamp |
+    * | @c chatGetIdResult | `QString` client identifier | `QString` ISO-8601 timestamp |
      *
      * *Conversations*
      * | Event | data[0] | data[1] | data[2] | data[3] |
      * |---|---|---|---|---|
-     * | @c chatsdkListConversationsResult        | `QString` conversation IDs | `QString` ISO-8601 timestamp | — | — |
-     * | @c chatsdkGetConversationResult          | `QString` JSON conversation object | `QString` ISO-8601 timestamp | — | — |
-     * | @c chatsdkNewPrivateConversationResult   | `bool` success | `int` status code | `QString` JSON conversation object | `QString` ISO-8601 timestamp |
-     * | @c chatsdkSendMessageResult              | `bool` success | `int` status code | `QString` JSON result (may include message ID) | `QString` ISO-8601 timestamp |
+    * | @c chatListConversationsResult        | `QString` conversation IDs | `QString` ISO-8601 timestamp | — | — |
+    * | @c chatGetConversationResult          | `QString` JSON conversation object | `QString` ISO-8601 timestamp | — | — |
+    * | @c chatNewPrivateConversationResult   | `bool` success | `int` status code | `QString` JSON conversation object | `QString` ISO-8601 timestamp |
+    * | @c chatSendMessageResult              | `bool` success | `int` status code | `QString` JSON result (may include message ID) | `QString` ISO-8601 timestamp |
      *
      * *Identity*
      * | Event | data[0] | data[1] | data[2] | data[3] |
      * |---|---|---|---|---|
-     * | @c chatsdkGetIdentityResult        | `QString` JSON identity object | `QString` ISO-8601 timestamp | — | — |
-     * | @c chatsdkCreateIntroBundleResult  | `bool` success | `int` status code | `QString` introduction bundle string | `QString` ISO-8601 timestamp |
+    * | @c chatGetIdentityResult        | `QString` JSON identity object | `QString` ISO-8601 timestamp | — | — |
+    * | @c chatCreateIntroBundleResult  | `bool` success | `int` status code | `QString` introduction bundle string | `QString` ISO-8601 timestamp |
      *
      * *Push events (via @ref setEventCallback)*
      * | Event | data[0] | data[1] |
      * |---|---|---|
-     * | @c chatsdkNewMessage      | `QString` JSON payload | `QString` ISO-8601 timestamp |
-     * | @c chatsdkNewConversation | `QString` JSON payload | `QString` ISO-8601 timestamp |
-     * | @c chatsdkDeliveryAck     | `QString` JSON payload | `QString` ISO-8601 timestamp |
+    * | @c chatNewMessage      | `QString` JSON payload | `QString` ISO-8601 timestamp |
+    * | @c chatNewConversation | `QString` JSON payload | `QString` ISO-8601 timestamp |
+    * | @c chatDeliveryAck     | `QString` JSON payload | `QString` ISO-8601 timestamp |
      *
      * @param eventName Name identifying the event type.
      * @param data      Ordered list of event-specific arguments.

@@ -27,7 +27,7 @@ pkgs.stdenv.mkDerivation {
       ${pkgs.darwin.cctools}/bin/install_name_tool -id "@rpath/''${liblogoschatLib}" "$out/lib/''${liblogoschatLib}"
     ''}
     
-    # Copy the chatsdk module plugin from the installed location
+    # Copy the chat module plugin from the installed location
     if [ -f "$out/lib/logos/modules/chat_module_plugin.dylib" ]; then
       cp "$out/lib/logos/modules/chat_module_plugin.dylib" "$out/lib/"
       

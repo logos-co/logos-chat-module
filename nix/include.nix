@@ -1,4 +1,4 @@
-# Generates headers from the chatsdk module plugin using logos-cpp-generator
+# Generates headers from the chat module plugin using logos-cpp-generator
 { pkgs, common, src, lib, logosSdk }:
 
 pkgs.stdenv.mkDerivation {

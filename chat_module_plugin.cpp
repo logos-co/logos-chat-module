@@ -71,7 +71,7 @@ void ChatModulePlugin::init_callback(int callerRet, const char* msg, size_t len,
     eventData << message;                 // message (may be empty)
     eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
 
-    plugin->emitEvent("chatsdkInitResult", eventData);
+    plugin->emitEvent("chatInitResult", eventData);
 }
 
 void ChatModulePlugin::start_callback(int callerRet, const char* msg, size_t len, void* userData)
@@ -92,7 +92,7 @@ void ChatModulePlugin::start_callback(int callerRet, const char* msg, size_t len
     eventData << message;
     eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
 
-    plugin->emitEvent("chatsdkStartResult", eventData);
+    plugin->emitEvent("chatStartResult", eventData);
 }
 
 void ChatModulePlugin::stop_callback(int callerRet, const char* msg, size_t len, void* userData)
@@ -113,7 +113,7 @@ void ChatModulePlugin::stop_callback(int callerRet, const char* msg, size_t len,
     eventData << message;
     eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
 
-    plugin->emitEvent("chatsdkStopResult", eventData);
+    plugin->emitEvent("chatStopResult", eventData);
 }
 
 void ChatModulePlugin::destroy_callback(int callerRet, const char* msg, size_t len, void* userData)
@@ -134,7 +134,7 @@ void ChatModulePlugin::destroy_callback(int callerRet, const char* msg, size_t l
         eventData << message;
         eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
 
-        plugin->emitEvent("chatsdkDestroyResult", eventData);
+        plugin->emitEvent("chatDestroyResult", eventData);
     }
 }
 
@@ -153,7 +153,7 @@ void ChatModulePlugin::event_callback(int callerRet, const char* msg, size_t len
         
         // Parse the JSON to determine the event type
         QJsonDocument doc = QJsonDocument::fromJson(message.toUtf8());
-        QString eventName = "chatsdkEvent"; // Default event name
+        QString eventName = "chatEvent"; // Default event name
         
         if (doc.isObject()) {
             QJsonObject obj = doc.object();
@@ -161,11 +161,11 @@ void ChatModulePlugin::event_callback(int callerRet, const char* msg, size_t len
             
             // Map event types to Qt event names
             if (eventType == "new_message") {
-                eventName = "chatsdkNewMessage";
+                eventName = "chatNewMessage";
             } else if (eventType == "new_conversation") {
-                eventName = "chatsdkNewConversation";
+                eventName = "chatNewConversation";
             } else if (eventType == "delivery_ack") {
-                eventName = "chatsdkDeliveryAck";
+                eventName = "chatDeliveryAck";
             }
         }
 
@@ -194,7 +194,7 @@ void ChatModulePlugin::get_id_callback(int callerRet, const char* msg, size_t le
         eventData << message;
         eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
 
-        plugin->emitEvent("chatsdkGetIdResult", eventData);
+        plugin->emitEvent("chatGetIdResult", eventData);
     }
 }
 
@@ -215,7 +215,7 @@ void ChatModulePlugin::list_conversations_callback(int callerRet, const char* ms
         eventData << message;
         eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
 
-        plugin->emitEvent("chatsdkListConversationsResult", eventData);
+        plugin->emitEvent("chatListConversationsResult", eventData);
     }
 }
 
@@ -236,7 +236,7 @@ void ChatModulePlugin::get_conversation_callback(int callerRet, const char* msg,
         eventData << message;
         eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
 
-        plugin->emitEvent("chatsdkGetConversationResult", eventData);
+        plugin->emitEvent("chatGetConversationResult", eventData);
     }
 }
 
@@ -258,7 +258,7 @@ void ChatModulePlugin::new_private_conversation_callback(int callerRet, const ch
     eventData << conversationJson;                                        // conversation JSON
     eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
 
-    plugin->emitEvent("chatsdkNewPrivateConversationResult", eventData);
+    plugin->emitEvent("chatNewPrivateConversationResult", eventData);
 }
 
 void ChatModulePlugin::send_message_callback(int callerRet, const char* msg, size_t len, void* userData)
@@ -280,7 +280,7 @@ void ChatModulePlugin::send_message_callback(int callerRet, const char* msg, siz
     eventData << resultJson;              // result JSON (may contain message ID)
     eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
 
-    plugin->emitEvent("chatsdkSendMessageResult", eventData);
+    plugin->emitEvent("chatSendMessageResult", eventData);
 }
 
 void ChatModulePlugin::get_identity_callback(int callerRet, const char* msg, size_t len, void* userData)
@@ -300,7 +300,7 @@ void ChatModulePlugin::get_identity_callback(int callerRet, const char* msg, siz
         eventData << message;
         eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
 
-        plugin->emitEvent("chatsdkGetIdentityResult", eventData);
+        plugin->emitEvent("chatGetIdentityResult", eventData);
     }
 }
 
@@ -322,7 +322,7 @@ void ChatModulePlugin::create_intro_bundle_callback(int callerRet, const char* m
     eventData << bundleStr;                                        // intro bundle string
     eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
 
-    plugin->emitEvent("chatsdkCreateIntroBundleResult", eventData);
+    plugin->emitEvent("chatCreateIntroBundleResult", eventData);
 }
 
 // ============================================================================

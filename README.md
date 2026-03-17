@@ -4,7 +4,7 @@ A [Logos Core](https://github.com/logos-co/logos-liblogos) module plugin that ex
 
 Loaded into Logos Core, it wraps `liblogoschat` and bridges its C callback API to Qt signals and invokable methods. Consumers interact with it entirely through the module methods and signals — no direct dependency on `liblogoschat` is required.
 
-> [`logos-chatsdk-ui`](https://github.com/logos-co/logos-chatsdk-ui) is the reference UI built on top of this module.
+> [`logos-chat-ui`](https://github.com/logos-co/logos-chat-ui) is the reference UI built on top of this module.
 
 ## What It Provides
 
@@ -90,7 +90,7 @@ Both libraries must be in the same directory — the plugin uses `@loader_path` 
 
 | Repository | Role |
 |---|---|
-| [`logos-chatsdk-ui`](https://github.com/logos-co/logos-chatsdk-ui) | Reference Qt UI built on this module |
+| [`logos-chat-ui`](https://github.com/logos-co/logos-chat-ui) | Reference Qt UI built on this module |
 | [`logos-chat`](https://github.com/logos-messaging/logos-chat) | Logos Chat application (provides `liblogoschat`) |
 | [`logos-liblogos`](https://github.com/logos-co/logos-liblogos) | Logos Core platform |
 | [`logos-cpp-sdk`](https://github.com/logos-co/logos-cpp-sdk) | LogosAPI and C++ module bindings generator |
