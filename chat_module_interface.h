@@ -3,10 +3,10 @@
 #include <QtCore/QObject>
 #include "interface.h"
 
-class ChatSDKModuleInterface : public PluginInterface
+class ChatModuleInterface : public PluginInterface
 {
 public:
-    virtual ~ChatSDKModuleInterface() {}
+    virtual ~ChatModuleInterface() {}
     
     // Client Lifecycle
     Q_INVOKABLE virtual bool initChat(const QString &configJson) = 0;
@@ -31,5 +31,5 @@ signals:
     void eventResponse(const QString& eventName, const QVariantList& data);
 };
 
-#define ChatSDKModuleInterface_iid "org.logos.ChatSDKModuleInterface"
-Q_DECLARE_INTERFACE(ChatSDKModuleInterface, ChatSDKModuleInterface_iid)
+#define ChatModuleInterface_iid "org.logos.ChatModuleInterface"
+Q_DECLARE_INTERFACE(ChatModuleInterface, ChatModuleInterface_iid)

@@ -1,5 +1,5 @@
 {
-  description = "Logos ChatSDK Module";
+  description = "Logos Chat Module";
 
   inputs = {
     # Follow the same nixpkgs as logos-liblogos to ensure compatibility
@@ -34,7 +34,7 @@
           
           # Combined package
           combined = pkgs.symlinkJoin {
-            name = "logos-chatsdk-module";
+            name = "logos-chat-module";
             paths = [ lib include ];
           };
         in
@@ -63,7 +63,7 @@
             export LOGOS_CPP_SDK_ROOT="${logosSdk}"
             export LOGOS_LIBLOGOS_ROOT="${logosLiblogos}"
             export LOGOS_CHAT_ROOT="${logosChat}"
-            echo "Logos ChatSDK Module development environment"
+            echo "Logos Chat Module development environment"
             echo "LOGOS_CPP_SDK_ROOT: $LOGOS_CPP_SDK_ROOT"
             echo "LOGOS_LIBLOGOS_ROOT: $LOGOS_LIBLOGOS_ROOT"
             echo "LOGOS_CHAT_ROOT: $LOGOS_CHAT_ROOT"

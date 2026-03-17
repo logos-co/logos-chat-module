@@ -1,4 +1,4 @@
-#include "chatsdk_module_plugin.h"
+#include "chat_module_plugin.h"
 #include <QDebug>
 #include <QCoreApplication>
 #include <QVariantList>
@@ -6,13 +6,13 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-ChatSDKModulePlugin::ChatSDKModulePlugin() : chatCtx(nullptr)
+ChatModulePlugin::ChatModulePlugin() : chatCtx(nullptr)
 {
-    qDebug() << "ChatSDKModulePlugin: Initializing...";
-    qDebug() << "ChatSDKModulePlugin: Initialized successfully";
+    qDebug() << "ChatModulePlugin: Initializing...";
+    qDebug() << "ChatModulePlugin: Initialized successfully";
 }
 
-ChatSDKModulePlugin::~ChatSDKModulePlugin() 
+ChatModulePlugin::~ChatModulePlugin() 
 {
     // Clean up Chat context if it exists
     if (chatCtx) {
@@ -27,22 +27,22 @@ ChatSDKModulePlugin::~ChatSDKModulePlugin()
     }
 }
 
-void ChatSDKModulePlugin::initLogos(LogosAPI* logosAPIInstance) {
+void ChatModulePlugin::initLogos(LogosAPI* logosAPIInstance) {
     if (logosAPI) {
         delete logosAPI;
     }
     logosAPI = logosAPIInstance;
 }
 
-void ChatSDKModulePlugin::emitEvent(const QString& eventName, const QVariantList& data) {
+void ChatModulePlugin::emitEvent(const QString& eventName, const QVariantList& data) {
     if (!logosAPI) {
-        qWarning() << "ChatSDKModulePlugin: LogosAPI not available, cannot emit" << eventName;
+        qWarning() << "ChatModulePlugin: LogosAPI not available, cannot emit" << eventName;
         return;
     }
 
-    LogosAPIClient* client = logosAPI->getClient("chatsdk_module");
+    LogosAPIClient* client = logosAPI->getClient("chat_module");
     if (!client) {
-        qWarning() << "ChatSDKModulePlugin: Failed to get chatsdk_module client for event" << eventName;
+        qWarning() << "ChatModulePlugin: Failed to get chat_module client for event" << eventName;
         return;
     }
 
@@ -53,13 +53,13 @@ void ChatSDKModulePlugin::emitEvent(const QString& eventName, const QVariantList
 // Static Callback Functions
 // ============================================================================
 
-void ChatSDKModulePlugin::init_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModulePlugin::init_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatSDKModulePlugin::init_callback called with ret:" << callerRet;
+    qDebug() << "ChatModulePlugin::init_callback called with ret:" << callerRet;
     
-    ChatSDKModulePlugin* plugin = static_cast<ChatSDKModulePlugin*>(userData);
+    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
     if (!plugin) {
-        qWarning() << "ChatSDKModulePlugin::init_callback: Invalid userData";
+        qWarning() << "ChatModulePlugin::init_callback: Invalid userData";
         return;
     }
 
@@ -74,13 +74,13 @@ void ChatSDKModulePlugin::init_callback(int callerRet, const char* msg, size_t l
     plugin->emitEvent("chatsdkInitResult", eventData);
 }
 
-void ChatSDKModulePlugin::start_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModulePlugin::start_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatSDKModulePlugin::start_callback called with ret:" << callerRet;
+    qDebug() << "ChatModulePlugin::start_callback called with ret:" << callerRet;
     
-    ChatSDKModulePlugin* plugin = static_cast<ChatSDKModulePlugin*>(userData);
+    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
     if (!plugin) {
-        qWarning() << "ChatSDKModulePlugin::start_callback: Invalid userData";
+        qWarning() << "ChatModulePlugin::start_callback: Invalid userData";
         return;
     }
 
@@ -95,13 +95,13 @@ void ChatSDKModulePlugin::start_callback(int callerRet, const char* msg, size_t 
     plugin->emitEvent("chatsdkStartResult", eventData);
 }
 
-void ChatSDKModulePlugin::stop_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModulePlugin::stop_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatSDKModulePlugin::stop_callback called with ret:" << callerRet;
+    qDebug() << "ChatModulePlugin::stop_callback called with ret:" << callerRet;
     
-    ChatSDKModulePlugin* plugin = static_cast<ChatSDKModulePlugin*>(userData);
+    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
     if (!plugin) {
-        qWarning() << "ChatSDKModulePlugin::stop_callback: Invalid userData";
+        qWarning() << "ChatModulePlugin::stop_callback: Invalid userData";
         return;
     }
 
@@ -116,19 +116,19 @@ void ChatSDKModulePlugin::stop_callback(int callerRet, const char* msg, size_t l
     plugin->emitEvent("chatsdkStopResult", eventData);
 }
 
-void ChatSDKModulePlugin::destroy_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModulePlugin::destroy_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatSDKModulePlugin::destroy_callback called with ret:" << callerRet;
+    qDebug() << "ChatModulePlugin::destroy_callback called with ret:" << callerRet;
     
-    ChatSDKModulePlugin* plugin = static_cast<ChatSDKModulePlugin*>(userData);
+    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
     if (!plugin) {
-        qWarning() << "ChatSDKModulePlugin::destroy_callback: Invalid userData";
+        qWarning() << "ChatModulePlugin::destroy_callback: Invalid userData";
         return;
     }
 
     if (msg && len > 0) {
         QString message = QString::fromUtf8(msg, len);
-        qDebug() << "ChatSDKModulePlugin::destroy_callback message:" << message;
+        qDebug() << "ChatModulePlugin::destroy_callback message:" << message;
 
         QVariantList eventData;
         eventData << message;
@@ -138,13 +138,13 @@ void ChatSDKModulePlugin::destroy_callback(int callerRet, const char* msg, size_
     }
 }
 
-void ChatSDKModulePlugin::event_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModulePlugin::event_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatSDKModulePlugin::event_callback called with ret:" << callerRet;
+    qDebug() << "ChatModulePlugin::event_callback called with ret:" << callerRet;
 
-    ChatSDKModulePlugin* plugin = static_cast<ChatSDKModulePlugin*>(userData);
+    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
     if (!plugin) {
-        qWarning() << "ChatSDKModulePlugin::event_callback: Invalid userData";
+        qWarning() << "ChatModulePlugin::event_callback: Invalid userData";
         return;
     }
 
@@ -177,13 +177,13 @@ void ChatSDKModulePlugin::event_callback(int callerRet, const char* msg, size_t 
     }
 }
 
-void ChatSDKModulePlugin::get_id_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModulePlugin::get_id_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatSDKModulePlugin::get_id_callback called with ret:" << callerRet;
+    qDebug() << "ChatModulePlugin::get_id_callback called with ret:" << callerRet;
 
-    ChatSDKModulePlugin* plugin = static_cast<ChatSDKModulePlugin*>(userData);
+    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
     if (!plugin) {
-        qWarning() << "ChatSDKModulePlugin::get_id_callback: Invalid userData";
+        qWarning() << "ChatModulePlugin::get_id_callback: Invalid userData";
         return;
     }
 
@@ -198,13 +198,13 @@ void ChatSDKModulePlugin::get_id_callback(int callerRet, const char* msg, size_t
     }
 }
 
-void ChatSDKModulePlugin::list_conversations_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModulePlugin::list_conversations_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatSDKModulePlugin::list_conversations_callback called with ret:" << callerRet;
+    qDebug() << "ChatModulePlugin::list_conversations_callback called with ret:" << callerRet;
 
-    ChatSDKModulePlugin* plugin = static_cast<ChatSDKModulePlugin*>(userData);
+    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
     if (!plugin) {
-        qWarning() << "ChatSDKModulePlugin::list_conversations_callback: Invalid userData";
+        qWarning() << "ChatModulePlugin::list_conversations_callback: Invalid userData";
         return;
     }
 
@@ -219,13 +219,13 @@ void ChatSDKModulePlugin::list_conversations_callback(int callerRet, const char*
     }
 }
 
-void ChatSDKModulePlugin::get_conversation_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModulePlugin::get_conversation_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatSDKModulePlugin::get_conversation_callback called with ret:" << callerRet;
+    qDebug() << "ChatModulePlugin::get_conversation_callback called with ret:" << callerRet;
 
-    ChatSDKModulePlugin* plugin = static_cast<ChatSDKModulePlugin*>(userData);
+    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
     if (!plugin) {
-        qWarning() << "ChatSDKModulePlugin::get_conversation_callback: Invalid userData";
+        qWarning() << "ChatModulePlugin::get_conversation_callback: Invalid userData";
         return;
     }
 
@@ -240,13 +240,13 @@ void ChatSDKModulePlugin::get_conversation_callback(int callerRet, const char* m
     }
 }
 
-void ChatSDKModulePlugin::new_private_conversation_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModulePlugin::new_private_conversation_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatSDKModulePlugin::new_private_conversation_callback called with ret:" << callerRet;
+    qDebug() << "ChatModulePlugin::new_private_conversation_callback called with ret:" << callerRet;
 
-    ChatSDKModulePlugin* plugin = static_cast<ChatSDKModulePlugin*>(userData);
+    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
     if (!plugin) {
-        qWarning() << "ChatSDKModulePlugin::new_private_conversation_callback: Invalid userData";
+        qWarning() << "ChatModulePlugin::new_private_conversation_callback: Invalid userData";
         return;
     }
 
@@ -261,18 +261,18 @@ void ChatSDKModulePlugin::new_private_conversation_callback(int callerRet, const
     plugin->emitEvent("chatsdkNewPrivateConversationResult", eventData);
 }
 
-void ChatSDKModulePlugin::send_message_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModulePlugin::send_message_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatSDKModulePlugin::send_message_callback called with ret:" << callerRet;
+    qDebug() << "ChatModulePlugin::send_message_callback called with ret:" << callerRet;
 
-    ChatSDKModulePlugin* plugin = static_cast<ChatSDKModulePlugin*>(userData);
+    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
     if (!plugin) {
-        qWarning() << "ChatSDKModulePlugin::send_message_callback: Invalid userData";
+        qWarning() << "ChatModulePlugin::send_message_callback: Invalid userData";
         return;
     }
 
     QString resultJson = (msg && len > 0) ? QString::fromUtf8(msg, len) : "";
-    qDebug() << "ChatSDKModulePlugin::send_message_callback result:" << resultJson;
+    qDebug() << "ChatModulePlugin::send_message_callback result:" << resultJson;
     
     QVariantList eventData;
     eventData << (callerRet == RET_OK);  // success
@@ -283,13 +283,13 @@ void ChatSDKModulePlugin::send_message_callback(int callerRet, const char* msg, 
     plugin->emitEvent("chatsdkSendMessageResult", eventData);
 }
 
-void ChatSDKModulePlugin::get_identity_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModulePlugin::get_identity_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatSDKModulePlugin::get_identity_callback called with ret:" << callerRet;
+    qDebug() << "ChatModulePlugin::get_identity_callback called with ret:" << callerRet;
 
-    ChatSDKModulePlugin* plugin = static_cast<ChatSDKModulePlugin*>(userData);
+    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
     if (!plugin) {
-        qWarning() << "ChatSDKModulePlugin::get_identity_callback: Invalid userData";
+        qWarning() << "ChatModulePlugin::get_identity_callback: Invalid userData";
         return;
     }
 
@@ -304,13 +304,13 @@ void ChatSDKModulePlugin::get_identity_callback(int callerRet, const char* msg, 
     }
 }
 
-void ChatSDKModulePlugin::create_intro_bundle_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModulePlugin::create_intro_bundle_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatSDKModulePlugin::create_intro_bundle_callback called with ret:" << callerRet;
+    qDebug() << "ChatModulePlugin::create_intro_bundle_callback called with ret:" << callerRet;
 
-    ChatSDKModulePlugin* plugin = static_cast<ChatSDKModulePlugin*>(userData);
+    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
     if (!plugin) {
-        qWarning() << "ChatSDKModulePlugin::create_intro_bundle_callback: Invalid userData";
+        qWarning() << "ChatModulePlugin::create_intro_bundle_callback: Invalid userData";
         return;
     }
 
@@ -329,9 +329,9 @@ void ChatSDKModulePlugin::create_intro_bundle_callback(int callerRet, const char
 // Client Lifecycle Methods
 // ============================================================================
 
-bool ChatSDKModulePlugin::initChat(const QString &configJson)
+bool ChatModulePlugin::initChat(const QString &configJson)
 {
-    qDebug() << "ChatSDKModulePlugin::initChat called with config:" << configJson;
+    qDebug() << "ChatModulePlugin::initChat called with config:" << configJson;
     
     // Convert QString to UTF-8 byte array
     QByteArray cfgUtf8 = configJson.toUtf8();
@@ -340,87 +340,87 @@ bool ChatSDKModulePlugin::initChat(const QString &configJson)
     chatCtx = chat_new(cfgUtf8.constData(), init_callback, this);
     
     if (chatCtx) {
-        qDebug() << "ChatSDKModulePlugin: Chat context created successfully";
+        qDebug() << "ChatModulePlugin: Chat context created successfully";
         return true;
     } else {
-        qWarning() << "ChatSDKModulePlugin: Failed to create Chat context";
+        qWarning() << "ChatModulePlugin: Failed to create Chat context";
         return false;
     }
 }
 
-bool ChatSDKModulePlugin::startChat()
+bool ChatModulePlugin::startChat()
 {
-    qDebug() << "ChatSDKModulePlugin::startChat called";
+    qDebug() << "ChatModulePlugin::startChat called";
     
     if (!chatCtx) {
-        qWarning() << "ChatSDKModulePlugin: Cannot start Chat - context not initialized. Call initChat first.";
+        qWarning() << "ChatModulePlugin: Cannot start Chat - context not initialized. Call initChat first.";
         return false;
     }
     
     int result = chat_start(chatCtx, start_callback, this);
     
     if (result == RET_OK) {
-        qDebug() << "ChatSDKModulePlugin: Chat start initiated successfully";
+        qDebug() << "ChatModulePlugin: Chat start initiated successfully";
         return true;
     } else {
-        qWarning() << "ChatSDKModulePlugin: Failed to start Chat, error code:" << result;
+        qWarning() << "ChatModulePlugin: Failed to start Chat, error code:" << result;
         return false;
     }
 }
 
-bool ChatSDKModulePlugin::stopChat()
+bool ChatModulePlugin::stopChat()
 {
-    qDebug() << "ChatSDKModulePlugin::stopChat called";
+    qDebug() << "ChatModulePlugin::stopChat called";
     
     if (!chatCtx) {
-        qWarning() << "ChatSDKModulePlugin: Cannot stop Chat - context not initialized.";
+        qWarning() << "ChatModulePlugin: Cannot stop Chat - context not initialized.";
         return false;
     }
     
     int result = chat_stop(chatCtx, stop_callback, this);
     
     if (result == RET_OK) {
-        qDebug() << "ChatSDKModulePlugin: Chat stop initiated successfully";
+        qDebug() << "ChatModulePlugin: Chat stop initiated successfully";
         return true;
     } else {
-        qWarning() << "ChatSDKModulePlugin: Failed to stop Chat, error code:" << result;
+        qWarning() << "ChatModulePlugin: Failed to stop Chat, error code:" << result;
         return false;
     }
 }
 
-bool ChatSDKModulePlugin::destroyChat()
+bool ChatModulePlugin::destroyChat()
 {
-    qDebug() << "ChatSDKModulePlugin::destroyChat called";
+    qDebug() << "ChatModulePlugin::destroyChat called";
     
     if (!chatCtx) {
-        qWarning() << "ChatSDKModulePlugin: Cannot destroy Chat - context not initialized.";
+        qWarning() << "ChatModulePlugin: Cannot destroy Chat - context not initialized.";
         return false;
     }
     
     int result = chat_destroy(chatCtx, destroy_callback, this);
     
     if (result == RET_OK) {
-        qDebug() << "ChatSDKModulePlugin: Chat destroy initiated successfully";
+        qDebug() << "ChatModulePlugin: Chat destroy initiated successfully";
         chatCtx = nullptr;
         return true;
     } else {
-        qWarning() << "ChatSDKModulePlugin: Failed to destroy Chat, error code:" << result;
+        qWarning() << "ChatModulePlugin: Failed to destroy Chat, error code:" << result;
         return false;
     }
 }
 
-bool ChatSDKModulePlugin::setEventCallback()
+bool ChatModulePlugin::setEventCallback()
 {
-    qDebug() << "ChatSDKModulePlugin::setEventCallback called";
+    qDebug() << "ChatModulePlugin::setEventCallback called";
     
     if (!chatCtx) {
-        qWarning() << "ChatSDKModulePlugin: Cannot set event callback - context not initialized. Call initChat first.";
+        qWarning() << "ChatModulePlugin: Cannot set event callback - context not initialized. Call initChat first.";
         return false;
     }
     
     set_event_callback(chatCtx, event_callback, this);
     
-    qDebug() << "ChatSDKModulePlugin: Event callback set successfully";
+    qDebug() << "ChatModulePlugin: Event callback set successfully";
     return true;
 }
 
@@ -428,22 +428,22 @@ bool ChatSDKModulePlugin::setEventCallback()
 // Client Info Methods
 // ============================================================================
 
-bool ChatSDKModulePlugin::getId()
+bool ChatModulePlugin::getId()
 {
-    qDebug() << "ChatSDKModulePlugin::getId called";
+    qDebug() << "ChatModulePlugin::getId called";
     
     if (!chatCtx) {
-        qWarning() << "ChatSDKModulePlugin: Cannot get ID - context not initialized";
+        qWarning() << "ChatModulePlugin: Cannot get ID - context not initialized";
         return false;
     }
     
     int result = chat_get_id(chatCtx, get_id_callback, this);
     
     if (result == RET_OK) {
-        qDebug() << "ChatSDKModulePlugin: Get ID initiated successfully";
+        qDebug() << "ChatModulePlugin: Get ID initiated successfully";
         return true;
     } else {
-        qWarning() << "ChatSDKModulePlugin: Failed to get ID, error code:" << result;
+        qWarning() << "ChatModulePlugin: Failed to get ID, error code:" << result;
         return false;
     }
 }
@@ -452,32 +452,32 @@ bool ChatSDKModulePlugin::getId()
 // Conversation Operations
 // ============================================================================
 
-bool ChatSDKModulePlugin::listConversations()
+bool ChatModulePlugin::listConversations()
 {
-    qDebug() << "ChatSDKModulePlugin::listConversations called";
+    qDebug() << "ChatModulePlugin::listConversations called";
     
     if (!chatCtx) {
-        qWarning() << "ChatSDKModulePlugin: Cannot list conversations - context not initialized";
+        qWarning() << "ChatModulePlugin: Cannot list conversations - context not initialized";
         return false;
     }
     
     int result = chat_list_conversations(chatCtx, list_conversations_callback, this);
     
     if (result == RET_OK) {
-        qDebug() << "ChatSDKModulePlugin: List conversations initiated successfully";
+        qDebug() << "ChatModulePlugin: List conversations initiated successfully";
         return true;
     } else {
-        qWarning() << "ChatSDKModulePlugin: Failed to list conversations, error code:" << result;
+        qWarning() << "ChatModulePlugin: Failed to list conversations, error code:" << result;
         return false;
     }
 }
 
-bool ChatSDKModulePlugin::getConversation(const QString &convoId)
+bool ChatModulePlugin::getConversation(const QString &convoId)
 {
-    qDebug() << "ChatSDKModulePlugin::getConversation called with convoId:" << convoId;
+    qDebug() << "ChatModulePlugin::getConversation called with convoId:" << convoId;
     
     if (!chatCtx) {
-        qWarning() << "ChatSDKModulePlugin: Cannot get conversation - context not initialized";
+        qWarning() << "ChatModulePlugin: Cannot get conversation - context not initialized";
         return false;
     }
     
@@ -486,20 +486,20 @@ bool ChatSDKModulePlugin::getConversation(const QString &convoId)
     int result = chat_get_conversation(chatCtx, get_conversation_callback, this, convoIdUtf8.constData());
     
     if (result == RET_OK) {
-        qDebug() << "ChatSDKModulePlugin: Get conversation initiated successfully";
+        qDebug() << "ChatModulePlugin: Get conversation initiated successfully";
         return true;
     } else {
-        qWarning() << "ChatSDKModulePlugin: Failed to get conversation, error code:" << result;
+        qWarning() << "ChatModulePlugin: Failed to get conversation, error code:" << result;
         return false;
     }
 }
 
-bool ChatSDKModulePlugin::newPrivateConversation(const QString &introBundleStr, const QString &contentHex)
+bool ChatModulePlugin::newPrivateConversation(const QString &introBundleStr, const QString &contentHex)
 {
-    qDebug() << "ChatSDKModulePlugin::newPrivateConversation called";
+    qDebug() << "ChatModulePlugin::newPrivateConversation called";
 
     if (!chatCtx) {
-        qWarning() << "ChatSDKModulePlugin: Cannot create new private conversation - context not initialized";
+        qWarning() << "ChatModulePlugin: Cannot create new private conversation - context not initialized";
         return false;
     }
 
@@ -509,20 +509,20 @@ bool ChatSDKModulePlugin::newPrivateConversation(const QString &introBundleStr, 
     int result = chat_new_private_conversation(chatCtx, new_private_conversation_callback, this, introBundleUtf8.constData(), contentUtf8.constData());
     
     if (result == RET_OK) {
-        qDebug() << "ChatSDKModulePlugin: New private conversation initiated successfully";
+        qDebug() << "ChatModulePlugin: New private conversation initiated successfully";
         return true;
     } else {
-        qWarning() << "ChatSDKModulePlugin: Failed to create new private conversation, error code:" << result;
+        qWarning() << "ChatModulePlugin: Failed to create new private conversation, error code:" << result;
         return false;
     }
 }
 
-bool ChatSDKModulePlugin::sendMessage(const QString &convoId, const QString &contentHex)
+bool ChatModulePlugin::sendMessage(const QString &convoId, const QString &contentHex)
 {
-    qDebug() << "ChatSDKModulePlugin::sendMessage called with convoId:" << convoId;
+    qDebug() << "ChatModulePlugin::sendMessage called with convoId:" << convoId;
     
     if (!chatCtx) {
-        qWarning() << "ChatSDKModulePlugin: Cannot send message - context not initialized";
+        qWarning() << "ChatModulePlugin: Cannot send message - context not initialized";
         return false;
     }
     
@@ -532,10 +532,10 @@ bool ChatSDKModulePlugin::sendMessage(const QString &convoId, const QString &con
     int result = chat_send_message(chatCtx, send_message_callback, this, convoIdUtf8.constData(), contentUtf8.constData());
     
     if (result == RET_OK) {
-        qDebug() << "ChatSDKModulePlugin: Send message initiated successfully";
+        qDebug() << "ChatModulePlugin: Send message initiated successfully";
         return true;
     } else {
-        qWarning() << "ChatSDKModulePlugin: Failed to send message, error code:" << result;
+        qWarning() << "ChatModulePlugin: Failed to send message, error code:" << result;
         return false;
     }
 }
@@ -544,42 +544,42 @@ bool ChatSDKModulePlugin::sendMessage(const QString &convoId, const QString &con
 // Identity Operations
 // ============================================================================
 
-bool ChatSDKModulePlugin::getIdentity()
+bool ChatModulePlugin::getIdentity()
 {
-    qDebug() << "ChatSDKModulePlugin::getIdentity called";
+    qDebug() << "ChatModulePlugin::getIdentity called";
     
     if (!chatCtx) {
-        qWarning() << "ChatSDKModulePlugin: Cannot get identity - context not initialized";
+        qWarning() << "ChatModulePlugin: Cannot get identity - context not initialized";
         return false;
     }
     
     int result = chat_get_identity(chatCtx, get_identity_callback, this);
     
     if (result == RET_OK) {
-        qDebug() << "ChatSDKModulePlugin: Get identity initiated successfully";
+        qDebug() << "ChatModulePlugin: Get identity initiated successfully";
         return true;
     } else {
-        qWarning() << "ChatSDKModulePlugin: Failed to get identity, error code:" << result;
+        qWarning() << "ChatModulePlugin: Failed to get identity, error code:" << result;
         return false;
     }
 }
 
-bool ChatSDKModulePlugin::createIntroBundle()
+bool ChatModulePlugin::createIntroBundle()
 {
-    qDebug() << "ChatSDKModulePlugin::createIntroBundle called";
+    qDebug() << "ChatModulePlugin::createIntroBundle called";
     
     if (!chatCtx) {
-        qWarning() << "ChatSDKModulePlugin: Cannot create intro bundle - context not initialized";
+        qWarning() << "ChatModulePlugin: Cannot create intro bundle - context not initialized";
         return false;
     }
     
     int result = chat_create_intro_bundle(chatCtx, create_intro_bundle_callback, this);
     
     if (result == RET_OK) {
-        qDebug() << "ChatSDKModulePlugin: Create intro bundle initiated successfully";
+        qDebug() << "ChatModulePlugin: Create intro bundle initiated successfully";
         return true;
     } else {
-        qWarning() << "ChatSDKModulePlugin: Failed to create intro bundle, error code:" << result;
+        qWarning() << "ChatModulePlugin: Failed to create intro bundle, error code:" << result;
         return false;
     }
 }

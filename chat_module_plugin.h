@@ -1,13 +1,13 @@
 #pragma once
 
 #include <QtCore/QObject>
-#include "chatsdk_module_interface.h"
+#include "chat_module_interface.h"
 #include "logos_api.h"
 #include "logos_api_client.h"
 #include "liblogoschat.h"
 
 /**
- * @class ChatSDKModulePlugin
+ * @class ChatModulePlugin
  * @brief Qt plugin that exposes the Logos Chat SDK.
  *
  * Most operations are asynchronous. For these methods, the call returns
@@ -25,15 +25,15 @@
  * -# @ref setEventCallback — subscribe to push events before starting.
  * -# @ref startChat — connect and begin receiving messages.
  */
-class ChatSDKModulePlugin : public QObject, public ChatSDKModuleInterface
+class ChatModulePlugin : public QObject, public ChatModuleInterface
 {
     Q_OBJECT
-    Q_PLUGIN_METADATA(IID ChatSDKModuleInterface_iid FILE "metadata.json")
-    Q_INTERFACES(ChatSDKModuleInterface PluginInterface)
+    Q_PLUGIN_METADATA(IID ChatModuleInterface_iid FILE "metadata.json")
+    Q_INTERFACES(ChatModuleInterface PluginInterface)
 
 public:
-    ChatSDKModulePlugin();
-    ~ChatSDKModulePlugin();
+    ChatModulePlugin();
+    ~ChatModulePlugin();
 
     // -------------------------------------------------------------------------
     // Client Lifecycle
@@ -275,7 +275,7 @@ public:
     Q_INVOKABLE bool createIntroBundle() override;  // TODO: should not be async
 
     /** @brief Returns the plugin name. */
-    QString name() const override { return "chatsdk_module"; }
+    QString name() const override { return "chat_module"; }
 
     /** @brief Returns the plugin version string. */
     QString version() const override { return "1.0.0"; }

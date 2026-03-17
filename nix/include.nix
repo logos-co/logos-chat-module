@@ -21,12 +21,12 @@ pkgs.stdenv.mkDerivation {
     mkdir -p ./generated_headers
     
     # Determine platform-specific library extension
-    if [ -f "${lib}/lib/chatsdk_module_plugin.dylib" ]; then
-      PLUGIN_FILE="${lib}/lib/chatsdk_module_plugin.dylib"
-    elif [ -f "${lib}/lib/chatsdk_module_plugin.so" ]; then
-      PLUGIN_FILE="${lib}/lib/chatsdk_module_plugin.so"
+    if [ -f "${lib}/lib/chat_module_plugin.dylib" ]; then
+      PLUGIN_FILE="${lib}/lib/chat_module_plugin.dylib"
+    elif [ -f "${lib}/lib/chat_module_plugin.so" ]; then
+      PLUGIN_FILE="${lib}/lib/chat_module_plugin.so"
     else
-      echo "Error: No chatsdk_module_plugin library file found"
+      echo "Error: No chat_module_plugin library file found"
       exit 1
     fi
     
