@@ -30,7 +30,7 @@ pkgs.stdenv.mkDerivation {
       exit 1
     fi
     
-    # Set library path so the plugin can find liblogoschat when loaded
+    # Set library path so the plugin can find libchat when loaded
     if [ "$(uname -s)" = "Darwin" ]; then
       export DYLD_LIBRARY_PATH="${lib}/lib:''${DYLD_LIBRARY_PATH:-}"
     else

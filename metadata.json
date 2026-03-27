@@ -6,7 +6,7 @@
   "type": "core",
   "category": "chat",
   "main": "chat_module_plugin",
-  "dependencies": [],
-  "include": ["liblogoschat.so", "liblogoschat.dylib", "liblogoschat.dll"],
+  "dependencies": ["delivery_module"],
+  "include": ["liblibchat.so", "liblibchat.dylib", "liblibchat.dll"],
   "capabilities": []
 }
