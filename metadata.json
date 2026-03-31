@@ -1,12 +1,27 @@
 {
-  "name": "chat_module",
-  "version": "1.0.0",
-  "description": "Chat module for Logos",
-  "author": "Logos Core Team",
-  "type": "core",
-  "category": "chat",
-  "main": "chat_module_plugin",
-  "dependencies": [],
-  "include": ["liblogoschat.so", "liblogoschat.dylib", "liblogoschat.dll"],
-  "capabilities": []
+    "name": "chat_module",
+    "version": "1.0.0",
+    "description": "Chat module for Logos",
+    "author": "Logos Core Team",
+    "type": "core",
+    "category": "chat",
+    "main": "chat_module_plugin",
+    "dependencies": [],
+    "include": [
+        "liblogoschat.so",
+        "liblogoschat.dylib",
+        "liblogoschat.dll"
+    ],
+    "capabilities": [],
+    "nix": {
+        "external_libraries": [
+            {
+                "name": "chat",
+                "build_command": "true"
+            }
+        ],
+        "cmake": {
+            "extra_include_dirs": ["lib"]
+        }
+    }
 }
