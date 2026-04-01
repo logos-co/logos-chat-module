@@ -1,33 +1,14 @@
-# Build directories
+.DS_Store
+build
 build/
-cmake-build-*/
-
-# IDE settings
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-# IDE/editor config with local paths
+.deps/
+vendor/*
+lib/*
+result
+result/
+cmake-build-*
+CMakeLists.txt.user
+generated_code/
+.direnv/
 .clangd
 compile_commands.json
-
-# Compiled objects
-*.o
-*.obj
-
-# Generated files
-moc_*.cpp
-*.moc
-
-# Nix
-result
-result-*
-.direnv/
-
-# macOS
-.DS_Store
-
-# Temporary files
-*.tmp
-*.bak
