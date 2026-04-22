@@ -24,5 +24,9 @@
           cp "$f" lib/ 2>/dev/null || true
         done
       '';
+      tests = {
+        dir = ./tests;
+        mockCLibs = [ "logoschat" ];
+      };
     };
 }
