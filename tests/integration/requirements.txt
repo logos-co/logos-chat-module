@@ -1,0 +1,10 @@
+# Pin both packages to specific commit SHAs for reproducibility.
+# Bump only after a deliberate `git fetch && git log` review on each repo.
+logos-integration-test-framework @ git+https://github.com/logos-messaging/logos-integration-test-framework.git@bcfa687ed560f5e013160614f84ff6a641e19f1f
+# `logoscore` is normally pulled transitively from logos-integration-test-framework's
+# requirements; pinning here explicitly to head of `docker-daemon-network-kwarg`
+# branch which adds the `network=` kwarg to LogoscoreDockerDaemon (PR open).
+# Re-pin to merged-master SHA after https://github.com/logos-co/logos-logoscore-py
+# merges PRs #1 + #2.
+logoscore @ git+https://github.com/logos-co/logos-logoscore-py.git@929400becc94b860214046839598a0482dc3b7c5
+pytest>=8.0

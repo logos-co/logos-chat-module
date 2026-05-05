@@ -1,0 +1,7 @@
+{
+  "name": "Bob",
+  "port": 60003,
+  "clusterId": 2,
+  "shardId": 1,
+  "staticPeers": ["__BOOTSTRAP_ENR__"]
+}

@@ -38,3 +38,100 @@ jobs:
 
       - name: Run tests
         run: nix build .#unit-tests -L
+
+      - name: Pre-warm cachix for install-portable
+        # Builds the install-portable layout that integration-tests job needs.
+        # Doing it here populates the cachix cache during the existing job's
+        # nix-build context, so integration-tests can skip the cold rebuild.
+        if: matrix.os == 'ubuntu-latest'
+        run: nix build -L .#install-portable
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50          # cold cachix-miss can hit ~25min for chat-module + ~5min for smoke-image
+    needs: build-and-test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Setup Cachix
+        uses: cachix/cachix-action@v15
+        with:
+          name: logos-co
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
+      - name: Build chat-module (install-portable layout)
+        run: |
+          nix build -L .#install-portable
+          echo "LOGOS_MODULES_DIR=$PWD/result/modules" >> $GITHUB_ENV
+
+      - name: Checkout logoscore-py and build smoke image
+        run: |
+          git clone https://github.com/logos-co/logos-logoscore-py.git /tmp/logoscore-py
+          cd /tmp/logoscore-py
+          # Pinned to head SHA of `docker-daemon-network-kwarg` PR.
+          # TODO: update to merged-master SHA after PR is merged.
+          git checkout 929400becc94b860214046839598a0482dc3b7c5
+          bash tests/docker_smoke/build_smoke_image.sh
+          echo "LOGOSCORE_IMAGE=logoscore:smoke-portable" >> $GITHUB_ENV
+
+      - name: Pull nwaku image
+        run: docker pull wakuorg/nwaku:v0.38.0
+
+      - name: Build logoscore CLI binary (host PATH)
+        # `LogoscoreClient.call` and `subscribe` shell out to a host-side
+        # `logoscore` binary (the docker image only provides the daemon).
+        # Build it via Nix and put it on PATH for the integration-tests step.
+        run: |
+          nix build -L --out-link /tmp/logoscore-cli github:logos-co/logos-logoscore-cli#cli
+          echo "/tmp/logoscore-cli/bin" >> $GITHUB_PATH
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tests/integration/requirements.txt
+
+      - name: Install integration test dependencies
+        run: |
+          cd tests/integration
+          # Use --no-deps to bypass the resolution conflict between framework's
+          # transitive `logoscore@<old SHA>` pin and our `logoscore@929400b` pin.
+          # Once framework's pyproject.toml repins to a SHA that includes the
+          # `network=` kwarg, this whole block can become plain `pip install -r ...`.
+          pip install --no-deps -r requirements.txt
+          pip install pytest>=8.0
+          # Defensive: guarantee logoscore@929400b stays as the installed version
+          # regardless of pip's resolution-order semantics. Without this, a future
+          # pip change could prefer the framework's transitive pin (older SHA
+          # without the `network=` kwarg) and break tests with a TypeError.
+          pip install --force-reinstall --no-deps \
+            "logoscore @ git+https://github.com/logos-co/logos-logoscore-py.git@929400becc94b860214046839598a0482dc3b7c5"
+
+      - name: Run integration tests
+        run: |
+          mkdir -p ${{ runner.temp }}/integration-logs
+          cd tests/integration
+          pytest -v --maxfail=1
+        env:
+          INTEGRATION_LOG_DIR: ${{ runner.temp }}/integration-logs
+
+      - name: Collect docker container logs on failure
+        if: failure()
+        run: |
+          mkdir -p ${{ runner.temp }}/integration-logs
+          for c in $(docker ps -a --filter "name=logoscore-alice" --filter "name=logoscore-bob" --filter "name=nwaku-bootstrap" -q); do
+            name=$(docker inspect --format '{{.Name}}' "$c" | tr -d '/')
+            docker logs "$c" > "${{ runner.temp }}/integration-logs/${name}.log" 2>&1 || true
+          done
+
+      - name: Upload daemon logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-logs
+          path: ${{ runner.temp }}/integration-logs/*.log
+          retention-days: 7
