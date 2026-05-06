@@ -1,0 +1,17 @@
+language = "C"
+include_guard = "CHAT_MODULE_H"
+cpp_compat = true
+documentation = true
+documentation_style = "doxy"
+sort_by = "None"
+line_length = 100
+tab_width = 4
+header = "/* Auto-generated from src/lib.rs by cbindgen. Do not edit by hand. */"
+
+[export]
+prefix = ""
+
+[export.rename]
+"i32" = "int32_t"
+
+[defines]

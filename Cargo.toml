@@ -1,0 +1,37 @@
+[package]
+name     = "chat_module"
+version  = "1.0.0"
+edition  = "2021"
+# resolver = "3" matches libchat's workspace (its members are edition 2024,
+# default resolver 3); aligning here avoids feature-unification drift between
+# our build and libchat's standalone build.
+resolver = "3"
+
+[lib]
+crate-type = ["staticlib"]
+
+# Panicking across the FFI boundary is UB; safer-ffi (transitive via libchat)
+# requires abort. Cargo honours [profile.release] only on the resolution root,
+# so libchat's own panic = "abort" is ignored when libchat is a dependency.
+[profile.release]
+panic = "abort"
+
+[dependencies]
+client         = { git = "https://github.com/logos-messaging/libchat.git", package = "client" }
+logos-rust-sdk = { git = "https://github.com/logos-co/logos-rust-sdk.git", branch = "new_api_test" }
+base64         = { version = "0.22", features = ["std"] }
+serde          = { version = "1", features = ["derive"] }
+serde_json     = "1"
+thiserror      = "2"
+
+# libchat's `crypto` crate is written for the xeddsa 1.0 API. Cargo's
+# default SemVer resolution would pick 1.1.0 (released since), whose
+# `Sign::sign` signature changed and no longer compiles against the
+# `crypto` crate. Pin to 1.0.2 (libchat's own declared version) to keep
+# the transitive build working.
+xeddsa         = "=1.0.2"
+
+# `build.rs` runs cbindgen to generate `include/chat_module.h` from
+# `src/lib.rs`. See `docs/ffi-tooling.md` for the rationale.
+[build-dependencies]
+cbindgen = "0.27"
