@@ -153,7 +153,23 @@ def setup_chat_user(
     and POC confirmed liblogoschat pulls its waku-stack runtime as a C-library,
     so no pre-loading of other Logos modules is needed.
     """
-    client.load_module(MODULE)
+    # Surface logoscore CLI diagnostic info (exit_code, stderr, JSON-encoded
+    # error code from stdout) when a CLI call fails. By default the bare
+    # exception traceback shows only the exit code mapping (e.g. exit 2 →
+    # `DaemonNotRunningError`); the actual `code` field carrying useful
+    # context like "NO_DAEMON" / "MODULE_LOAD_FAILED" / etc. is hidden.
+    try:
+        client.load_module(MODULE)
+    except Exception as e:
+        details = []
+        for attr in ("exit_code", "code", "stderr"):
+            if hasattr(e, attr):
+                val = getattr(e, attr)
+                if val:
+                    details.append(f"{attr}={val!r}")
+        if details:
+            print(f"[setup_chat_user {label}] load_module diagnostic: {' '.join(details)}")
+        raise
 
     init_evt = call_and_wait(
         client, "initChat", config_json,

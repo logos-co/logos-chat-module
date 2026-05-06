@@ -85,8 +85,17 @@ jobs:
         # `LogoscoreClient.call` and `subscribe` shell out to a host-side
         # `logoscore` binary (the docker image only provides the daemon).
         # Build it via Nix and put it on PATH for the integration-tests step.
+        #
+        # Pinned to head of `logos-co/logos-logoscore-cli#22` ("support
+        # non-local remote transports") — the CLI rewrite that reads
+        # `client/config.json` (matches the file LogoscoreDockerDaemon writes
+        # in logoscore-py@929400b). `master` of logos-logoscore-cli still uses
+        # the old `daemon.json` + `isPidAlive(pid)` connect path, which fails
+        # against a containerised daemon (the PID is inside the container and
+        # the file isn't written). TODO: bump to merged-master SHA after PRs
+        # #22 (cli) and #1+#2 (logoscore-py) all land.
         run: |
-          nix build -L --out-link /tmp/logoscore-cli github:logos-co/logos-logoscore-cli#cli
+          nix build -L --out-link /tmp/logoscore-cli "github:logos-co/logos-logoscore-cli/9f56e02b5c4f446f77616b50850854927096a09d#cli"
           echo "/tmp/logoscore-cli/bin" >> $GITHUB_PATH
 
       - uses: actions/setup-python@v5
@@ -118,9 +127,11 @@ jobs:
           pytest -v --maxfail=1
         env:
           INTEGRATION_LOG_DIR: ${{ runner.temp }}/integration-logs
-          # Forward host-side `logoscore` CLI stdout/stderr through pytest output.
-          # Without this, exit-code-based exceptions like DaemonNotRunningError
-          # mask the actual CLI stderr (argparse error / config parse failure / etc).
+          # Forward host-CLI stderr + daemon container logs into pytest output.
+          # logoscore-py's `_proc.run_json` deliberately does NOT forward
+          # stdout (issue-token would leak through), so a CLI failure with a
+          # JSON-encoded error code only appears in `LogoscoreError.code` —
+          # see the diagnostic catch in `_helpers.setup_chat_user`.
           LOGOSCORE_PY_FORWARD_OUTPUT: "1"
 
       - name: Collect docker container logs on failure
