@@ -56,8 +56,15 @@ def call_and_wait(
     """Call an async chat method; wait for its result event on the same client.
 
     Subscribes BEFORE calling so the result event isn't missed if it fires fast.
-    Returns the raw event dict ({"event": ..., "data": [...]}).
+    Returns the raw event dict ({"event": ..., "data": {...}}).
     Raises if the synchronous return is False (request rejected pre-send).
+
+    The CLI's `watchModuleEvents` callback in `logos-co/logos-logoscore-cli@9f56e02b/
+    src/client/client.cpp:317-320` filters only by module, not by event-name —
+    `subscribe(client, MODULE, event)` therefore yields ALL events for the
+    module, not just the named one. We re-filter on the client side via a
+    predicate to pick out the specific result we want, ignoring any push
+    events that race ahead of it.
     """
     with subscribe(client, MODULE, event) as w:
         time.sleep(SUBSCRIBE_GRACE_S)
@@ -67,7 +74,18 @@ def call_and_wait(
                 f"{method}({args!r}) returned False — request rejected "
                 f"(client likely not initialised)"
             )
-        return w.next(timeout=timeout)
+        return w.next(predicate=lambda e: e.get("event") == event, timeout=timeout)
+
+
+def wait_event(waiter: Any, event_name: str, *, timeout: float) -> dict[str, Any]:
+    """Pick the next event matching `event_name` from a Waiter.
+
+    Workaround for the CLI's `watchModuleEvents` lacking an event-name filter
+    (see `call_and_wait` docstring). All `subscribe(...)` consumers should go
+    through this helper rather than calling `waiter.next(timeout=...)` directly,
+    or they'll get the first event of any kind on the module.
+    """
+    return waiter.next(predicate=lambda e: e.get("event") == event_name, timeout=timeout)
 
 
 def event_arg(event: dict[str, Any], index: int) -> Any:

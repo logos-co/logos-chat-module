@@ -50,6 +50,7 @@ from _helpers import (
     extract_message_content,
     hex_encode,
     parse_json_field,
+    wait_event,
 )
 
 
@@ -82,7 +83,9 @@ def test_two_users_can_chat(chat_users: tuple[ChatUser, ChatUser]) -> None:
         assert event_arg(npc_evt, 1) == 0, f"newPrivateConversation failed: {npc_evt!r}"
 
         try:
-            convo_id_a = extract_convo_id(parse_json_field(nc_a.next(timeout=20.0), 0))
+            convo_id_a = extract_convo_id(
+            parse_json_field(wait_event(nc_a, "chatNewConversation", timeout=20.0), 0)
+        )
         except EventTimeout as e:
             raise AssertionError(
                 "Alice did not receive her own chatNewConversation push event "
@@ -91,7 +94,9 @@ def test_two_users_can_chat(chat_users: tuple[ChatUser, ChatUser]) -> None:
                 "surfacing through the result event. Check daemon logs."
             ) from e
         try:
-            convo_id_b = extract_convo_id(parse_json_field(nc_b.next(timeout=20.0), 0))
+            convo_id_b = extract_convo_id(
+                parse_json_field(wait_event(nc_b, "chatNewConversation", timeout=20.0), 0)
+            )
         except EventTimeout as e:
             raise AssertionError(
                 "Bob did not receive chatNewConversation push event from "
@@ -99,7 +104,7 @@ def test_two_users_can_chat(chat_users: tuple[ChatUser, ChatUser]) -> None:
                 "bootstrap → Bob did not establish; check nwaku-bootstrap logs."
             ) from e
 
-        first_msg = nm_b.next(timeout=20.0)
+        first_msg = wait_event(nm_b, "chatNewMessage", timeout=20.0)
         assert extract_message_content(parse_json_field(first_msg, 0)) == "hello-from-A-1"
 
     # ── 3. B → A reply ─────────────────────────────────────────────────
@@ -114,7 +119,7 @@ def test_two_users_can_chat(chat_users: tuple[ChatUser, ChatUser]) -> None:
             timeout=15.0,
         )
         assert_success(send_b, "B.sendMessage #1")
-        a_received = nm_a.next(timeout=20.0)
+        a_received = wait_event(nm_a, "chatNewMessage", timeout=20.0)
     assert extract_message_content(parse_json_field(a_received, 0)) == "hello-from-B-1"
 
     # ── 4a. A → B (round 2) ────────────────────────────────────────────
@@ -129,7 +134,7 @@ def test_two_users_can_chat(chat_users: tuple[ChatUser, ChatUser]) -> None:
             timeout=15.0,
         )
         assert_success(send_a2, "A.sendMessage #2")
-        b_received_2 = nm_b2.next(timeout=20.0)
+        b_received_2 = wait_event(nm_b2, "chatNewMessage", timeout=20.0)
     assert extract_message_content(parse_json_field(b_received_2, 0)) == "hello-from-A-2"
 
     # ── 4b. B → A (round 2) ────────────────────────────────────────────
@@ -144,5 +149,5 @@ def test_two_users_can_chat(chat_users: tuple[ChatUser, ChatUser]) -> None:
             timeout=15.0,
         )
         assert_success(send_b2, "B.sendMessage #2")
-        a_received_2 = nm_a2.next(timeout=20.0)
+        a_received_2 = wait_event(nm_a2, "chatNewMessage", timeout=20.0)
     assert extract_message_content(parse_json_field(a_received_2, 0)) == "hello-from-B-2"
