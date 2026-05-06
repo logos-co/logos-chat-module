@@ -211,13 +211,6 @@ def chat_users(
     bob_name = f"logoscore-bob-{uuid.uuid4().hex[:8]}"
 
     with ExitStack() as stack:
-        # Register log-capture callbacks BEFORE starting daemons so logs are
-        # collected even when `enter_context` times out. Container name is
-        # passed in via --name in `docker run` (set BEFORE startup polling),
-        # so `docker logs <name>` works on partial startup failure too.
-        stack.callback(_save_logs, alice_name)
-        stack.callback(_save_logs, bob_name)
-
         daemon_a = stack.enter_context(LogoscoreDockerDaemon(
             image=image, modules_dir=modules_dir,
             container_name=alice_name,
@@ -230,6 +223,15 @@ def chat_users(
             network=shared_docker_network,
             startup_timeout=60.0,
         ))
+        # Register log-capture callbacks AFTER `enter_context`. ExitStack
+        # unwinds in reverse order of registration, so these will run BEFORE
+        # `daemon_*.__exit__` (which removes the container) — giving us logs
+        # even when the test fails after start. Partial-startup failure (i.e.
+        # `enter_context` itself raises) is covered separately by the CI
+        # workflow's `Collect docker container logs on failure` step, which
+        # iterates `docker ps -a --filter name=logoscore-…`.
+        stack.callback(_save_logs, bob_name)
+        stack.callback(_save_logs, alice_name)
 
         client_a = daemon_a.client()
         client_b = daemon_b.client()

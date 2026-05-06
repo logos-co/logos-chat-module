@@ -118,6 +118,10 @@ jobs:
           pytest -v --maxfail=1
         env:
           INTEGRATION_LOG_DIR: ${{ runner.temp }}/integration-logs
+          # Forward host-side `logoscore` CLI stdout/stderr through pytest output.
+          # Without this, exit-code-based exceptions like DaemonNotRunningError
+          # mask the actual CLI stderr (argparse error / config parse failure / etc).
+          LOGOSCORE_PY_FORWARD_OUTPUT: "1"
 
       - name: Collect docker container logs on failure
         if: failure()
