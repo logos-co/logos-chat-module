@@ -70,20 +70,43 @@ def call_and_wait(
         return w.next(timeout=timeout)
 
 
+def event_arg(event: dict[str, Any], index: int) -> Any:
+    """Read a positional arg from a watch-event payload.
+
+    `logos-logoscore-cli` (PR #22, `src/client/client.cpp:329-333`) wraps the
+    QVariantList tail of every event into a QJsonObject keyed by `argN`:
+    ``data = {"arg0": <data[0]>, "arg1": <data[1]>, ...}``. So an event we
+    used to read as ``event["data"][N]`` now lives at
+    ``event["data"][f"arg{N}"]``. This helper centralises that translation.
+    """
+    data = event.get("data")
+    if not isinstance(data, dict):
+        raise AssertionError(
+            f"unexpected event shape — `data` is not a dict. "
+            f"event keys={list(event.keys())!r}; event={event!r}"
+        )
+    key = f"arg{index}"
+    if key not in data:
+        raise AssertionError(
+            f"missing `{key}` in event data (keys={sorted(data.keys())!r}); "
+            f"event={event!r}"
+        )
+    return data[key]
+
+
 def assert_success(event: dict[str, Any], op: str) -> None:
-    """For events whose `data[0]` is a success bool (most lifecycle / op results)."""
-    data = event["data"]
-    if not data or data[0] is not True:
+    """For events whose `arg0` is a success bool (most lifecycle / op results)."""
+    if event_arg(event, 0) is not True:
         raise AssertionError(f"{op} failed: event={event!r}")
 
 
 def parse_json_field(event: dict[str, Any], index: int) -> dict[str, Any]:
-    """Pull a JSON-encoded string out of `event['data'][index]` and parse it."""
-    raw = event["data"][index]
+    """Pull a JSON-encoded string out of `event['data'][f'arg{index}']` and parse it."""
+    raw = event_arg(event, index)
     parsed: Any = json.loads(raw)
     if not isinstance(parsed, dict):
         raise AssertionError(
-            f"expected dict at data[{index}], got {type(parsed).__name__}: {raw!r}"
+            f"expected dict at arg{index}, got {type(parsed).__name__}: {raw!r}"
         )
     return parsed
 
@@ -91,11 +114,13 @@ def parse_json_field(event: dict[str, Any], index: int) -> dict[str, Any]:
 def extract_convo_id(payload: dict[str, Any]) -> str:
     """Extract conversation id from either a Conversation object or a push event.
 
-    Two legitimate shapes:
-    - Conversation object (`chatGetConversationResult.data[0]`,
-      `chatListConversationsResult.data[0]`): ``{"id": "..."}``
-    - Push event payload (`chatNewConversation.data[0]`,
-      `chatNewMessage.data[0]`): ``{"conversationId": "...", ...}``
+    Argument is the JSON-decoded body of one event arg (result of
+    `parse_json_field(event, N)`), NOT the event itself. Two legitimate shapes:
+
+    - Conversation object (`chatGetConversationResult` arg0,
+      `chatListConversationsResult` arg0): ``{"id": "..."}``
+    - Push event payload (`chatNewConversation` arg0,
+      `chatNewMessage` arg0): ``{"conversationId": "...", ...}``
 
     Both keys are accepted by design — they identify the same logical convo
     coming from different code paths.
@@ -191,14 +216,14 @@ def setup_chat_user(
         client, "getId",
         event="chatGetIdResult", timeout=10.0,
     )
-    installation_name = str(id_evt["data"][0])
+    installation_name = str(event_arg(id_evt, 0))
 
     bundle_evt = call_and_wait(
         client, "createIntroBundle",
         event="chatCreateIntroBundleResult", timeout=10.0,
     )
     assert_success(bundle_evt, f"createIntroBundle for {label}")
-    intro_bundle = str(bundle_evt["data"][2])
+    intro_bundle = str(event_arg(bundle_evt, 2))
 
     return ChatUser(
         client=client,

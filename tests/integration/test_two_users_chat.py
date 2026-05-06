@@ -20,13 +20,17 @@ likely flake mode for cross-process tests like this.
 
 Notes on bugs in the underlying library that this test works around:
 
-- `chatNewPrivateConversationResult.data[0]` (success bool) is unreliable and
-  `data[2]` (conversation JSON) is empty — root cause is
+- `chatNewPrivateConversationResult` arg0 (success bool) is unreliable and
+  arg2 (conversation JSON) is empty — root cause is
   `library/api/conversation_api.nim:42` returning `ok("")` instead of
-  `ok($conversationId)`. We use `data[1] == 0` (RET_OK) as the success
-  signal and pull convo_id_a from A's own `chatNewConversation` push event.
+  `ok($conversationId)`. We use arg1 == 0 (RET_OK) as the success signal
+  and pull convo_id_a from A's own `chatNewConversation` push event.
   Once the library is fixed, the workaround can revert; the push-event
   approach stays correct regardless.
+
+Note on event payload shape: `event["data"]` is a dict keyed by `arg0`,
+`arg1`, ..., not a list. See `event_arg()` in `_helpers.py` for the
+helper that translates positional indices to `argN` keys.
 """
 
 from __future__ import annotations
@@ -41,6 +45,7 @@ from _helpers import (
     ChatUser,
     assert_success,
     call_and_wait,
+    event_arg,
     extract_convo_id,
     extract_message_content,
     hex_encode,
@@ -70,11 +75,11 @@ def test_two_users_can_chat(chat_users: tuple[ChatUser, ChatUser]) -> None:
             event="chatNewPrivateConversationResult",
             timeout=20.0,
         )
-        # data[0] (success bool) ненадёжен из-за бага в conversation_api.nim:42
-        # (returns ok("") on success). Use data[1] == 0 (RET_OK) as the success
-        # signal; data[2] is empty for the same reason — convo_id_a comes from
+        # arg0 (success bool) ненадёжен из-за бага в conversation_api.nim:42
+        # (returns ok("") on success). Use arg1 == 0 (RET_OK) as the success
+        # signal; arg2 is empty for the same reason — convo_id_a comes from
         # the chatNewConversation push event below.
-        assert npc_evt["data"][1] == 0, f"newPrivateConversation failed: {npc_evt!r}"
+        assert event_arg(npc_evt, 1) == 0, f"newPrivateConversation failed: {npc_evt!r}"
 
         try:
             convo_id_a = extract_convo_id(parse_json_field(nc_a.next(timeout=20.0), 0))
