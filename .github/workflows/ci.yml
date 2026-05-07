@@ -82,18 +82,11 @@ jobs:
         run: docker pull wakuorg/nwaku:v0.38.0
 
       - name: Build logoscore CLI binary (host PATH)
-        # `LogoscoreClient.call` and `subscribe` shell out to a host-side
-        # `logoscore` binary (the docker image only provides the daemon).
-        # Build it via Nix and put it on PATH for the integration-tests step.
-        #
-        # Pinned to head of `logos-co/logos-logoscore-cli#22` ("support
-        # non-local remote transports") — the CLI rewrite that reads
-        # `client/config.json` (matches the file LogoscoreDockerDaemon writes
-        # in logoscore-py@929400b). `master` of logos-logoscore-cli still uses
-        # the old `daemon.json` + `isPidAlive(pid)` connect path, which fails
-        # against a containerised daemon (the PID is inside the container and
-        # the file isn't written). TODO: bump to merged-master SHA after PRs
-        # #22 (cli) and #1+#2 (logoscore-py) all land.
+        # LogoscoreClient.call/subscribe shell out to a host-side `logoscore`
+        # binary; the docker image only provides the daemon. Pinned to
+        # logos-logoscore-cli#22 head — needed for client/config.json compat
+        # with logoscore-py@929400b. TODO: bump to merged-master SHA after
+        # logos-logoscore-cli#22 lands.
         run: |
           nix build -L --out-link /tmp/logoscore-cli "github:logos-co/logos-logoscore-cli/9f56e02b5c4f446f77616b50850854927096a09d#cli"
           echo "/tmp/logoscore-cli/bin" >> $GITHUB_PATH

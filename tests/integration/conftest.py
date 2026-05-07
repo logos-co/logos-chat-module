@@ -1,15 +1,13 @@
 """Three-container fixture: nwaku-bootstrap + Alice + Bob in shared docker network.
 
-Why bootstrap-node and not direct Alice↔Bob discovery: liblogoschat's
-`staticPeers` accepts only ENRs (not multiaddrs), and `chat_get_id` returns
-the configured installation_name (not a libp2p peerId), so two instances
-can't introduce themselves to each other from configJson alone. A third
-nwaku container with a deterministic ENR (fixed --nodekey + fixed --ip in
-docker network) acts as the rendezvous: both chat clients put its ENR in
-their `staticPeers`, gossipsub/relay-mesh handles the rest.
+Why bootstrap-node: liblogoschat's `staticPeers` accepts only ENRs (not
+multiaddrs), and `chat_get_id` returns the configured installation_name (not
+a libp2p peerId), so two instances can't introduce themselves to each other
+from configJson alone. A third nwaku container with a deterministic ENR
+acts as the rendezvous; gossipsub/relay-mesh handles the rest.
 
-`_modules_dir_or_skip` and the docker-image gating duplicate the framework's
-own `local_daemon` / `docker_daemon` skip logic by design — we need TWO
+The skip-cascade in `_integration_env_or_skip` duplicates the framework's own
+`local_daemon` / `docker_daemon` skip logic by design — we need TWO
 chat-clients in a SHARED network, the framework provides only single-instance
 fixtures.
 """
@@ -63,11 +61,7 @@ def _save_logs(container_name: str) -> None:
 
 @pytest.fixture(scope="session")
 def _integration_env_or_skip() -> tuple[str, Path]:
-    """Single gate: check all integration prerequisites BEFORE building any infra.
-
-    Skips if any of (docker, image, LOGOS_MODULES_DIR, modules layout) is missing.
-    Returns (image, modules_dir).
-    """
+    """Single gate: skip if any prerequisite (docker, image, modules layout) is missing."""
     from logoscore import docker_available, image_present  # noqa: PLC0415
 
     if not docker_available():
@@ -95,16 +89,13 @@ def _integration_env_or_skip() -> tuple[str, Path]:
 def shared_docker_network(
     _integration_env_or_skip: tuple[str, Path],
 ) -> Iterator[str]:
-    """Create an isolated docker network for the bootstrap + chat containers.
-
-    Subnet collision is treated as infrastructure issue (skip, not fail).
-    """
     name = f"logoschat-it-{uuid.uuid4().hex[:8]}"
     r = subprocess.run(
         ["docker", "network", "create", "--subnet", NETWORK_SUBNET, name],
         capture_output=True, text=True,
     )
     if r.returncode != 0:
+        # Subnet collision / docker overload: infrastructure issue, not a test fail.
         pytest.skip(f"failed to create docker network {name!r}: {r.stderr.strip()}")
     try:
         yield name
@@ -114,27 +105,17 @@ def shared_docker_network(
 
 @pytest.fixture(scope="session")
 def nwaku_bootstrap(shared_docker_network: str) -> Iterator[str]:
-    """Spin up nwaku in the shared network and yield its live ENR.
+    """Spin up nwaku and yield its live ENR.
 
-    ENR is read from REST `/debug/v1/info` after startup — NOT hardcoded in a
-    fixture file. This avoids the brittleness of a committed ENR string going
-    stale on nwaku version bumps. The nodekey IS hardcoded (deterministic
-    peerId), but the ENR format itself is auto-detected per run.
-
-    REST is published on 127.0.0.1:<random_host_port> — the nwaku image lacks
-    `curl` (and `wget` is the only http tool inside), so we don't try to
-    `docker exec` a probe; instead we hit the host-published port from the
-    test process via stdlib urllib.
+    ENR is read from REST `/debug/v1/info` per run rather than committed —
+    the nodekey is fixed (deterministic peerId) but the ENR encoding can
+    shift between nwaku versions, and a stale committed ENR would silently
+    misroute peers. REST is published on 127.0.0.1:<random_host_port> so
+    we can hit it via stdlib urllib (no http tools inside the image).
     """
     from logoscore import pick_free_port  # noqa: PLC0415
 
     nodekey = _read_fixture("bootstrap-nodekey.txt")
-    if len(nodekey) != 64 or any(c not in "0123456789abcdef" for c in nodekey.lower()):
-        pytest.fail(
-            f"fixtures/bootstrap-nodekey.txt is not a 64-char hex string "
-            f"(got {len(nodekey)} chars: {nodekey!r}). "
-            "Regenerate via `openssl rand -hex 32`."
-        )
     container_name = f"nwaku-bootstrap-{uuid.uuid4().hex[:8]}"
     rest_host_port = pick_free_port()
 
@@ -158,7 +139,7 @@ def nwaku_bootstrap(shared_docker_network: str) -> Iterator[str]:
 
     try:
         deadline = time.time() + 30.0
-        last_err: Exception | None = None
+        last_err = None
         while time.time() < deadline:
             try:
                 with urllib.request.urlopen(
@@ -166,13 +147,7 @@ def nwaku_bootstrap(shared_docker_network: str) -> Iterator[str]:
                     timeout=2.0,
                 ) as resp:
                     info = json.loads(resp.read().decode("utf-8"))
-                    enr = info.get("enrUri")
-                    if not enr or not enr.startswith("enr:"):
-                        pytest.fail(
-                            f"unexpected /debug/v1/info shape from {NWAKU_IMAGE}: "
-                            f"{info!r}. Did the nwaku release rename `enrUri`?"
-                        )
-                    yield enr
+                    yield info["enrUri"]
                     return
             except (urllib.error.URLError, ConnectionError, json.JSONDecodeError) as e:
                 last_err = e
@@ -196,8 +171,7 @@ def chat_users(
     """Two LogoscoreDockerDaemon containers in the shared network with chat_module
     initialised + started, each pointing at nwaku_bootstrap's ENR.
 
-    Module-scope: spinning up two daemons + waku-stack init costs ~30-60s; we
-    don't pay it per-test.
+    Module-scope: spinning up two daemons + waku-stack init costs ~30-60s.
     """
     image, modules_dir = _integration_env_or_skip
 
@@ -223,13 +197,8 @@ def chat_users(
             network=shared_docker_network,
             startup_timeout=60.0,
         ))
-        # Register log-capture callbacks AFTER `enter_context`. ExitStack
-        # unwinds in reverse order of registration, so these will run BEFORE
-        # `daemon_*.__exit__` (which removes the container) — giving us logs
-        # even when the test fails after start. Partial-startup failure (i.e.
-        # `enter_context` itself raises) is covered separately by the CI
-        # workflow's `Collect docker container logs on failure` step, which
-        # iterates `docker ps -a --filter name=logoscore-…`.
+        # stack.callback runs LIFO before daemon teardown,
+        # so logs are captured even when the test fails after start.
         stack.callback(_save_logs, bob_name)
         stack.callback(_save_logs, alice_name)
 
