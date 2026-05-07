@@ -125,30 +125,6 @@ notebook but not in `conftest.py` — it's a TODO for **step 2b**.
 
 ## Troubleshooting
 
-### Tests skip with «`LOGOSCORE_IMAGE` not set» or «modules dir doesn't contain chat_module/manifest.json»
-
-Run `nix build .#install-portable` and `bash tests/docker_smoke/build_smoke_image.sh`
-in `/tmp/logoscore-py` (see «Running locally — Linux» above). The skip-gate
-in `conftest.py::_integration_env_or_skip` reports exactly which step is
-missing.
-
-### Tests fail with «nwaku-bootstrap REST did not become ready within 30s»
-
-The fixture publishes nwaku's REST on `127.0.0.1:<random>`. Likely causes:
-
-- Port 60000 / 60001 collision on the host. If you have another waku running
-  locally, stop it.
-- Docker network creation failed (subnet 172.30.0.0/16 collision). Check
-  `docker network ls` and remove orphaned `logoschat-it-*` networks.
-- Increase the deadline in `conftest.py::nwaku_bootstrap` (currently 30s).
-
-### Test passes step 1+2 (A→B first message) but fails on step 3 (B→A reply)
-
-Subscription race. Try increasing `SUBSCRIBE_GRACE_S` in `_helpers.py`
-from `0.4` to `1.0`. If still flaky, the daemon containers might need
-longer post-`startChat` warmup before relay-mesh peers are reachable —
-add `time.sleep(2.0)` after `setup_chat_user` in `conftest.py`.
-
 ### Container logs on failure
 
 In CI, daemon logs are uploaded as `integration-test-logs` artifact (see
@@ -161,7 +137,3 @@ Active. `.github/workflows/ci.yml` has an `integration-tests` job that runs
 on `ubuntu-latest` with `needs: build-and-test`. Builds the install-portable
 artefact, the smoke image, pulls nwaku, runs `pytest -v --maxfail=1`,
 uploads logs on failure.
-
-Once green and stable for two consecutive PRs, this job will be marked
-required in branch protection (Settings → Rules → ruleset for `master`) —
-that's **step 3** of the rollout, separate from this PR.
