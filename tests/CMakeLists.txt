@@ -13,5 +13,5 @@ logos_test(
     MOCK_C_SOURCES
         mocks/mock_liblogoschat.cpp
     EXTRA_INCLUDES
-        stubs/lib
+        stubs
 )

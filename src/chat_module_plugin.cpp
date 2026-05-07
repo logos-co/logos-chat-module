@@ -1,426 +1,400 @@
 #include "chat_module_plugin.h"
-#include <QDebug>
-#include <QCoreApplication>
-#include <QVariantList>
-#include <QDateTime>
-#include <QJsonDocument>
-#include <QJsonObject>
+#include <cstdio>
+#include <cstring>
+#include <chrono>
+#include <nlohmann/json.hpp>
 
-ChatModulePlugin::ChatModulePlugin() : chatCtx(nullptr)
+static std::string isoTimestamp()
 {
-    qDebug() << "ChatModulePlugin: Initializing...";
-    qDebug() << "ChatModulePlugin: Initialized successfully";
+    auto now = std::chrono::system_clock::now();
+    auto tt = std::chrono::system_clock::to_time_t(now);
+    struct tm buf;
+    gmtime_r(&tt, &buf);
+    char out[32];
+    strftime(out, sizeof(out), "%Y-%m-%dT%H:%M:%SZ", &buf);
+    return out;
 }
 
-ChatModulePlugin::~ChatModulePlugin() 
+ChatModuleImpl::ChatModuleImpl() : chatCtx(nullptr)
 {
-    // Clean up Chat context if it exists
+    fprintf(stderr, "ChatModuleImpl: Initializing...\n");
+    fprintf(stderr, "ChatModuleImpl: Initialized successfully\n");
+}
+
+ChatModuleImpl::~ChatModuleImpl()
+{
     if (chatCtx) {
         chat_destroy(chatCtx, destroy_callback, this);
         chatCtx = nullptr;
     }
-    
-    // Clean up resources
-    if (logosAPI) {
-        delete logosAPI;
-        logosAPI = nullptr;
-    }
-}
-
-void ChatModulePlugin::initLogos(LogosAPI* logosAPIInstance) {
-    if (logosAPI) {
-        delete logosAPI;
-    }
-    logosAPI = logosAPIInstance;
-}
-
-void ChatModulePlugin::emitEvent(const QString& eventName, const QVariantList& data) {
-    if (!logosAPI) {
-        qWarning() << "ChatModulePlugin: LogosAPI not available, cannot emit" << eventName;
-        return;
-    }
-
-    LogosAPIClient* client = logosAPI->getClient("chat_module");
-    if (!client) {
-        qWarning() << "ChatModulePlugin: Failed to get chat_module client for event" << eventName;
-        return;
-    }
-
-    client->onEventResponse(this, eventName, data);
 }
 
 // ============================================================================
 // Static Callback Functions
 // ============================================================================
 
-void ChatModulePlugin::init_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleImpl::init_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatModulePlugin::init_callback called with ret:" << callerRet;
-    
-    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
-    if (!plugin) {
-        qWarning() << "ChatModulePlugin::init_callback: Invalid userData";
+    fprintf(stderr, "ChatModuleImpl::init_callback called with ret: %d\n", callerRet);
+
+    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    if (!impl) {
+        fprintf(stderr, "ChatModuleImpl::init_callback: Invalid userData\n");
         return;
     }
 
-    QString message = (msg && len > 0) ? QString::fromUtf8(msg, len) : "";
+    std::string message = (msg && len > 0) ? std::string(msg, len) : "";
 
-    QVariantList eventData;
-    eventData << (callerRet == RET_OK);  // success boolean
-    eventData << callerRet;               // return code
-    eventData << message;                 // message (may be empty)
-    eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
+    nlohmann::json ev;
+    ev["success"] = (callerRet == RET_OK);
+    ev["statusCode"] = callerRet;
+    ev["message"] = message;
+    ev["timestamp"] = isoTimestamp();
 
-    plugin->emitEvent("chatInitResult", eventData);
+    impl->emitEvent("chatInitResult", ev.dump());
 }
 
-void ChatModulePlugin::start_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleImpl::start_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatModulePlugin::start_callback called with ret:" << callerRet;
-    
-    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
-    if (!plugin) {
-        qWarning() << "ChatModulePlugin::start_callback: Invalid userData";
+    fprintf(stderr, "ChatModuleImpl::start_callback called with ret: %d\n", callerRet);
+
+    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    if (!impl) {
+        fprintf(stderr, "ChatModuleImpl::start_callback: Invalid userData\n");
         return;
     }
 
-    QString message = (msg && len > 0) ? QString::fromUtf8(msg, len) : "";
-    
-    QVariantList eventData;
-    eventData << (callerRet == RET_OK);  // success boolean
-    eventData << callerRet;               // return code
-    eventData << message;
-    eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
+    std::string message = (msg && len > 0) ? std::string(msg, len) : "";
 
-    plugin->emitEvent("chatStartResult", eventData);
+    nlohmann::json ev;
+    ev["success"] = (callerRet == RET_OK);
+    ev["statusCode"] = callerRet;
+    ev["message"] = message;
+    ev["timestamp"] = isoTimestamp();
+
+    impl->emitEvent("chatStartResult", ev.dump());
 }
 
-void ChatModulePlugin::stop_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleImpl::stop_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatModulePlugin::stop_callback called with ret:" << callerRet;
-    
-    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
-    if (!plugin) {
-        qWarning() << "ChatModulePlugin::stop_callback: Invalid userData";
+    fprintf(stderr, "ChatModuleImpl::stop_callback called with ret: %d\n", callerRet);
+
+    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    if (!impl) {
+        fprintf(stderr, "ChatModuleImpl::stop_callback: Invalid userData\n");
         return;
     }
 
-    QString message = (msg && len > 0) ? QString::fromUtf8(msg, len) : "";
+    std::string message = (msg && len > 0) ? std::string(msg, len) : "";
 
-    QVariantList eventData;
-    eventData << (callerRet == RET_OK);  // success boolean
-    eventData << callerRet;               // return code
-    eventData << message;
-    eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
+    nlohmann::json ev;
+    ev["success"] = (callerRet == RET_OK);
+    ev["statusCode"] = callerRet;
+    ev["message"] = message;
+    ev["timestamp"] = isoTimestamp();
 
-    plugin->emitEvent("chatStopResult", eventData);
+    impl->emitEvent("chatStopResult", ev.dump());
 }
 
-void ChatModulePlugin::destroy_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleImpl::destroy_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatModulePlugin::destroy_callback called with ret:" << callerRet;
-    
-    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
-    if (!plugin) {
-        qWarning() << "ChatModulePlugin::destroy_callback: Invalid userData";
+    fprintf(stderr, "ChatModuleImpl::destroy_callback called with ret: %d\n", callerRet);
+
+    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    if (!impl) {
+        fprintf(stderr, "ChatModuleImpl::destroy_callback: Invalid userData\n");
         return;
     }
 
     if (msg && len > 0) {
-        QString message = QString::fromUtf8(msg, len);
-        qDebug() << "ChatModulePlugin::destroy_callback message:" << message;
+        std::string message(msg, len);
+        fprintf(stderr, "ChatModuleImpl::destroy_callback message: %s\n", message.c_str());
 
-        QVariantList eventData;
-        eventData << message;
-        eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
+        nlohmann::json ev;
+        ev["message"] = message;
+        ev["timestamp"] = isoTimestamp();
 
-        plugin->emitEvent("chatDestroyResult", eventData);
+        impl->emitEvent("chatDestroyResult", ev.dump());
     }
 }
 
-void ChatModulePlugin::event_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleImpl::event_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatModulePlugin::event_callback called with ret:" << callerRet;
+    fprintf(stderr, "ChatModuleImpl::event_callback called with ret: %d\n", callerRet);
 
-    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
-    if (!plugin) {
-        qWarning() << "ChatModulePlugin::event_callback: Invalid userData";
+    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    if (!impl) {
+        fprintf(stderr, "ChatModuleImpl::event_callback: Invalid userData\n");
         return;
     }
 
     if (msg && len > 0) {
-        QString message = QString::fromUtf8(msg, len);
-        
-        // Parse the JSON to determine the event type
-        QJsonDocument doc = QJsonDocument::fromJson(message.toUtf8());
-        QString eventName = "chatEvent"; // Default event name
-        
-        if (doc.isObject()) {
-            QJsonObject obj = doc.object();
-            QString eventType = obj["eventType"].toString();
-            
-            // Map event types to Qt event names
-            if (eventType == "new_message") {
-                eventName = "chatNewMessage";
-            } else if (eventType == "new_conversation") {
-                eventName = "chatNewConversation";
-            } else if (eventType == "delivery_ack") {
-                eventName = "chatDeliveryAck";
+        std::string message(msg, len);
+
+        std::string eventName = "chatEvent";
+        try {
+            auto doc = nlohmann::json::parse(message);
+            if (doc.contains("eventType") && doc["eventType"].is_string()) {
+                std::string eventType = doc["eventType"].get<std::string>();
+                if (eventType == "new_message")
+                    eventName = "chatNewMessage";
+                else if (eventType == "new_conversation")
+                    eventName = "chatNewConversation";
+                else if (eventType == "delivery_ack")
+                    eventName = "chatDeliveryAck";
             }
+        } catch (...) {
+            // parse failed, keep default eventName
         }
 
-        QVariantList eventData;
-        eventData << message;
-        eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
+        nlohmann::json ev;
+        ev["payload"] = message;
+        ev["timestamp"] = isoTimestamp();
 
-        plugin->emitEvent(eventName, eventData);
+        impl->emitEvent(eventName, ev.dump());
     }
 }
 
-void ChatModulePlugin::get_id_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleImpl::get_id_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatModulePlugin::get_id_callback called with ret:" << callerRet;
+    fprintf(stderr, "ChatModuleImpl::get_id_callback called with ret: %d\n", callerRet);
 
-    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
-    if (!plugin) {
-        qWarning() << "ChatModulePlugin::get_id_callback: Invalid userData";
+    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    if (!impl) {
+        fprintf(stderr, "ChatModuleImpl::get_id_callback: Invalid userData\n");
         return;
     }
 
     if (msg && len > 0) {
-        QString message = QString::fromUtf8(msg, len);
-        
-        QVariantList eventData;
-        eventData << message;
-        eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
+        std::string message(msg, len);
 
-        plugin->emitEvent("chatGetIdResult", eventData);
+        nlohmann::json ev;
+        ev["clientId"] = message;
+        ev["timestamp"] = isoTimestamp();
+
+        impl->emitEvent("chatGetIdResult", ev.dump());
     }
 }
 
-void ChatModulePlugin::list_conversations_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleImpl::list_conversations_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatModulePlugin::list_conversations_callback called with ret:" << callerRet;
+    fprintf(stderr, "ChatModuleImpl::list_conversations_callback called with ret: %d\n", callerRet);
 
-    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
-    if (!plugin) {
-        qWarning() << "ChatModulePlugin::list_conversations_callback: Invalid userData";
+    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    if (!impl) {
+        fprintf(stderr, "ChatModuleImpl::list_conversations_callback: Invalid userData\n");
         return;
     }
 
     if (msg && len > 0) {
-        QString message = QString::fromUtf8(msg, len);
-        
-        QVariantList eventData;
-        eventData << message;
-        eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
+        std::string message(msg, len);
 
-        plugin->emitEvent("chatListConversationsResult", eventData);
+        nlohmann::json ev;
+        ev["conversations"] = message;
+        ev["timestamp"] = isoTimestamp();
+
+        impl->emitEvent("chatListConversationsResult", ev.dump());
     }
 }
 
-void ChatModulePlugin::get_conversation_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleImpl::get_conversation_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatModulePlugin::get_conversation_callback called with ret:" << callerRet;
+    fprintf(stderr, "ChatModuleImpl::get_conversation_callback called with ret: %d\n", callerRet);
 
-    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
-    if (!plugin) {
-        qWarning() << "ChatModulePlugin::get_conversation_callback: Invalid userData";
+    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    if (!impl) {
+        fprintf(stderr, "ChatModuleImpl::get_conversation_callback: Invalid userData\n");
         return;
     }
 
     if (msg && len > 0) {
-        QString message = QString::fromUtf8(msg, len);
-        
-        QVariantList eventData;
-        eventData << message;
-        eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
+        std::string message(msg, len);
 
-        plugin->emitEvent("chatGetConversationResult", eventData);
+        nlohmann::json ev;
+        ev["conversation"] = message;
+        ev["timestamp"] = isoTimestamp();
+
+        impl->emitEvent("chatGetConversationResult", ev.dump());
     }
 }
 
-void ChatModulePlugin::new_private_conversation_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleImpl::new_private_conversation_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatModulePlugin::new_private_conversation_callback called with ret:" << callerRet;
+    fprintf(stderr, "ChatModuleImpl::new_private_conversation_callback called with ret: %d\n", callerRet);
 
-    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
-    if (!plugin) {
-        qWarning() << "ChatModulePlugin::new_private_conversation_callback: Invalid userData";
+    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    if (!impl) {
+        fprintf(stderr, "ChatModuleImpl::new_private_conversation_callback: Invalid userData\n");
         return;
     }
 
-    QString conversationJson = (msg && len > 0) ? QString::fromUtf8(msg, len) : "";
-    
-    QVariantList eventData;
-    eventData << (callerRet == RET_OK && !conversationJson.isEmpty());  // success
-    eventData << callerRet;                                               // return code
-    eventData << conversationJson;                                        // conversation JSON
-    eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
+    std::string conversationJson = (msg && len > 0) ? std::string(msg, len) : "";
 
-    plugin->emitEvent("chatNewPrivateConversationResult", eventData);
+    nlohmann::json ev;
+    ev["success"] = (callerRet == RET_OK && !conversationJson.empty());
+    ev["statusCode"] = callerRet;
+    ev["conversation"] = conversationJson;
+    ev["timestamp"] = isoTimestamp();
+
+    impl->emitEvent("chatNewPrivateConversationResult", ev.dump());
 }
 
-void ChatModulePlugin::send_message_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleImpl::send_message_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatModulePlugin::send_message_callback called with ret:" << callerRet;
+    fprintf(stderr, "ChatModuleImpl::send_message_callback called with ret: %d\n", callerRet);
 
-    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
-    if (!plugin) {
-        qWarning() << "ChatModulePlugin::send_message_callback: Invalid userData";
+    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    if (!impl) {
+        fprintf(stderr, "ChatModuleImpl::send_message_callback: Invalid userData\n");
         return;
     }
 
-    QString resultJson = (msg && len > 0) ? QString::fromUtf8(msg, len) : "";
-    qDebug() << "ChatModulePlugin::send_message_callback result:" << resultJson;
-    
-    QVariantList eventData;
-    eventData << (callerRet == RET_OK);  // success
-    eventData << callerRet;               // return code
-    eventData << resultJson;              // result JSON (may contain message ID)
-    eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
+    std::string resultJson = (msg && len > 0) ? std::string(msg, len) : "";
+    fprintf(stderr, "ChatModuleImpl::send_message_callback result: %s\n", resultJson.c_str());
 
-    plugin->emitEvent("chatSendMessageResult", eventData);
+    nlohmann::json ev;
+    ev["success"] = (callerRet == RET_OK);
+    ev["statusCode"] = callerRet;
+    ev["result"] = resultJson;
+    ev["timestamp"] = isoTimestamp();
+
+    impl->emitEvent("chatSendMessageResult", ev.dump());
 }
 
-void ChatModulePlugin::get_identity_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleImpl::get_identity_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatModulePlugin::get_identity_callback called with ret:" << callerRet;
+    fprintf(stderr, "ChatModuleImpl::get_identity_callback called with ret: %d\n", callerRet);
 
-    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
-    if (!plugin) {
-        qWarning() << "ChatModulePlugin::get_identity_callback: Invalid userData";
+    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    if (!impl) {
+        fprintf(stderr, "ChatModuleImpl::get_identity_callback: Invalid userData\n");
         return;
     }
 
     if (msg && len > 0) {
-        QString message = QString::fromUtf8(msg, len);
-        
-        QVariantList eventData;
-        eventData << message;
-        eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
+        std::string message(msg, len);
 
-        plugin->emitEvent("chatGetIdentityResult", eventData);
+        nlohmann::json ev;
+        ev["identity"] = message;
+        ev["timestamp"] = isoTimestamp();
+
+        impl->emitEvent("chatGetIdentityResult", ev.dump());
     }
 }
 
-void ChatModulePlugin::create_intro_bundle_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleImpl::create_intro_bundle_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    qDebug() << "ChatModulePlugin::create_intro_bundle_callback called with ret:" << callerRet;
+    fprintf(stderr, "ChatModuleImpl::create_intro_bundle_callback called with ret: %d\n", callerRet);
 
-    ChatModulePlugin* plugin = static_cast<ChatModulePlugin*>(userData);
-    if (!plugin) {
-        qWarning() << "ChatModulePlugin::create_intro_bundle_callback: Invalid userData";
+    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    if (!impl) {
+        fprintf(stderr, "ChatModuleImpl::create_intro_bundle_callback: Invalid userData\n");
         return;
     }
 
-    QString bundleStr = (msg && len > 0) ? QString::fromUtf8(msg, len) : "";
+    std::string bundleStr = (msg && len > 0) ? std::string(msg, len) : "";
 
-    QVariantList eventData;
-    eventData << (callerRet == RET_OK && !bundleStr.isEmpty());  // success
-    eventData << callerRet;                                        // return code
-    eventData << bundleStr;                                        // intro bundle string
-    eventData << QDateTime::currentDateTime().toString(Qt::ISODate);
+    nlohmann::json ev;
+    ev["success"] = (callerRet == RET_OK && !bundleStr.empty());
+    ev["statusCode"] = callerRet;
+    ev["introBundle"] = bundleStr;
+    ev["timestamp"] = isoTimestamp();
 
-    plugin->emitEvent("chatCreateIntroBundleResult", eventData);
+    impl->emitEvent("chatCreateIntroBundleResult", ev.dump());
 }
 
 // ============================================================================
 // Client Lifecycle Methods
 // ============================================================================
 
-bool ChatModulePlugin::initChat(const QString &configJson)
+bool ChatModuleImpl::initChat(const std::string& configJson)
 {
-    qDebug() << "ChatModulePlugin::initChat called with config:" << configJson;
-    
-    // Convert QString to UTF-8 byte array
-    QByteArray cfgUtf8 = configJson.toUtf8();
-    
-    // Call chat_new with the configuration
-    chatCtx = chat_new(cfgUtf8.constData(), init_callback, this);
-    
+    fprintf(stderr, "ChatModuleImpl::initChat called with config: %s\n", configJson.c_str());
+
+    chatCtx = chat_new(configJson.c_str(), init_callback, this);
+
     if (chatCtx) {
-        qDebug() << "ChatModulePlugin: Chat context created successfully";
+        fprintf(stderr, "ChatModuleImpl: Chat context created successfully\n");
         return true;
     } else {
-        qWarning() << "ChatModulePlugin: Failed to create Chat context";
+        fprintf(stderr, "ChatModuleImpl: Failed to create Chat context\n");
         return false;
     }
 }
 
-bool ChatModulePlugin::startChat()
+bool ChatModuleImpl::startChat()
 {
-    qDebug() << "ChatModulePlugin::startChat called";
-    
+    fprintf(stderr, "ChatModuleImpl::startChat called\n");
+
     if (!chatCtx) {
-        qWarning() << "ChatModulePlugin: Cannot start Chat - context not initialized. Call initChat first.";
+        fprintf(stderr, "ChatModuleImpl: Cannot start Chat - context not initialized. Call initChat first.\n");
         return false;
     }
-    
+
     int result = chat_start(chatCtx, start_callback, this);
-    
+
     if (result == RET_OK) {
-        qDebug() << "ChatModulePlugin: Chat start initiated successfully";
+        fprintf(stderr, "ChatModuleImpl: Chat start initiated successfully\n");
         return true;
     } else {
-        qWarning() << "ChatModulePlugin: Failed to start Chat, error code:" << result;
+        fprintf(stderr, "ChatModuleImpl: Failed to start Chat, error code: %d\n", result);
         return false;
     }
 }
 
-bool ChatModulePlugin::stopChat()
+bool ChatModuleImpl::stopChat()
 {
-    qDebug() << "ChatModulePlugin::stopChat called";
-    
+    fprintf(stderr, "ChatModuleImpl::stopChat called\n");
+
     if (!chatCtx) {
-        qWarning() << "ChatModulePlugin: Cannot stop Chat - context not initialized.";
+        fprintf(stderr, "ChatModuleImpl: Cannot stop Chat - context not initialized.\n");
         return false;
     }
-    
+
     int result = chat_stop(chatCtx, stop_callback, this);
-    
+
     if (result == RET_OK) {
-        qDebug() << "ChatModulePlugin: Chat stop initiated successfully";
+        fprintf(stderr, "ChatModuleImpl: Chat stop initiated successfully\n");
         return true;
     } else {
-        qWarning() << "ChatModulePlugin: Failed to stop Chat, error code:" << result;
+        fprintf(stderr, "ChatModuleImpl: Failed to stop Chat, error code: %d\n", result);
         return false;
     }
 }
 
-bool ChatModulePlugin::destroyChat()
+bool ChatModuleImpl::destroyChat()
 {
-    qDebug() << "ChatModulePlugin::destroyChat called";
-    
+    fprintf(stderr, "ChatModuleImpl::destroyChat called\n");
+
     if (!chatCtx) {
-        qWarning() << "ChatModulePlugin: Cannot destroy Chat - context not initialized.";
+        fprintf(stderr, "ChatModuleImpl: Cannot destroy Chat - context not initialized.\n");
         return false;
     }
-    
+
     int result = chat_destroy(chatCtx, destroy_callback, this);
-    
+
     if (result == RET_OK) {
-        qDebug() << "ChatModulePlugin: Chat destroy initiated successfully";
+        fprintf(stderr, "ChatModuleImpl: Chat destroy initiated successfully\n");
         chatCtx = nullptr;
         return true;
     } else {
-        qWarning() << "ChatModulePlugin: Failed to destroy Chat, error code:" << result;
+        fprintf(stderr, "ChatModuleImpl: Failed to destroy Chat, error code: %d\n", result);
         return false;
     }
 }
 
-bool ChatModulePlugin::setEventCallback()
+bool ChatModuleImpl::setEventCallback()
 {
-    qDebug() << "ChatModulePlugin::setEventCallback called";
-    
+    fprintf(stderr, "ChatModuleImpl::setEventCallback called\n");
+
     if (!chatCtx) {
-        qWarning() << "ChatModulePlugin: Cannot set event callback - context not initialized. Call initChat first.";
+        fprintf(stderr, "ChatModuleImpl: Cannot set event callback - context not initialized. Call initChat first.\n");
         return false;
     }
-    
+
     set_event_callback(chatCtx, event_callback, this);
-    
-    qDebug() << "ChatModulePlugin: Event callback set successfully";
+
+    fprintf(stderr, "ChatModuleImpl: Event callback set successfully\n");
     return true;
 }
 
@@ -428,22 +402,22 @@ bool ChatModulePlugin::setEventCallback()
 // Client Info Methods
 // ============================================================================
 
-bool ChatModulePlugin::getId()
+bool ChatModuleImpl::getId()
 {
-    qDebug() << "ChatModulePlugin::getId called";
-    
+    fprintf(stderr, "ChatModuleImpl::getId called\n");
+
     if (!chatCtx) {
-        qWarning() << "ChatModulePlugin: Cannot get ID - context not initialized";
+        fprintf(stderr, "ChatModuleImpl: Cannot get ID - context not initialized\n");
         return false;
     }
-    
+
     int result = chat_get_id(chatCtx, get_id_callback, this);
-    
+
     if (result == RET_OK) {
-        qDebug() << "ChatModulePlugin: Get ID initiated successfully";
+        fprintf(stderr, "ChatModuleImpl: Get ID initiated successfully\n");
         return true;
     } else {
-        qWarning() << "ChatModulePlugin: Failed to get ID, error code:" << result;
+        fprintf(stderr, "ChatModuleImpl: Failed to get ID, error code: %d\n", result);
         return false;
     }
 }
@@ -452,90 +426,84 @@ bool ChatModulePlugin::getId()
 // Conversation Operations
 // ============================================================================
 
-bool ChatModulePlugin::listConversations()
+bool ChatModuleImpl::listConversations()
 {
-    qDebug() << "ChatModulePlugin::listConversations called";
-    
+    fprintf(stderr, "ChatModuleImpl::listConversations called\n");
+
     if (!chatCtx) {
-        qWarning() << "ChatModulePlugin: Cannot list conversations - context not initialized";
+        fprintf(stderr, "ChatModuleImpl: Cannot list conversations - context not initialized\n");
         return false;
     }
-    
+
     int result = chat_list_conversations(chatCtx, list_conversations_callback, this);
-    
+
     if (result == RET_OK) {
-        qDebug() << "ChatModulePlugin: List conversations initiated successfully";
+        fprintf(stderr, "ChatModuleImpl: List conversations initiated successfully\n");
         return true;
     } else {
-        qWarning() << "ChatModulePlugin: Failed to list conversations, error code:" << result;
+        fprintf(stderr, "ChatModuleImpl: Failed to list conversations, error code: %d\n", result);
         return false;
     }
 }
 
-bool ChatModulePlugin::getConversation(const QString &convoId)
+bool ChatModuleImpl::getConversation(const std::string& convoId)
 {
-    qDebug() << "ChatModulePlugin::getConversation called with convoId:" << convoId;
-    
+    fprintf(stderr, "ChatModuleImpl::getConversation called with convoId: %s\n", convoId.c_str());
+
     if (!chatCtx) {
-        qWarning() << "ChatModulePlugin: Cannot get conversation - context not initialized";
+        fprintf(stderr, "ChatModuleImpl: Cannot get conversation - context not initialized\n");
         return false;
     }
-    
-    QByteArray convoIdUtf8 = convoId.toUtf8();
-    
-    int result = chat_get_conversation(chatCtx, get_conversation_callback, this, convoIdUtf8.constData());
-    
+
+    int result = chat_get_conversation(chatCtx, get_conversation_callback, this, convoId.c_str());
+
     if (result == RET_OK) {
-        qDebug() << "ChatModulePlugin: Get conversation initiated successfully";
+        fprintf(stderr, "ChatModuleImpl: Get conversation initiated successfully\n");
         return true;
     } else {
-        qWarning() << "ChatModulePlugin: Failed to get conversation, error code:" << result;
+        fprintf(stderr, "ChatModuleImpl: Failed to get conversation, error code: %d\n", result);
         return false;
     }
 }
 
-bool ChatModulePlugin::newPrivateConversation(const QString &introBundleStr, const QString &contentHex)
+bool ChatModuleImpl::newPrivateConversation(const std::string& introBundleStr, const std::string& contentHex)
 {
-    qDebug() << "ChatModulePlugin::newPrivateConversation called";
+    fprintf(stderr, "ChatModuleImpl::newPrivateConversation called\n");
 
     if (!chatCtx) {
-        qWarning() << "ChatModulePlugin: Cannot create new private conversation - context not initialized";
+        fprintf(stderr, "ChatModuleImpl: Cannot create new private conversation - context not initialized\n");
         return false;
     }
 
-    QByteArray introBundleUtf8 = introBundleStr.toUtf8();
-    QByteArray contentUtf8 = contentHex.toUtf8();
-    
-    int result = chat_new_private_conversation(chatCtx, new_private_conversation_callback, this, introBundleUtf8.constData(), contentUtf8.constData());
-    
+    int result = chat_new_private_conversation(chatCtx, new_private_conversation_callback, this,
+                                                introBundleStr.c_str(), contentHex.c_str());
+
     if (result == RET_OK) {
-        qDebug() << "ChatModulePlugin: New private conversation initiated successfully";
+        fprintf(stderr, "ChatModuleImpl: New private conversation initiated successfully\n");
         return true;
     } else {
-        qWarning() << "ChatModulePlugin: Failed to create new private conversation, error code:" << result;
+        fprintf(stderr, "ChatModuleImpl: Failed to create new private conversation, error code: %d\n", result);
         return false;
     }
 }
 
-bool ChatModulePlugin::sendMessage(const QString &convoId, const QString &contentHex)
+bool ChatModuleImpl::sendMessage(const std::string& convoId, const std::string& contentHex)
 {
-    qDebug() << "ChatModulePlugin::sendMessage called with convoId:" << convoId;
-    
+    fprintf(stderr, "ChatModuleImpl::sendMessage called with convoId: %s\n", convoId.c_str());
+
     if (!chatCtx) {
-        qWarning() << "ChatModulePlugin: Cannot send message - context not initialized";
+        fprintf(stderr, "ChatModuleImpl: Cannot send message - context not initialized\n");
         return false;
     }
-    
-    QByteArray convoIdUtf8 = convoId.toUtf8();
-    QByteArray contentUtf8 = contentHex.toUtf8();
-    
-    int result = chat_send_message(chatCtx, send_message_callback, this, convoIdUtf8.constData(), contentUtf8.constData());
-    
+
+    int result = chat_send_message(chatCtx, send_message_callback, this,
+                                    convoId.c_str(), contentHex.c_str());
+
     if (result == RET_OK) {
-        qDebug() << "ChatModulePlugin: Send message initiated successfully";
+        fprintf(stderr, "ChatModuleImpl: Send message initiated successfully\n");
         return true;
     } else {
-        qWarning() << "ChatModulePlugin: Failed to send message, error code:" << result;
+        fprintf(stderr, "ChatModuleImpl: Failed to send message, error code: %d\n", result);
         return false;
     }
 }
@@ -544,42 +512,42 @@ bool ChatModulePlugin::sendMessage(const QString &convoId, const QString &conten
 // Identity Operations
 // ============================================================================
 
-bool ChatModulePlugin::getIdentity()
+bool ChatModuleImpl::getIdentity()
 {
-    qDebug() << "ChatModulePlugin::getIdentity called";
-    
+    fprintf(stderr, "ChatModuleImpl::getIdentity called\n");
+
     if (!chatCtx) {
-        qWarning() << "ChatModulePlugin: Cannot get identity - context not initialized";
+        fprintf(stderr, "ChatModuleImpl: Cannot get identity - context not initialized\n");
         return false;
     }
-    
+
     int result = chat_get_identity(chatCtx, get_identity_callback, this);
-    
+
     if (result == RET_OK) {
-        qDebug() << "ChatModulePlugin: Get identity initiated successfully";
+        fprintf(stderr, "ChatModuleImpl: Get identity initiated successfully\n");
         return true;
     } else {
-        qWarning() << "ChatModulePlugin: Failed to get identity, error code:" << result;
+        fprintf(stderr, "ChatModuleImpl: Failed to get identity, error code: %d\n", result);
         return false;
     }
 }
 
-bool ChatModulePlugin::createIntroBundle()
+bool ChatModuleImpl::createIntroBundle()
 {
-    qDebug() << "ChatModulePlugin::createIntroBundle called";
-    
+    fprintf(stderr, "ChatModuleImpl::createIntroBundle called\n");
+
     if (!chatCtx) {
-        qWarning() << "ChatModulePlugin: Cannot create intro bundle - context not initialized";
+        fprintf(stderr, "ChatModuleImpl: Cannot create intro bundle - context not initialized\n");
         return false;
     }
-    
+
     int result = chat_create_intro_bundle(chatCtx, create_intro_bundle_callback, this);
-    
+
     if (result == RET_OK) {
-        qDebug() << "ChatModulePlugin: Create intro bundle initiated successfully";
+        fprintf(stderr, "ChatModuleImpl: Create intro bundle initiated successfully\n");
         return true;
     } else {
-        qWarning() << "ChatModulePlugin: Failed to create intro bundle, error code:" << result;
+        fprintf(stderr, "ChatModuleImpl: Failed to create intro bundle, error code: %d\n", result);
         return false;
     }
 }

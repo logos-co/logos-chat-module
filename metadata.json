@@ -4,6 +4,10 @@
     "description": "Chat module for Logos",
     "author": "Logos Core Team",
     "type": "core",
+    "interface": "universal",
+    "codegen": {
+        "impl_header": "chat_module_plugin.h"
+    },
     "category": "chat",
     "main": "chat_module_plugin",
     "dependencies": [],
@@ -14,6 +18,9 @@
     ],
     "capabilities": [],
     "nix": {
+        "packages": {
+            "runtime": ["nlohmann_json"]
+        },
         "external_libraries": [
             {
                 "name": "chat",
