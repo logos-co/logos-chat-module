@@ -71,29 +71,40 @@ def wait_event(waiter: Any, event_name: str, *, timeout: float) -> dict[str, Any
     return waiter.next(predicate=lambda e: e.get("event") == event_name, timeout=timeout)
 
 
-def event_arg(event: dict[str, Any], index: int) -> Any:
-    """Read positional arg N from a watch-event payload.
+def parse_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Parse the JSON payload at `arg0` into the named-fields dict the plugin emits.
 
-    `data` is `{"arg0": ..., "arg1": ...}`, not a list — the CLI wraps the
-    QVariantList tail of every event into a JSON object keyed by `argN`.
+    Universal codegen wraps the C++ side's single QString-payload signal into a
+    one-arg event; CLI's watch puts that string in `data["arg0"]`. The plugin
+    serialises a `nlohmann::json` object (named fields like `success`,
+    `clientId`, `payload`, `timestamp`, …) and `.dump()`s it — so one
+    `json.loads` gets us the structured event body.
     """
-    return event["data"][f"arg{index}"]
+    return json.loads(event["data"]["arg0"])
+
+
+def parse_push_payload(event: dict[str, Any]) -> dict[str, Any]:
+    """For chatNew*/chatDeliveryAck push events: parse arg0, then re-parse the
+    `payload` field (raw JSON string from liblogoschat's set_event_callback)."""
+    return json.loads(parse_event(event)["payload"])
 
 
 def assert_success(event: dict[str, Any], op: str) -> None:
-    """For events whose `arg0` is a success bool."""
-    if event_arg(event, 0) is not True:
-        raise AssertionError(f"{op} failed: event={event!r}")
+    """For events that carry a top-level `success` bool.
 
-
-def parse_json_field(event: dict[str, Any], index: int) -> dict[str, Any]:
-    """Pull a JSON-encoded string out of `arg{index}` and parse it."""
-    return json.loads(event_arg(event, index))
+    Raises if the event payload doesn't have a `success` key — chatDestroyResult
+    and similar events without it would otherwise produce a misleading "failed"
+    error from `body.get("success") = None`.
+    """
+    body = parse_event(event)
+    if "success" not in body:
+        raise AssertionError(f"{op}: event has no `success` field; body={body!r}")
+    if not body["success"]:
+        raise AssertionError(f"{op} failed: body={body!r}")
 
 
 def extract_convo_id(payload: dict[str, Any]) -> str:
-    """Extract conversation id from either shape: `{"id": ...}` (Conversation
-    object) or `{"conversationId": ..., ...}` (push event payload)."""
+    """Conversation object (`{"id":...}`) or push event (`{"conversationId":...}`)."""
     return str(payload.get("id") or payload["conversationId"])
 
 
@@ -150,14 +161,14 @@ def setup_chat_user(
         client, "getId",
         event="chatGetIdResult", timeout=10.0,
     )
-    installation_name = str(event_arg(id_evt, 0))
+    installation_name = str(parse_event(id_evt)["clientId"])
 
     bundle_evt = call_and_wait(
         client, "createIntroBundle",
         event="chatCreateIntroBundleResult", timeout=10.0,
     )
     assert_success(bundle_evt, f"createIntroBundle for {label}")
-    intro_bundle = str(event_arg(bundle_evt, 2))
+    intro_bundle = str(parse_event(bundle_evt)["introBundle"])
 
     return ChatUser(
         client=client,

@@ -27,11 +27,11 @@ from libs.helpers import (
     ChatUser,
     assert_success,
     call_and_wait,
-    event_arg,
     extract_convo_id,
     extract_message_content,
     hex_encode,
-    parse_json_field,
+    parse_event,
+    parse_push_payload,
     wait_event,
 )
 
@@ -61,7 +61,7 @@ def _send_and_verify(
         )
         assert_success(send_evt, op)
         received = wait_event(nm, "chatNewMessage", timeout=20.0)
-    assert extract_message_content(parse_json_field(received, 0)) == content
+    assert extract_message_content(parse_push_payload(received)) == content
 
 
 def test_two_users_can_chat(saro: ChatUser, raya: ChatUser) -> None:
@@ -82,21 +82,22 @@ def test_two_users_can_chat(saro: ChatUser, raya: ChatUser) -> None:
             event="chatNewPrivateConversationResult",
             timeout=20.0,
         )
-        # arg0 (success bool) and arg2 (conversation JSON) are both unreliable —
-        # liblogoschat's `conversation_api.nim:42` returns `ok("")` on success.
-        # Use arg1 == 0 (RET_OK) as the success signal; pull convo ids from the
-        # chatNewConversation push events below.
-        assert event_arg(npc_evt, 1) == 0, f"newPrivateConversation failed: {npc_evt!r}"
+        # `success` may be False on the success path because liblogoschat
+        # returns ok("") for newPrivateConversation, leaving conversation=""
+        # → plugin's `success = (RET_OK && !empty())` flag flips false. Use
+        # statusCode==0 (RET_OK) as the truthful success signal; pull convo ids
+        # from the chatNewConversation push events below.
+        assert parse_event(npc_evt)["statusCode"] == 0, f"newPrivateConversation failed: {npc_evt!r}"
 
         convo_id_saro = extract_convo_id(
-            parse_json_field(wait_event(nc_s, "chatNewConversation", timeout=20.0), 0)
+            parse_push_payload(wait_event(nc_s, "chatNewConversation", timeout=20.0))
         )
         convo_id_raya = extract_convo_id(
-            parse_json_field(wait_event(nc_r, "chatNewConversation", timeout=20.0), 0)
+            parse_push_payload(wait_event(nc_r, "chatNewConversation", timeout=20.0))
         )
 
         first_msg = wait_event(nm_r, "chatNewMessage", timeout=20.0)
-        assert extract_message_content(parse_json_field(first_msg, 0)) == MSG_S1
+        assert extract_message_content(parse_push_payload(first_msg)) == MSG_S1
 
     _send_and_verify(raya, convo_id_raya, saro, MSG_R1, "Raya.sendMessage #1")
     _send_and_verify(saro, convo_id_saro, raya, MSG_S2, "Saro.sendMessage #2")
