@@ -21,7 +21,7 @@ import time
 
 from logos_integration_test_framework import subscribe
 
-from _helpers import (
+from libs.helpers import (
     MODULE,
     SUBSCRIBE_GRACE_S,
     ChatUser,

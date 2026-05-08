@@ -8,7 +8,7 @@ from typing import Any
 from logoscore import LogoscoreClient
 from logos_integration_test_framework import subscribe
 
-from _constants import CHAT_CLUSTER_ID, CHAT_SHARD_ID
+from libs.constants import CHAT_CLUSTER_ID, CHAT_SHARD_ID
 
 MODULE = "chat_module"
 

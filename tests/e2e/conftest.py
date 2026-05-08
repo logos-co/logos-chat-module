@@ -32,7 +32,7 @@ from typing import Protocol
 
 import pytest
 
-from _constants import (
+from libs.constants import (
     BOOTSTRAP_IP,
     BOOTSTRAP_REST_PORT,
     BOOTSTRAP_TCP_PORT,
@@ -42,7 +42,7 @@ from _constants import (
     RAYA_PORT,
     SARO_PORT,
 )
-from _helpers import ChatUser, make_chat_config, setup_chat_user
+from libs.helpers import ChatUser, make_chat_config, setup_chat_user
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
