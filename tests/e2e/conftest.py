@@ -1,4 +1,4 @@
-"""Three-container fixture: nwaku-bootstrap + Alice + Bob in shared docker network.
+"""Three-container fixture: nwaku-bootstrap + Saro + Raya in shared docker network.
 
 Why bootstrap-node: liblogoschat's `staticPeers` accepts only ENRs (not
 multiaddrs), and `chat_get_id` returns the configured installation_name (not
@@ -6,10 +6,13 @@ a libp2p peerId), so two instances can't introduce themselves to each other
 from configJson alone. A third nwaku container with a deterministic ENR
 acts as the rendezvous; gossipsub/relay-mesh handles the rest.
 
-The skip-cascade in `_integration_env_or_skip` duplicates the framework's own
+The skip-cascade in `_e2e_env_or_skip` duplicates the framework's own
 `local_daemon` / `docker_daemon` skip logic by design — we need TWO
 chat-clients in a SHARED network, the framework provides only single-instance
 fixtures.
+
+Naming follows `logos-messaging/specs:informational/chat_cast.md` (Saro = sender,
+Raya = recipient, Pax = additional participant).
 """
 
 from __future__ import annotations
@@ -17,25 +20,35 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import ExitStack
 from pathlib import Path
+from typing import Protocol
 
 import pytest
 
-from _helpers import ChatUser, setup_chat_user
+from _constants import (
+    BOOTSTRAP_IP,
+    BOOTSTRAP_REST_PORT,
+    BOOTSTRAP_TCP_PORT,
+    BOOTSTRAP_UDP_PORT,
+    NETWORK_SUBNET,
+    NWAKU_IMAGE,
+    RAYA_PORT,
+    SARO_PORT,
+)
+from _helpers import ChatUser, make_chat_config, setup_chat_user
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
-NETWORK_SUBNET = "172.30.0.0/16"
-BOOTSTRAP_IP = "172.30.0.10"
-BOOTSTRAP_TCP_PORT = 60000
-BOOTSTRAP_UDP_PORT = 60001
-BOOTSTRAP_REST_PORT = 8645
-NWAKU_IMAGE = "wakuorg/nwaku:v0.38.0"
+
+
+class ChatUserFactory(Protocol):
+    def __call__(self, name: str, port: int) -> ChatUser: ...
 
 
 def _read_fixture(name: str) -> str:
@@ -51,16 +64,16 @@ def _docker_logs(container_name: str) -> str:
 
 
 def _save_logs(container_name: str) -> None:
-    log_dir = Path(os.environ.get("INTEGRATION_LOG_DIR", "/tmp"))
+    log_dir = Path(os.environ.get("E2E_LOG_DIR", "/tmp"))
     log_dir.mkdir(parents=True, exist_ok=True)
     try:
         (log_dir / f"{container_name}.log").write_text(_docker_logs(container_name))
-    except OSError:
-        pass
+    except OSError as e:
+        sys.stderr.write(f"warning: failed to save log for {container_name}: {e}\n")
 
 
 @pytest.fixture(scope="session")
-def _integration_env_or_skip() -> tuple[str, Path]:
+def _e2e_env_or_skip() -> tuple[str, Path]:
     """Single gate: skip if any prerequisite (docker, image, modules layout) is missing."""
     from logoscore import docker_available, image_present  # noqa: PLC0415
 
@@ -87,16 +100,17 @@ def _integration_env_or_skip() -> tuple[str, Path]:
 
 @pytest.fixture(scope="session")
 def shared_docker_network(
-    _integration_env_or_skip: tuple[str, Path],
+    _e2e_env_or_skip: tuple[str, Path],
 ) -> Iterator[str]:
-    name = f"logoschat-it-{uuid.uuid4().hex[:8]}"
+    name = f"logoschat-e2e-{uuid.uuid4().hex[:8]}"
     r = subprocess.run(
         ["docker", "network", "create", "--subnet", NETWORK_SUBNET, name],
         capture_output=True, text=True,
     )
     if r.returncode != 0:
-        # Subnet collision / docker overload: infrastructure issue, not a test fail.
-        pytest.skip(f"failed to create docker network {name!r}: {r.stderr.strip()}")
+        # Fail loud rather than skip — a CI runner that can't create a docker
+        # network silently passing the job would mask a real environment break.
+        pytest.fail(f"failed to create docker network {name!r}: {r.stderr.strip()}")
     try:
         yield name
     finally:
@@ -163,47 +177,47 @@ def nwaku_bootstrap(shared_docker_network: str) -> Iterator[str]:
 
 
 @pytest.fixture(scope="module")
-def chat_users(
-    _integration_env_or_skip: tuple[str, Path],
+def chat_user_factory(
+    _e2e_env_or_skip: tuple[str, Path],
     shared_docker_network: str,
     nwaku_bootstrap: str,
-) -> Iterator[tuple[ChatUser, ChatUser]]:
-    """Two LogoscoreDockerDaemon containers in the shared network with chat_module
-    initialised + started, each pointing at nwaku_bootstrap's ENR.
+) -> Iterator[ChatUserFactory]:
+    """Factory for ChatUser instances. Each call spawns a LogoscoreDockerDaemon
+    container in the shared network and returns an initialised ChatUser.
 
-    Module-scope: spinning up two daemons + waku-stack init costs ~30-60s.
+    All daemon teardown + log capture is registered on a single ExitStack
+    that's closed when the module's tests finish, so any number of users can
+    be created in a single test session without leaking containers.
     """
-    image, modules_dir = _integration_env_or_skip
+    image, modules_dir = _e2e_env_or_skip
 
     # Lazy import — keeps `pytest collect` working when the framework isn't installed.
     from logoscore import LogoscoreDockerDaemon  # noqa: PLC0415
 
-    config_a = _read_fixture("chat-a.json").replace("__BOOTSTRAP_ENR__", nwaku_bootstrap)
-    config_b = _read_fixture("chat-b.json").replace("__BOOTSTRAP_ENR__", nwaku_bootstrap)
-
-    alice_name = f"logoscore-alice-{uuid.uuid4().hex[:8]}"
-    bob_name = f"logoscore-bob-{uuid.uuid4().hex[:8]}"
-
     with ExitStack() as stack:
-        daemon_a = stack.enter_context(LogoscoreDockerDaemon(
-            image=image, modules_dir=modules_dir,
-            container_name=alice_name,
-            network=shared_docker_network,
-            startup_timeout=60.0,           # cold-start liblogoschat can take 30s+
-        ))
-        daemon_b = stack.enter_context(LogoscoreDockerDaemon(
-            image=image, modules_dir=modules_dir,
-            container_name=bob_name,
-            network=shared_docker_network,
-            startup_timeout=60.0,
-        ))
-        # stack.callback runs LIFO before daemon teardown,
-        # so logs are captured even when the test fails after start.
-        stack.callback(_save_logs, bob_name)
-        stack.callback(_save_logs, alice_name)
+        def _create(name: str, port: int) -> ChatUser:
+            container_name = f"logoscore-{name.lower()}-{uuid.uuid4().hex[:8]}"
+            daemon = stack.enter_context(LogoscoreDockerDaemon(
+                image=image, modules_dir=modules_dir,
+                container_name=container_name,
+                network=shared_docker_network,
+                startup_timeout=60.0,           # cold-start liblogoschat can take 30s+
+            ))
+            # stack.callback runs LIFO before daemon teardown, so logs are
+            # captured even when the test fails after start.
+            stack.callback(_save_logs, container_name)
+            client = daemon.client()
+            config = make_chat_config(name=name, port=port, bootstrap_enr=nwaku_bootstrap)
+            return setup_chat_user(client, config_json=config, label=name)
 
-        client_a = daemon_a.client()
-        client_b = daemon_b.client()
-        user_a = setup_chat_user(client_a, config_json=config_a, label="A")
-        user_b = setup_chat_user(client_b, config_json=config_b, label="B")
-        yield (user_a, user_b)
+        yield _create
+
+
+@pytest.fixture(scope="module")
+def saro(chat_user_factory: ChatUserFactory) -> ChatUser:
+    return chat_user_factory("Saro", SARO_PORT)
+
+
+@pytest.fixture(scope="module")
+def raya(chat_user_factory: ChatUserFactory) -> ChatUser:
+    return chat_user_factory("Raya", RAYA_PORT)

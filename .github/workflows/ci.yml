@@ -40,13 +40,13 @@ jobs:
         run: nix build .#unit-tests -L
 
       - name: Pre-warm cachix for install-portable
-        # Builds the install-portable layout that integration-tests job needs.
+        # Builds the install-portable layout that e2e-tests job needs.
         # Doing it here populates the cachix cache during the existing job's
-        # nix-build context, so integration-tests can skip the cold rebuild.
+        # nix-build context, so e2e-tests can skip the cold rebuild.
         if: matrix.os == 'ubuntu-latest'
         run: nix build -L .#install-portable
 
-  integration-tests:
+  e2e-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 50          # cold cachix-miss can hit ~25min for chat-module + ~5min for smoke-image
     needs: build-and-test
@@ -72,9 +72,8 @@ jobs:
         run: |
           git clone https://github.com/logos-co/logos-logoscore-py.git /tmp/logoscore-py
           cd /tmp/logoscore-py
-          # Pinned to head SHA of `docker-daemon-network-kwarg` PR.
-          # TODO: update to merged-master SHA after PR is merged.
-          git checkout 929400becc94b860214046839598a0482dc3b7c5
+          # Master HEAD post PR #1 + #2 merge; contains network= kwarg + remote-transports.
+          git checkout aa45db52
           bash tests/docker_smoke/build_smoke_image.sh
           echo "LOGOSCORE_IMAGE=logoscore:smoke-portable" >> $GITHUB_ENV
 
@@ -83,63 +82,53 @@ jobs:
 
       - name: Build logoscore CLI binary (host PATH)
         # LogoscoreClient.call/subscribe shell out to a host-side `logoscore`
-        # binary; the docker image only provides the daemon. Pinned to
-        # logos-logoscore-cli#22 head — needed for client/config.json compat
-        # with logoscore-py@929400b. TODO: bump to merged-master SHA after
-        # logos-logoscore-cli#22 lands.
+        # binary; the docker image only provides the daemon. We need a CLI
+        # that reads `client/config.json` (auto-emitted by LogoscoreDockerDaemon).
+        # logos-logoscore-cli master still uses the old `daemon.json` +
+        # `isPidAlive(pid)` connect path which doesn't work for a containerised
+        # daemon. PR #22 rewrites connect() to the new schema — pinned to its
+        # head SHA below; bump to merged-master SHA once it lands.
         run: |
           nix build -L --out-link /tmp/logoscore-cli "github:logos-co/logos-logoscore-cli/9f56e02b5c4f446f77616b50850854927096a09d#cli"
           echo "/tmp/logoscore-cli/bin" >> $GITHUB_PATH
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14"
           cache: pip
-          cache-dependency-path: tests/integration/requirements.txt
+          cache-dependency-path: tests/e2e/requirements.txt
 
-      - name: Install integration test dependencies
+      - name: Install e2e test dependencies
         run: |
-          cd tests/integration
-          # Use --no-deps to bypass the resolution conflict between framework's
-          # transitive `logoscore@<old SHA>` pin and our `logoscore@929400b` pin.
-          # Once framework's pyproject.toml repins to a SHA that includes the
-          # `network=` kwarg, this whole block can become plain `pip install -r ...`.
-          pip install --no-deps -r requirements.txt
-          pip install pytest>=8.0
-          # Defensive: guarantee logoscore@929400b stays as the installed version
-          # regardless of pip's resolution-order semantics. Without this, a future
-          # pip change could prefer the framework's transitive pin (older SHA
-          # without the `network=` kwarg) and break tests with a TypeError.
-          pip install --force-reinstall --no-deps \
-            "logoscore @ git+https://github.com/logos-co/logos-logoscore-py.git@929400becc94b860214046839598a0482dc3b7c5"
+          cd tests/e2e
+          pip install -r requirements.txt
 
-      - name: Run integration tests
+      - name: Run e2e tests
         run: |
-          mkdir -p ${{ runner.temp }}/integration-logs
-          cd tests/integration
+          mkdir -p ${{ runner.temp }}/e2e-logs
+          cd tests/e2e
           pytest -v --maxfail=1
         env:
-          INTEGRATION_LOG_DIR: ${{ runner.temp }}/integration-logs
+          E2E_LOG_DIR: ${{ runner.temp }}/e2e-logs
           # Forward host-CLI stderr + daemon container logs into pytest output.
-          # logoscore-py's `_proc.run_json` deliberately does NOT forward
-          # stdout (issue-token would leak through), so a CLI failure with a
-          # JSON-encoded error code only appears in `LogoscoreError.code` —
-          # see the diagnostic catch in `_helpers.setup_chat_user`.
+          # logoscore-py's `_proc.run_json` deliberately does NOT forward stdout
+          # (issue-token tokens would leak through), so a CLI failure carrying
+          # a JSON-encoded error code only surfaces via LogoscoreError.code.
           LOGOSCORE_PY_FORWARD_OUTPUT: "1"
 
       - name: Collect docker container logs on failure
         if: failure()
         run: |
-          mkdir -p ${{ runner.temp }}/integration-logs
-          for c in $(docker ps -a --filter "name=logoscore-alice" --filter "name=logoscore-bob" --filter "name=nwaku-bootstrap" -q); do
+          mkdir -p ${{ runner.temp }}/e2e-logs
+          for c in $(docker ps -a --filter "name=logoscore-saro" --filter "name=logoscore-raya" --filter "name=nwaku-bootstrap" -q); do
             name=$(docker inspect --format '{{.Name}}' "$c" | tr -d '/')
-            docker logs "$c" > "${{ runner.temp }}/integration-logs/${name}.log" 2>&1 || true
+            docker logs "$c" > "${{ runner.temp }}/e2e-logs/${name}.log" 2>&1 || true
           done
 
       - name: Upload daemon logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: integration-test-logs
-          path: ${{ runner.temp }}/integration-logs/*.log
+          name: e2e-test-logs
+          path: ${{ runner.temp }}/e2e-logs/*.log
           retention-days: 7

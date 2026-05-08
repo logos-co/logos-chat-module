@@ -8,11 +8,28 @@ from typing import Any
 from logoscore import LogoscoreClient
 from logos_integration_test_framework import subscribe
 
+from _constants import CHAT_CLUSTER_ID, CHAT_SHARD_ID
+
 MODULE = "chat_module"
 
 # Grace before triggering, so `logoscore watch` subprocess is live —
 # events fired in that window are lost.
 SUBSCRIBE_GRACE_S = 0.4
+
+
+def make_chat_config(name: str, port: int, bootstrap_enr: str) -> str:
+    """Build the JSON config for `chat_module.initChat`.
+
+    Cluster + shard must match the bootstrap nwaku's --preset/--shard, otherwise
+    the pubsub topic /waku/2/rs/{cluster}/{shard} won't line up across containers.
+    """
+    return json.dumps({
+        "name": name,
+        "port": port,
+        "clusterId": CHAT_CLUSTER_ID,
+        "shardId": CHAT_SHARD_ID,
+        "staticPeers": [bootstrap_enr],
+    })
 
 
 def hex_encode(s: str) -> str:
@@ -89,8 +106,8 @@ def extract_message_content(payload: dict[str, Any]) -> str:
 class ChatUser:
     """One initialised, started chat client with its identity exposed.
 
-    `installation_name` is the configJson `name` ("Alice"/"Bob") returned by
-    `chat_get_id` — NOT a libp2p peerId. Log correlation only, not routable.
+    `installation_name` is the configJson `name` (e.g. "Saro", "Raya") returned
+    by `chat_get_id` — NOT a libp2p peerId. Log correlation only, not routable.
     """
 
     client: LogoscoreClient
