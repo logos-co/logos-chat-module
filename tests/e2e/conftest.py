@@ -202,6 +202,12 @@ def chat_user_factory(
                 container_name=container_name,
                 network=shared_docker_network,
                 startup_timeout=60.0,           # cold-start liblogoschat can take 30s+
+                # `--verbose` flips logoscore's qInstallMessageHandler to forward
+                # qDebug/qInfo/qWarning to stderr (else suppressed). We need this
+                # to see the SDK's RPC trace inside the daemon when investigating
+                # why a `call` returns METHOD_FAILED — without it docker logs
+                # only contain the plugin's own fprintf lines.
+                extra_args=["--verbose"],
             ))
             # stack.callback runs LIFO before daemon teardown, so logs are
             # captured even when the test fails after start.
