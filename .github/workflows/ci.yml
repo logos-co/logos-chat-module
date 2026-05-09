@@ -84,12 +84,15 @@ jobs:
         # LogoscoreClient.call/subscribe shell out to a host-side `logoscore`
         # binary; the docker image only provides the daemon. We need a CLI
         # that reads `client/config.json` (auto-emitted by LogoscoreDockerDaemon).
-        # logos-logoscore-cli master still uses the old `daemon.json` +
-        # `isPidAlive(pid)` connect path which doesn't work for a containerised
-        # daemon. PR #22 rewrites connect() to the new schema — pinned to its
-        # head SHA below; bump to merged-master SHA once it lands.
+        #
+        # Pinned to the SAME commit as the daemon inside the smoke image
+        # (logos-logoscore-py@aa45db52 → flake.lock → logos-logoscore-cli@5a1cf746).
+        # Host CLI and daemon are both built from this repo, so version drift
+        # between the two will silently break the RPC/transport handshake
+        # (e.g. `callModuleMethod` returning a non-QJsonObject → exit 4).
+        # Bump this pin together with the smoke-image SHA above (line 76).
         run: |
-          nix build -L --out-link /tmp/logoscore-cli "github:logos-co/logos-logoscore-cli/9f56e02b5c4f446f77616b50850854927096a09d#cli"
+          nix build -L --out-link /tmp/logoscore-cli "github:logos-co/logos-logoscore-cli/5a1cf746e841e8e8a8fd48333cff55bd12c45c52#cli"
           echo "/tmp/logoscore-cli/bin" >> $GITHUB_PATH
 
       - uses: actions/setup-python@v5
