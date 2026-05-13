@@ -3,6 +3,8 @@
 #include <functional>
 #include <string>
 
+#include <QObject>
+
 extern "C" {
 #include "lib/liblogoschat.h"
 }
@@ -69,6 +71,14 @@ public:
     /// Call this to emit named events to other modules / the host application.
     /// Data is a JSON-encoded string (object or array).
     std::function<void(const std::string& eventName, const std::string& data)> emitEvent;
+
+    /// QObject anchor used as the receiver for deferred-emit posts inside
+    /// libchat callbacks (see chat_module_plugin.cpp:deferredEmit). When
+    /// this ChatModuleImpl is destroyed the anchor is destroyed too, so
+    /// any pending `QMetaObject::invokeMethod(..., Qt::QueuedConnection)`
+    /// targeting it is dropped by Qt — preventing use-after-free of a
+    /// captured `impl` pointer if a callback fires shortly before teardown.
+    QObject* emitRouter() { return &m_emitRouter; }
 
     // -------------------------------------------------------------------------
     // Client Lifecycle
@@ -311,6 +321,10 @@ public:
 
 private:
     void* chatCtx;
+
+    /// Receiver for `QMetaObject::invokeMethod(..., Qt::QueuedConnection)`
+    /// in `deferredEmit`. See the accessor `emitRouter()` above.
+    QObject m_emitRouter;
 
     static void init_callback(int callerRet, const char* msg, size_t len, void* userData);
     static void start_callback(int callerRet, const char* msg, size_t len, void* userData);
