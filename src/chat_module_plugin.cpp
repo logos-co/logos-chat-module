@@ -2,7 +2,44 @@
 #include <cstdio>
 #include <cstring>
 #include <chrono>
+#include <string>
+#include <utility>
 #include <nlohmann/json.hpp>
+#include <QMetaObject>
+
+namespace {
+// Post an emitEvent call through the plugin host's event loop so it
+// fires after the current synchronous stack unwinds.
+//
+// Every libchat callback (init/start/stop/destroy/get_id/...) is invoked
+// synchronously from inside the corresponding libchat C API call (e.g.
+// chat_new, chat_start), which is itself invoked synchronously from a
+// LOGOS_METHOD on ChatModuleImpl. The plugin host's Q_INVOKABLE slot
+// is still on the stack at that point; the host thread cannot reach
+// the next event-loop iteration (which is when QLocalSocket flushes
+// the QRO reply packet) until every synchronous emit has unwound.
+// On slow runners (GHA ubuntu-latest) the resulting flush starvation
+// exceeds the caller's 20s waitForFinished deadline → exit 4.
+//
+// Deferring via QueuedConnection lets the Q_INVOKABLE slot return
+// promptly; the emit runs on the next event-loop iteration after the
+// reply has been flushed, restoring normal ordering.
+//
+// Receiver is `impl->emitRouter()` (a QObject member of `impl`). When
+// the impl is destroyed the router is destroyed too, and Qt drops any
+// pending queued metacall — so the captured raw `impl` pointer below
+// cannot be dereferenced after free.
+void deferredEmit(ChatModuleImpl* impl, const char* eventName, std::string payload)
+{
+    QMetaObject::invokeMethod(
+        impl->emitRouter(),
+        [impl, name = std::string(eventName), payload = std::move(payload)]() {
+            impl->emitEvent(name, payload);
+        },
+        Qt::QueuedConnection
+    );
+}
+}  // namespace
 
 static std::string isoTimestamp()
 {
@@ -51,7 +88,7 @@ void ChatModuleImpl::init_callback(int callerRet, const char* msg, size_t len, v
     ev["message"] = message;
     ev["timestamp"] = isoTimestamp();
 
-    impl->emitEvent("chatInitResult", ev.dump());
+    deferredEmit(impl, "chatInitResult", ev.dump());
 }
 
 void ChatModuleImpl::start_callback(int callerRet, const char* msg, size_t len, void* userData)
@@ -72,7 +109,7 @@ void ChatModuleImpl::start_callback(int callerRet, const char* msg, size_t len, 
     ev["message"] = message;
     ev["timestamp"] = isoTimestamp();
 
-    impl->emitEvent("chatStartResult", ev.dump());
+    deferredEmit(impl, "chatStartResult", ev.dump());
 }
 
 void ChatModuleImpl::stop_callback(int callerRet, const char* msg, size_t len, void* userData)
@@ -93,7 +130,7 @@ void ChatModuleImpl::stop_callback(int callerRet, const char* msg, size_t len, v
     ev["message"] = message;
     ev["timestamp"] = isoTimestamp();
 
-    impl->emitEvent("chatStopResult", ev.dump());
+    deferredEmit(impl, "chatStopResult", ev.dump());
 }
 
 void ChatModuleImpl::destroy_callback(int callerRet, const char* msg, size_t len, void* userData)
@@ -114,7 +151,7 @@ void ChatModuleImpl::destroy_callback(int callerRet, const char* msg, size_t len
         ev["message"] = message;
         ev["timestamp"] = isoTimestamp();
 
-        impl->emitEvent("chatDestroyResult", ev.dump());
+        deferredEmit(impl, "chatDestroyResult", ev.dump());
     }
 }
 
@@ -151,7 +188,7 @@ void ChatModuleImpl::event_callback(int callerRet, const char* msg, size_t len, 
         ev["payload"] = message;
         ev["timestamp"] = isoTimestamp();
 
-        impl->emitEvent(eventName, ev.dump());
+        deferredEmit(impl, eventName.c_str(), ev.dump());
     }
 }
 
@@ -172,7 +209,7 @@ void ChatModuleImpl::get_id_callback(int callerRet, const char* msg, size_t len,
         ev["clientId"] = message;
         ev["timestamp"] = isoTimestamp();
 
-        impl->emitEvent("chatGetIdResult", ev.dump());
+        deferredEmit(impl, "chatGetIdResult", ev.dump());
     }
 }
 
@@ -193,7 +230,7 @@ void ChatModuleImpl::list_conversations_callback(int callerRet, const char* msg,
         ev["conversations"] = message;
         ev["timestamp"] = isoTimestamp();
 
-        impl->emitEvent("chatListConversationsResult", ev.dump());
+        deferredEmit(impl, "chatListConversationsResult", ev.dump());
     }
 }
 
@@ -214,7 +251,7 @@ void ChatModuleImpl::get_conversation_callback(int callerRet, const char* msg, s
         ev["conversation"] = message;
         ev["timestamp"] = isoTimestamp();
 
-        impl->emitEvent("chatGetConversationResult", ev.dump());
+        deferredEmit(impl, "chatGetConversationResult", ev.dump());
     }
 }
 
@@ -236,7 +273,7 @@ void ChatModuleImpl::new_private_conversation_callback(int callerRet, const char
     ev["conversation"] = conversationJson;
     ev["timestamp"] = isoTimestamp();
 
-    impl->emitEvent("chatNewPrivateConversationResult", ev.dump());
+    deferredEmit(impl, "chatNewPrivateConversationResult", ev.dump());
 }
 
 void ChatModuleImpl::send_message_callback(int callerRet, const char* msg, size_t len, void* userData)
@@ -258,7 +295,7 @@ void ChatModuleImpl::send_message_callback(int callerRet, const char* msg, size_
     ev["result"] = resultJson;
     ev["timestamp"] = isoTimestamp();
 
-    impl->emitEvent("chatSendMessageResult", ev.dump());
+    deferredEmit(impl, "chatSendMessageResult", ev.dump());
 }
 
 void ChatModuleImpl::get_identity_callback(int callerRet, const char* msg, size_t len, void* userData)
@@ -278,7 +315,7 @@ void ChatModuleImpl::get_identity_callback(int callerRet, const char* msg, size_
         ev["identity"] = message;
         ev["timestamp"] = isoTimestamp();
 
-        impl->emitEvent("chatGetIdentityResult", ev.dump());
+        deferredEmit(impl, "chatGetIdentityResult", ev.dump());
     }
 }
 
@@ -300,7 +337,7 @@ void ChatModuleImpl::create_intro_bundle_callback(int callerRet, const char* msg
     ev["introBundle"] = bundleStr;
     ev["timestamp"] = isoTimestamp();
 
-    impl->emitEvent("chatCreateIntroBundleResult", ev.dump());
+    deferredEmit(impl, "chatCreateIntroBundleResult", ev.dump());
 }
 
 // ============================================================================
