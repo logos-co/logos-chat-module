@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from logoscore import LogoscoreClient
-from logos_integration_test_framework import subscribe
+from logos_integration_test_framework import EventTimeout, subscribe
 
 from libs.constants import CHAT_CLUSTER_ID, CHAT_SHARD_ID
 
@@ -71,6 +72,29 @@ def wait_event(waiter: Any, event_name: str, *, timeout: float) -> dict[str, Any
     return waiter.next(predicate=lambda e: e.get("event") == event_name, timeout=timeout)
 
 
+def assert_no_event(
+    client: LogoscoreClient,
+    *,
+    event: str,
+    trigger: Callable[[], Any],
+    timeout: float,
+    op: str,
+) -> Any:
+    """Subscribe BEFORE firing `trigger`, then assert no matching event arrives.
+
+    Returns `trigger`'s return value so the caller can also assert the sync
+    return contract.
+    """
+    with subscribe(client, MODULE, event) as w:
+        time.sleep(SUBSCRIBE_GRACE_S)
+        result = trigger()
+        try:
+            evt = w.next(predicate=lambda e: e.get("event") == event, timeout=timeout)
+        except EventTimeout:
+            return result
+        raise AssertionError(f"{op}: unexpected {event!r} event arrived: {evt!r}")
+
+
 def parse_event(event: dict[str, Any]) -> dict[str, Any]:
     """Parse the JSON payload at `arg0` into the named-fields dict the plugin emits.
 
@@ -127,6 +151,19 @@ class ChatUser:
     label: str
 
 
+class ChatUserFactory(Protocol):
+    """Type for the `chat_user_factory` fixture: spawn daemon + setup_chat_user."""
+
+    def __call__(self, name: str, port: int) -> ChatUser: ...
+
+
+class BareChatClientFactory(Protocol):
+    """Type for the `bare_chat_client_factory` fixture: daemon + load_module,
+    no initChat. Used for negative-path tests."""
+
+    def __call__(self, name: str) -> LogoscoreClient: ...
+
+
 def setup_chat_user(
     client: LogoscoreClient,
     *,
@@ -161,7 +198,14 @@ def setup_chat_user(
         client, "getId",
         event="chatGetIdResult", timeout=10.0,
     )
-    installation_name = str(parse_event(id_evt)["clientId"])
+    id_body = parse_event(id_evt)
+    # Pin the JSON shape — a `clientId` rename would KeyError below anyway;
+    # this catches the silent case where `timestamp` is dropped.
+    if set(id_body.keys()) != {"clientId", "timestamp"}:
+        raise AssertionError(
+            f"chatGetIdResult shape drift for {label}: {id_body!r}"
+        )
+    installation_name = str(id_body["clientId"])
 
     bundle_evt = call_and_wait(
         client, "createIntroBundle",

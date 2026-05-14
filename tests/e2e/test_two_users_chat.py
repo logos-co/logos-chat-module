@@ -97,6 +97,13 @@ def test_two_users_can_chat(saro: ChatUser, raya: ChatUser) -> None:
         )
 
         first_msg = wait_event(nm_r, "chatNewMessage", timeout=20.0)
+        # Push events wrap libchat's payload as a *string* (consumers do two
+        # json.loads). Pin this — without the assert, a regression surfaces
+        # as a cryptic TypeError from parse_push_payload.
+        assert isinstance(parse_event(first_msg)["payload"], str), (
+            f"chatNewMessage `payload` must be a JSON-encoded string, "
+            f"got {type(parse_event(first_msg)['payload']).__name__}"
+        )
         assert extract_message_content(parse_push_payload(first_msg)) == MSG_S1
 
     _send_and_verify(raya, convo_id_raya, saro, MSG_R1, "Raya.sendMessage #1")
