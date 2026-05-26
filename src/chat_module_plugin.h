@@ -3,12 +3,13 @@
 #include <functional>
 #include <string>
 
+#include <QObject>
+
 extern "C" {
 #include "lib/liblogoschat.h"
 }
 
 /**
- * @class ChatModuleImpl
  * @brief Pure C++ implementation of the Logos Chat module.
  *
  * Most operations are asynchronous. For these methods, the call returns
@@ -71,6 +72,14 @@ public:
     /// Data is a JSON-encoded string (object or array).
     std::function<void(const std::string& eventName, const std::string& data)> emitEvent;
 
+    /// QObject anchor used as the receiver for deferred-emit posts inside
+    /// libchat callbacks (see chat_module_plugin.cpp:deferredEmit). When
+    /// this ChatModuleImpl is destroyed the anchor is destroyed too, so
+    /// any pending `QMetaObject::invokeMethod(..., Qt::QueuedConnection)`
+    /// targeting it is dropped by Qt — preventing use-after-free of a
+    /// captured `impl` pointer if a callback fires shortly before teardown.
+    QObject* emitRouter() { return &m_emitRouter; }
+
     // -------------------------------------------------------------------------
     // Client Lifecycle
     // -------------------------------------------------------------------------
@@ -89,7 +98,8 @@ public:
      *       is a JSON object with fields: @c success (bool), @c statusCode (int),
      *       @c message (string), @c timestamp (ISO-8601).
      */
-    bool initChat(const std::string& configJson); // TODO: should not be async
+    // TODO: should not be async
+    bool initChat(const std::string& configJson);
 
     /**
      * @brief Starts the chat client and connects to the network.
@@ -117,7 +127,8 @@ public:
      *       with fields: @c success (bool), @c statusCode (int), @c message (string),
      *       @c timestamp (ISO-8601).
      */
-    bool stopChat(); // TODO: should not be async
+    // TODO: should not be async
+    bool stopChat();
 
     /**
      * @brief Deallocates the chat client.
@@ -132,7 +143,8 @@ public:
      *       — only emitted when the SDK provides a response message — with fields:
      *       @c message (string), @c timestamp (ISO-8601).
      */
-    bool destroyChat(); // TODO: should not be async
+    // TODO: should not be async
+    bool destroyChat();
 
     /**
      * @brief Subscribes to push events from the SDK.
@@ -176,7 +188,8 @@ public:
      *       and in those cases no @c chatGetIdResult event is emitted. Callers
      *       must not assume that a result is always delivered.
      */
-    bool getId(); // TODO: should not be async
+    // TODO: should not be async
+    bool getId();
 
     // -------------------------------------------------------------------------
     // Conversation Operations
@@ -200,7 +213,8 @@ public:
      *          firing; instead, use the synchronous return value from this method
      *          together with appropriate timeout or fallback handling.
      */
-    bool listConversations(); // TODO: should not be async
+    // TODO: should not be async
+    bool listConversations();
 
     /**
      * @brief Retrieves a single conversation by its identifier.
@@ -222,7 +236,8 @@ public:
      *            synchronous return value or their own timeout / error handling
      *            strategy.
      */
-    bool getConversation(const std::string& convoId); // TODO: should not be async
+    // TODO: should not be async
+    bool getConversation(const std::string& convoId);
 
     /**
      * @brief Starts a new private (1-to-1) conversation with a remote contact.
@@ -242,8 +257,9 @@ public:
      *       @c success (bool), @c statusCode (int), @c conversation (string —
      *       JSON object), @c timestamp (ISO-8601).
      */
-    bool newPrivateConversation(const std::string& introBundleStr, const std::string& contentHex); // TODO: should not be async
-                                                                                                   // TODO: content should accept bytes not hex
+    // TODO: should not be async
+    // TODO: content should accept bytes not hex
+    bool newPrivateConversation(const std::string& introBundleStr, const std::string& contentHex);
 
     /**
      * @brief Sends a message to an existing conversation.
@@ -258,7 +274,8 @@ public:
      *       @c success (bool), @c statusCode (int), @c result (string — may
      *       include the assigned message ID), @c timestamp (ISO-8601).
      */
-    bool sendMessage(const std::string& convoId, const std::string& contentHex); // TODO: content should accept bytes not hex
+    // TODO: content should accept bytes not hex
+    bool sendMessage(const std::string& convoId, const std::string& contentHex);
 
     // -------------------------------------------------------------------------
     // Identity Operations
@@ -281,7 +298,8 @@ public:
      *          delivered and should implement appropriate timeouts or alternative
      *          error handling.
      */
-    bool getIdentity(); // TODO: Deprecate; This should not be used.
+    // TODO: Deprecate; This should not be used.
+    bool getIdentity();
 
     /**
      * @brief Creates a new introduction bundle to share with other users.
@@ -298,10 +316,15 @@ public:
      *       @c success (bool), @c statusCode (int), @c introBundle (string),
      *       @c timestamp (ISO-8601).
      */
-    bool createIntroBundle(); // TODO: should not be async
+    // TODO: should not be async
+    bool createIntroBundle();
 
 private:
     void* chatCtx;
+
+    /// Receiver for `QMetaObject::invokeMethod(..., Qt::QueuedConnection)`
+    /// in `deferredEmit`. See the accessor `emitRouter()` above.
+    QObject m_emitRouter;
 
     static void init_callback(int callerRet, const char* msg, size_t len, void* userData);
     static void start_callback(int callerRet, const char* msg, size_t len, void* userData);
