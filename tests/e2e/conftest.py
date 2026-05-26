@@ -144,6 +144,7 @@ def nwaku_bootstrap(shared_docker_network: str) -> Iterator[str]:
         "-p", f"127.0.0.1:{rest_host_port}:{BOOTSTRAP_REST_PORT}",
         NWAKU_IMAGE,
         "--preset=logos.dev", "--shard=1",
+        "--filter=true", "--lightpush=true",
         f"--nodekey={nodekey}",
         f"--tcp-port={BOOTSTRAP_TCP_PORT}",
         f"--nat=extip:{BOOTSTRAP_IP}",
