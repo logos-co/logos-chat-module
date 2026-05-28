@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import time
 
+import pytest
 from logos_integration_test_framework import subscribe
 
 from libs.helpers import (
@@ -20,6 +21,10 @@ from libs.helpers import (
 )
 
 
+@pytest.mark.xfail(
+    reason="https://github.com/logos-messaging/libchat/issues/121",
+    strict=True,
+)
 def test_delivery_ack_received(saro: ChatUser, raya: ChatUser) -> None:
     # Bootstrap an X3DH conversation. We need an established conversation so
     # `sendMessage` from Saro to Raya goes over the wire and produces a
