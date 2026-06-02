@@ -1,8 +1,8 @@
 //! Background worker that processes delivery_module's events.
 //!
 //! Two events drive the worker:
-//! * `messageReceived` — inbound envelopes; pass to `ChatClient::receive`
-//!   after base64-decoding.
+//! * `messageReceived` — inbound envelopes; decode the payload bytes and
+//!   pass to `ChatClient::receive`.
 //! * `connectionStateChanged` — drives local `delivery_state` so consumers
 //!   don't have to poll delivery_module.
 //!
@@ -19,8 +19,6 @@ use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use base64::engine::general_purpose::STANDARD as BASE64;
-use base64::Engine;
 use logos_rust_sdk::EventData;
 
 use crate::actions::{process_payload, set_delivery_state};
@@ -51,11 +49,7 @@ fn run(
 ) {
     while !stop.load(Ordering::Relaxed) {
         match messages.recv_timeout(POLL_INTERVAL) {
-            Ok(evt) => {
-                let topic = evt.get_str(1).unwrap_or("");
-                let payload_b64 = evt.get_str(2).unwrap_or("");
-                handle_message_received(topic, payload_b64);
-            }
+            Ok(evt) => handle_message_received(&evt),
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => return,
         }
@@ -66,9 +60,8 @@ fn run(
             loop {
                 match events.try_recv() {
                     Ok(evt) => {
-                        let status = evt.get_str(0).unwrap_or("").to_owned();
-                        let detail = evt.get_str(1).unwrap_or("").to_owned();
-                        handle_connection_state(&status, &detail);
+                        let status = evt.get_str(0).unwrap_or("");
+                        handle_connection_state(status);
                     }
                     Err(TryRecvError::Empty) => break,
                     Err(TryRecvError::Disconnected) => {
@@ -84,24 +77,24 @@ fn run(
     }
 }
 
-fn handle_message_received(topic: &str, payload_b64: &str) {
+fn handle_message_received(evt: &EventData) {
+    let topic = evt.get_str(1).unwrap_or("");
     if !topic.starts_with(INBOUND_TOPIC_PREFIX) {
         return;
     }
-    let bytes = match BASE64.decode(payload_b64) {
-        Ok(b) => b,
-        Err(_) => {
-            eprintln!("chat_module inbound: payload is not valid base64");
-            return;
-        }
+    let Some(bytes) = evt.get_bytes(2) else {
+        eprintln!("chat_module inbound: messageReceived payload missing or not base64");
+        return;
     };
 
     let _ = module().with_state_mut(|ms| process_payload(ms, &bytes));
 }
 
-fn handle_connection_state(status: &str, detail: &str) {
+fn handle_connection_state(status: &str) {
+    // delivery_module's `connectionStateChanged` carries only a status (its
+    // second field is a timestamp, not a human detail), so detail stays empty.
     let mapped = map_connection_status(status);
-    let _ = module().with_state_mut(|ms| set_delivery_state(ms, mapped, detail));
+    let _ = module().with_state_mut(|ms| set_delivery_state(ms, mapped, ""));
 }
 
 /// Unknown statuses map to `Error` so a degraded state isn't silently

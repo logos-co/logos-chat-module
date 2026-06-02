@@ -254,7 +254,6 @@ dependencies = [
 name = "chat_module"
 version = "1.0.0"
 dependencies = [
- "base64",
  "cbindgen",
  "client",
  "logos-rust-sdk",
@@ -1345,8 +1344,9 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 [[package]]
 name = "logos-rust-sdk"
 version = "0.2.0"
-source = "git+https://github.com/logos-co/logos-rust-sdk.git?branch=new_api_test#c178c7ede42151044aa273fe9d1f22cea351d3cc"
+source = "git+https://github.com/logos-co/logos-rust-sdk.git?branch=binary-params#a6106e61e5a148d78b9a7600c0b5202b17d8bb83"
 dependencies = [
+ "base64",
  "serde",
  "serde_json",
 ]

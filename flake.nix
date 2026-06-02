@@ -4,9 +4,9 @@
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder/c_ffi";
     logos-module-builder.inputs.logos-cpp-sdk.url = "github:logos-co/logos-cpp-sdk/c_ffi";
-    logos-module-client.url = "github:logos-co/logos-module-client/new_api_test";
-    logos-rust-sdk.url = "github:logos-co/logos-rust-sdk/new_api_test";
-    logos-delivery-module.url = "github:logos-co/logos-delivery-module";
+    logos-module-client.url = "github:logos-co/logos-module-client/binary-params";
+    logos-rust-sdk.url = "github:logos-co/logos-rust-sdk/binary-params";
+    logos-delivery-module.url = "github:logos-co/logos-delivery-module/v0.1.2";
     nixpkgs.follows = "logos-module-builder/nixpkgs";
   };
 
@@ -55,7 +55,8 @@
                 "crypto-0.1.0"          = "sha256-dpT176lvJDnUrXdeHsv4UqwY67XD/Bu6pfnzoiLtL7I=";
                 "double-ratchets-0.0.1" = "sha256-dpT176lvJDnUrXdeHsv4UqwY67XD/Bu6pfnzoiLtL7I=";
                 "libchat-0.1.0"         = "sha256-dpT176lvJDnUrXdeHsv4UqwY67XD/Bu6pfnzoiLtL7I=";
-                "logos-rust-sdk-0.2.0"  = "sha256-iX2aOiuZ9mpjaFBWAx0B/B/108GWPmFu6vwkw/D6vLA=";
+                # binary-params rev — refresh with the hash `nix build` prints.
+                "logos-rust-sdk-0.2.0"  = pkgs.lib.fakeHash;
                 "storage-0.1.0"         = "sha256-dpT176lvJDnUrXdeHsv4UqwY67XD/Bu6pfnzoiLtL7I=";
               };
             };

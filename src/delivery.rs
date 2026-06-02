@@ -1,9 +1,7 @@
 //! `DeliveryService` impl that forwards `publish()` to delivery_module.
 
-use base64::engine::general_purpose::STANDARD as BASE64;
-use base64::Engine;
 use client::{AddressedEnvelope, DeliveryService};
-use logos_rust_sdk::LogosModuleSDK;
+use logos_rust_sdk::{LogosModuleSDK, Param};
 
 pub fn content_topic_for(delivery_address: &str) -> String {
     format!("/logos-chat/1/{}/proto", delivery_address)
@@ -17,21 +15,19 @@ impl DeliveryService for SdkDelivery {
     type Error = String;
 
     fn publish(&mut self, envelope: AddressedEnvelope) -> Result<(), String> {
+        // The recipient's delivery address selects the content topic; the
+        // encrypted envelope travels as a binary param (`Param::bytes` base64-
+        // encodes it for the IPC channel, delivery_module receives raw bytes).
         let topic = content_topic_for(&envelope.delivery_address);
-        // envelope.data is a libchat-encrypted ciphertext blob — arbitrary
-        // binary, not UTF-8. The SDK marshals params as JSON (which requires
-        // valid UTF-8) and delivery_module::send takes QString (which requires
-        // valid UTF-16), so the bytes need a string-safe wrapper to cross both
-        // boundaries. inbound.rs decodes on the receive side.
-        //
-        // TODO: drop once delivery_module exposes binary send / messageReceived
-        // (QByteArray) and logos-rust-sdk / logos-cpp-sdk add a bytes Param type.
-        let payload_b64 = BASE64.encode(&envelope.data);
 
         let sdk = LogosModuleSDK::new();
         let delivery = sdk.plugin("delivery_module");
 
-        match delivery.call_sync("send", &[topic.as_str(), payload_b64.as_str()]) {
+        let params = [
+            Param::string("arg0", topic),
+            Param::bytes("arg1", &envelope.data),
+        ];
+        match delivery.call_sync_with_params("send", &params) {
             Ok(r) if r.success => Ok(()),
             Ok(r) => Err(format!("delivery_module.send failed: {}", r.message)),
             Err(e) => Err(format!("delivery_module IPC error: {e}")),
