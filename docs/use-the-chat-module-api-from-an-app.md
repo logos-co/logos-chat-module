@@ -4,29 +4,28 @@
 
 ## 1. Outcome and purpose
 
-- **What the user achieves:** A developer builds a Logos module that calls the Logos Chat module API from C++ to manage a chat identity, exchange introduction bundles, open private 1:1 conversations, and send/receive end-to-end encrypted messages on the Logos network.
-- **Why it matters:** Proves the Logos Chat module is functioning and gives application developers a working pattern for integrating private 1:1 messaging into their own modules — without depending on `liblogoschat` directly.
+- **What the user achieves:** A developer builds a Logos module that calls the Logos Chat module API to exchange introduction bundles, open private 1:1 conversations, and send/receive end-to-end encrypted messages on the Logos network.
+- **Why it matters:** Proves the Logos Chat module is functioning and gives application developers a working pattern for integrating private 1:1 e2ee messaging into their own modules — without direct dependencies neither on `liblogoschat` nor `logos-delivery`.
 - **Key components:**
-  - `logos-chat-module` (repo `logos-chatsdk-module`) — the Logos module exposing the chat API as invokable methods + async events. This doc targets **tag `v0.1.0`**.
+  - `logos-chat-module` — the Logos module exposing the chat API as invokable methods + async events. This doc targets tag `v0.1.0`.
   - `logos-chat` — underlying `liblogoschat` implementation, a transitive dependency resolved automatically by Nix and bundled alongside the plugin.
-  - `logos-chat-ui` (repo `logos-chatsdk-ui`) — the reference UI module that follows this exact pattern end-to-end (referenced in §7).
+  - `logos-chat-ui` — the reference UI module that follows this exact pattern end-to-end 
 
 ## 2. Scope
 
 - **Repositories:**
-  - https://github.com/logos-co/logos-chatsdk-module (pinned to [`v0.1.0`](https://github.com/logos-co/logos-chatsdk-module/tree/v0.1.0))
-  - https://github.com/logos-messaging/logos-chat
+  - https://github.com/logos-co/logos-chat-module @ v0.1.0
 - **Runtime target:** Testnet v0.1 (the `logos.dev` network — Waku `clusterId 2` / `shardId 1`)
 - **Prerequisites:**
-  - OS: macOS (aarch64 or x86_64) or Linux (aarch64 or x86_64)
+  - MacOS (aarch64 or x86_64) or Linux (aarch64 or x86_64)
+  - Network access so the two instances can reach each other
   - Nix with flakes enabled
-  - Advanced: a non-Nix build (CMake ≥ 3.14, Ninja, pkg-config, Qt6) is possible but requires hand-building the Logos toolchain — not covered here.
 
 ## 3. Happy path
 
 ### Step 1: Create a Logos module
 
-Scaffold a new module using [logos-module-builder](https://github.com/logos-co/logos-module-builder). For a full walkthrough, see the [Logos module developer guide](https://github.com/logos-co/logos-tutorial/blob/master/logos-developer-guide.md). For a complete worked example that follows this pattern, see [`logos-chatsdk-ui`](https://github.com/logos-co/logos-chatsdk-ui).
+Scaffold a new module using [logos-module-builder](https://github.com/logos-co/logos-module-builder). For a full walkthrough, see the [Logos module developer guide](https://github.com/logos-co/logos-tutorial/blob/master/logos-developer-guide.md). For a complete worked example that follows this pattern, see [`logos-chat-ui`](https://github.com/logos-co/logos-chat-ui).
 
 ### Step 2: Declare `chat_module` as a dependency
 
@@ -45,7 +44,7 @@ In `flake.nix`, add a matching input. **Pin to the released tag** so the doc and
 ```nix
 inputs = {
   logos-module-builder.url = "github:logos-co/logos-module-builder";
-  chat_module.url = "github:logos-co/logos-chatsdk-module/v0.1.0";
+  chat_module.url = "github:logos-co/logos-chat-module/v0.1.0";
 };
 ```
 
@@ -54,7 +53,7 @@ inputs = {
 ### Step 3: Call the chat module API
 
 > [!TIP]
-> For the full API reference — every method, async event name, and per-event `data` layout — see [`src/chat_module_plugin.h`](https://github.com/logos-co/logos-chatsdk-module/blob/v0.1.0/src/chat_module_plugin.h).
+> For the full API reference — every method, async event name, and per-event `data` layout — see [`src/chat_module_plugin.h`](https://github.com/logos-co/logos-chat-module/blob/v0.1.0/src/chat_module_plugin.h).
 
 In your module's `initLogos()`, construct `LogosModules` with the provided `LogosAPI*`. `LogosModules` is generated at build time by `logos-module-builder`; pull it in via the umbrella header and keep it on the plugin as a member.
 
@@ -71,6 +70,9 @@ void MyPlugin::initLogos(LogosAPI* api) {
 ```
 
 Unlike a synchronous API, **every chat method returns `bool` immediately** — `true` means the request was accepted, `false` means it was rejected before being sent (typically because the client is not initialised yet). The actual result arrives later as a named event. Drive the module through the following sequence.
+
+> [!NOTE]
+> The `bool` / `QString` / `.on(name, QVariantList)` surface shown here is the **Qt-typed wrapper** that `logos-module-builder` generates for a *legacy* module like `chat_module` v0.1.0 (its `metadata.json` has no `"interface"` field, so it defaults to `legacy`). This is what you get when your own module is the default (legacy) interface. If you build your module as `"interface": "universal"`, the generator emits std-typed wrappers instead (`std::string` args, `LogosResult` returns) — adjust the call sites accordingly.
 
 #### 1. Register event handlers (before starting)
 
@@ -186,15 +188,15 @@ nix build .#lgx        # package as .lgx for installation into logos-basecamp
 }
 ```
 
-| Field | Type | Notes |
-|---|---|---|
-| `name` | string | Identity name. `getId()` returns this string, **not** a libp2p peerId. |
-| `port` | int | Logos Delivery (Waku) TCP port. `0` or omitted picks a random port. |
-| `clusterId` | int | **Must be `2`** to reach the `logos.dev` network. |
-| `shardId` | int | **Must be `1`** to reach the `logos.dev` network. |
-| `staticPeers` | string[] | Optional bootstrap peer multiaddrs. |
+| Field         | Type     | Notes                                                               |
+| ------------- | -------- | ------------------------------------------------------------------- |
+| `name`        | string   | Identity name. `getId()` returns this string                        |
+| `port`        | int      | Logos Delivery (Waku) TCP port. `0` or omitted picks a random port. |
+| `clusterId`   | int      | **Must be `2`** to reach the `logos.dev` network.                   |
+| `shardId`     | int      | **Must be `1`** to reach the `logos.dev` network.                   |
+| `staticPeers` | string[] | Optional bootstrap peer multiaddrs.                                 |
 
-The pubsub topic is derived from `clusterId`/`shardId`, so they must match across all participants or messages won't propagate. For the config builder used by the reference UI, see [`ChatConfig.h`](https://github.com/logos-co/logos-chatsdk-ui/blob/v0.1.0/src/ChatConfig.h).
+The pubsub topic is derived from `clusterId`/`shardId`, so they must match across all participants or messages won't propagate. For the config builder used by the reference UI, see [`ChatConfig.h`](https://github.com/logos-co/logos-chat-ui/blob/v0.1.0/src/ChatConfig.h).
 
 ## 6. Known issues and troubleshooting
 
@@ -202,19 +204,11 @@ The pubsub topic is derived from `clusterId`/`shardId`, so they must match acros
    - Cause: the client is not initialised (or, for `startChat`, `initChat` has not completed).
    - Fix: call `initChat()` first and wait for `chatInitResult` with `success == true` before calling anything else.
 
-2. **A result event never arrives**
-   - Cause: `getId`, `listConversations`, `getConversation`, and `getIdentity` only emit their result event when the underlying SDK returns a non-empty payload. On empty results or some failures, no event fires even though the method returned `true`.
-   - Fix: don't rely on these events always firing — apply a timeout / fallback. See the per-method `@warning`/`@note` comments in `chat_module_plugin.h`.
-
-3. **Incoming messages are missed**
-   - Cause: `setEventCallback()` was not called, or handlers were registered after `startChat()`.
-   - Fix: register `on(...)` handlers and call `setEventCallback()` **before** `startChat()`.
-
-4. **Peers don't connect / messages don't propagate**
+2. **Peers don't connect / messages don't propagate**
    - Cause: mismatched `clusterId`/`shardId` (must be `2`/`1` for `logos.dev`).
    - Fix: use `clusterId: 2`, `shardId: 1`, and supply a reachable bootstrap peer if your network needs one.
 
-5. **Message content arrives garbled or empty**
+3. **Message content arrives garbled or empty**
    - Cause: `newPrivateConversation` and `sendMessage` take **hex-encoded** content; passing raw UTF-8 produces wrong bytes on the wire.
    - Fix: hex-encode outgoing content and hex-decode the `content` field of `chatNewMessage`.
 
@@ -226,17 +220,18 @@ The pubsub topic is derived from `clusterId`/`shardId`, so they must match acros
 
 ## 7. Additional context
 
-- **Complete example:** [`logos-chatsdk-ui`](https://github.com/logos-co/logos-chatsdk-ui) — the reference Qt/QML module. Its `ChatBackend` constructs `LogosModules`, registers the same `on(...)` handlers, and drives `initChat → setEventCallback → startChat → createIntroBundle → newPrivateConversation → sendMessage` exactly as above.
-- **Full API reference:** [`src/chat_module_plugin.h`](https://github.com/logos-co/logos-chatsdk-module/blob/v0.1.0/src/chat_module_plugin.h) contains Doxygen documentation for every method and event contract, including which calls are not guaranteed to emit a result.
+- **Complete example:** [`logos-chat-ui`](https://github.com/logos-co/logos-chat-ui) — the reference Qt/QML module. Its `ChatBackend` constructs `LogosModules`, registers the same `on(...)` handlers, and drives `initChat → setEventCallback → startChat → createIntroBundle → newPrivateConversation → sendMessage` exactly as above.
+- **Full API reference:** [`src/chat_module_plugin.h`](https://github.com/logos-co/logos-chat-module/blob/v0.1.0/src/chat_module_plugin.h) contains Doxygen documentation for every method and event contract, including which calls are not guaranteed to emit a result.
 - **Module development guide:** [`logos-developer-guide.md`](https://github.com/logos-co/logos-tutorial/blob/master/logos-developer-guide.md) covers scaffolding, inter-module communication, and the generated wrappers.
-- **Hardware requirements:** Standard developer machine. No special hardware required.
-- **Estimated time to complete:** ~10 minutes of hands-on work, excluding Nix build time.
-- **Security notes:** Identity and conversations are **ephemeral** — they exist only for the lifetime of the client and are lost on `stopChat()`/restart. Message content is end-to-end encrypted by `liblogoschat`; the hex encoding is a wire-format detail, not a security boundary.
+
+- **Hardware requirements:** Standard developer machine. No special hardware required. Minimum ~1 GB RAM for the node process.
+
+- **Security notes:** Identity and conversations are **ephemeral** — they exist only for the lifetime of the client and are lost on `stopChat()`/restart.
 
 ## References
 
-- `logos-chat-module` (this doc targets [`v0.1.0`](https://github.com/logos-co/logos-chatsdk-module/tree/v0.1.0)): https://github.com/logos-co/logos-chatsdk-module
-- `logos-chat-ui` (reference UI / worked example): https://github.com/logos-co/logos-chatsdk-ui
+- `logos-chat-module` (this doc targets [`v0.1.0`](https://github.com/logos-co/logos-chat-module/tree/v0.1.0)): https://github.com/logos-co/logos-chat-module
+- `logos-chat-ui` (reference UI / worked example): https://github.com/logos-co/logos-chat-ui
 - `logos-module-builder` (build system + scaffolding): https://github.com/logos-co/logos-module-builder
 - `logos-tutorial` (module development walkthrough): https://github.com/logos-co/logos-tutorial
 - `logos-chat` (underlying `liblogoschat` implementation): https://github.com/logos-messaging/logos-chat
