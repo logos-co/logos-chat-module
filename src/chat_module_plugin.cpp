@@ -8,7 +8,7 @@
 #include <QMetaObject>
 
 namespace {
-// Post an emitEvent call through the plugin host's event loop so it
+// Post a typed-event emit through the plugin host's event loop so it
 // fires after the current synchronous stack unwinds.
 //
 // Every libchat callback (init/start/stop/destroy/get_id/...) is invoked
@@ -27,17 +27,15 @@ namespace {
 //
 // Receiver is `impl->emitRouter()` (a QObject member of `impl`). When
 // the impl is destroyed the router is destroyed too, and Qt drops any
-// pending queued metacall — so the captured raw `impl` pointer below
-// cannot be dereferenced after free.
-void deferredEmit(ChatModuleImpl* impl, const char* eventName, std::string payload)
+// pending queued metacall — so the captured raw `impl` pointer in the
+// emit closure cannot be dereferenced after free.
+template <typename EmitFn>
+void deferredEmit(ChatModuleImpl* impl, EmitFn&& emitFn)
 {
     QMetaObject::invokeMethod(
         impl->emitRouter(),
-        [impl, name = std::string(eventName), payload = std::move(payload)]() {
-            impl->emitEvent(name, payload);
-        },
-        Qt::QueuedConnection
-    );
+        std::forward<EmitFn>(emitFn),
+        Qt::QueuedConnection);
 }
 }  // namespace
 
@@ -81,14 +79,11 @@ void ChatModuleImpl::init_callback(int callerRet, const char* msg, size_t len, v
     }
 
     std::string message = (msg && len > 0) ? std::string(msg, len) : "";
+    bool success = (callerRet == RET_OK);
 
-    nlohmann::json ev;
-    ev["success"] = (callerRet == RET_OK);
-    ev["statusCode"] = callerRet;
-    ev["message"] = message;
-    ev["timestamp"] = isoTimestamp();
-
-    deferredEmit(impl, "chatInitResult", ev.dump());
+    deferredEmit(impl, [impl, success, callerRet, message, ts = isoTimestamp()]() {
+        impl->chatInitResult(success, callerRet, message, ts);
+    });
 }
 
 void ChatModuleImpl::start_callback(int callerRet, const char* msg, size_t len, void* userData)
@@ -102,14 +97,11 @@ void ChatModuleImpl::start_callback(int callerRet, const char* msg, size_t len, 
     }
 
     std::string message = (msg && len > 0) ? std::string(msg, len) : "";
+    bool success = (callerRet == RET_OK);
 
-    nlohmann::json ev;
-    ev["success"] = (callerRet == RET_OK);
-    ev["statusCode"] = callerRet;
-    ev["message"] = message;
-    ev["timestamp"] = isoTimestamp();
-
-    deferredEmit(impl, "chatStartResult", ev.dump());
+    deferredEmit(impl, [impl, success, callerRet, message, ts = isoTimestamp()]() {
+        impl->chatStartResult(success, callerRet, message, ts);
+    });
 }
 
 void ChatModuleImpl::stop_callback(int callerRet, const char* msg, size_t len, void* userData)
@@ -123,14 +115,11 @@ void ChatModuleImpl::stop_callback(int callerRet, const char* msg, size_t len, v
     }
 
     std::string message = (msg && len > 0) ? std::string(msg, len) : "";
+    bool success = (callerRet == RET_OK);
 
-    nlohmann::json ev;
-    ev["success"] = (callerRet == RET_OK);
-    ev["statusCode"] = callerRet;
-    ev["message"] = message;
-    ev["timestamp"] = isoTimestamp();
-
-    deferredEmit(impl, "chatStopResult", ev.dump());
+    deferredEmit(impl, [impl, success, callerRet, message, ts = isoTimestamp()]() {
+        impl->chatStopResult(success, callerRet, message, ts);
+    });
 }
 
 void ChatModuleImpl::destroy_callback(int callerRet, const char* msg, size_t len, void* userData)
@@ -147,11 +136,9 @@ void ChatModuleImpl::destroy_callback(int callerRet, const char* msg, size_t len
         std::string message(msg, len);
         fprintf(stderr, "ChatModuleImpl::destroy_callback message: %s\n", message.c_str());
 
-        nlohmann::json ev;
-        ev["message"] = message;
-        ev["timestamp"] = isoTimestamp();
-
-        deferredEmit(impl, "chatDestroyResult", ev.dump());
+        deferredEmit(impl, [impl, message, ts = isoTimestamp()]() {
+            impl->chatDestroyResult(message, ts);
+        });
     }
 }
 
@@ -168,27 +155,25 @@ void ChatModuleImpl::event_callback(int callerRet, const char* msg, size_t len, 
     if (msg && len > 0) {
         std::string message(msg, len);
 
-        std::string eventName = "chatEvent";
+        std::string eventType;
         try {
             auto doc = nlohmann::json::parse(message);
-            if (doc.contains("eventType") && doc["eventType"].is_string()) {
-                std::string eventType = doc["eventType"].get<std::string>();
-                if (eventType == "new_message")
-                    eventName = "chatNewMessage";
-                else if (eventType == "new_conversation")
-                    eventName = "chatNewConversation";
-                else if (eventType == "delivery_ack")
-                    eventName = "chatDeliveryAck";
-            }
+            if (doc.contains("eventType") && doc["eventType"].is_string())
+                eventType = doc["eventType"].get<std::string>();
         } catch (...) {
-            // parse failed, keep default eventName
+            // parse failed, fall through to the generic chatEvent
         }
 
-        nlohmann::json ev;
-        ev["payload"] = message;
-        ev["timestamp"] = isoTimestamp();
-
-        deferredEmit(impl, eventName.c_str(), ev.dump());
+        deferredEmit(impl, [impl, eventType, message, ts = isoTimestamp()]() {
+            if (eventType == "new_message")
+                impl->chatNewMessage(message, ts);
+            else if (eventType == "new_conversation")
+                impl->chatNewConversation(message, ts);
+            else if (eventType == "delivery_ack")
+                impl->chatDeliveryAck(message, ts);
+            else
+                impl->chatEvent(message, ts);
+        });
     }
 }
 
@@ -205,11 +190,9 @@ void ChatModuleImpl::get_id_callback(int callerRet, const char* msg, size_t len,
     if (msg && len > 0) {
         std::string message(msg, len);
 
-        nlohmann::json ev;
-        ev["clientId"] = message;
-        ev["timestamp"] = isoTimestamp();
-
-        deferredEmit(impl, "chatGetIdResult", ev.dump());
+        deferredEmit(impl, [impl, message, ts = isoTimestamp()]() {
+            impl->chatGetIdResult(message, ts);
+        });
     }
 }
 
@@ -226,11 +209,9 @@ void ChatModuleImpl::list_conversations_callback(int callerRet, const char* msg,
     if (msg && len > 0) {
         std::string message(msg, len);
 
-        nlohmann::json ev;
-        ev["conversations"] = message;
-        ev["timestamp"] = isoTimestamp();
-
-        deferredEmit(impl, "chatListConversationsResult", ev.dump());
+        deferredEmit(impl, [impl, message, ts = isoTimestamp()]() {
+            impl->chatListConversationsResult(message, ts);
+        });
     }
 }
 
@@ -247,11 +228,9 @@ void ChatModuleImpl::get_conversation_callback(int callerRet, const char* msg, s
     if (msg && len > 0) {
         std::string message(msg, len);
 
-        nlohmann::json ev;
-        ev["conversation"] = message;
-        ev["timestamp"] = isoTimestamp();
-
-        deferredEmit(impl, "chatGetConversationResult", ev.dump());
+        deferredEmit(impl, [impl, message, ts = isoTimestamp()]() {
+            impl->chatGetConversationResult(message, ts);
+        });
     }
 }
 
@@ -266,14 +245,11 @@ void ChatModuleImpl::new_private_conversation_callback(int callerRet, const char
     }
 
     std::string conversationJson = (msg && len > 0) ? std::string(msg, len) : "";
+    bool success = (callerRet == RET_OK && !conversationJson.empty());
 
-    nlohmann::json ev;
-    ev["success"] = (callerRet == RET_OK && !conversationJson.empty());
-    ev["statusCode"] = callerRet;
-    ev["conversation"] = conversationJson;
-    ev["timestamp"] = isoTimestamp();
-
-    deferredEmit(impl, "chatNewPrivateConversationResult", ev.dump());
+    deferredEmit(impl, [impl, success, callerRet, conversationJson, ts = isoTimestamp()]() {
+        impl->chatNewPrivateConversationResult(success, callerRet, conversationJson, ts);
+    });
 }
 
 void ChatModuleImpl::send_message_callback(int callerRet, const char* msg, size_t len, void* userData)
@@ -288,14 +264,11 @@ void ChatModuleImpl::send_message_callback(int callerRet, const char* msg, size_
 
     std::string resultJson = (msg && len > 0) ? std::string(msg, len) : "";
     fprintf(stderr, "ChatModuleImpl::send_message_callback result: %s\n", resultJson.c_str());
+    bool success = (callerRet == RET_OK);
 
-    nlohmann::json ev;
-    ev["success"] = (callerRet == RET_OK);
-    ev["statusCode"] = callerRet;
-    ev["result"] = resultJson;
-    ev["timestamp"] = isoTimestamp();
-
-    deferredEmit(impl, "chatSendMessageResult", ev.dump());
+    deferredEmit(impl, [impl, success, callerRet, resultJson, ts = isoTimestamp()]() {
+        impl->chatSendMessageResult(success, callerRet, resultJson, ts);
+    });
 }
 
 void ChatModuleImpl::get_identity_callback(int callerRet, const char* msg, size_t len, void* userData)
@@ -311,11 +284,9 @@ void ChatModuleImpl::get_identity_callback(int callerRet, const char* msg, size_
     if (msg && len > 0) {
         std::string message(msg, len);
 
-        nlohmann::json ev;
-        ev["identity"] = message;
-        ev["timestamp"] = isoTimestamp();
-
-        deferredEmit(impl, "chatGetIdentityResult", ev.dump());
+        deferredEmit(impl, [impl, message, ts = isoTimestamp()]() {
+            impl->chatGetIdentityResult(message, ts);
+        });
     }
 }
 
@@ -330,14 +301,11 @@ void ChatModuleImpl::create_intro_bundle_callback(int callerRet, const char* msg
     }
 
     std::string bundleStr = (msg && len > 0) ? std::string(msg, len) : "";
+    bool success = (callerRet == RET_OK && !bundleStr.empty());
 
-    nlohmann::json ev;
-    ev["success"] = (callerRet == RET_OK && !bundleStr.empty());
-    ev["statusCode"] = callerRet;
-    ev["introBundle"] = bundleStr;
-    ev["timestamp"] = isoTimestamp();
-
-    deferredEmit(impl, "chatCreateIntroBundleResult", ev.dump());
+    deferredEmit(impl, [impl, success, callerRet, bundleStr, ts = isoTimestamp()]() {
+        impl->chatCreateIntroBundleResult(success, callerRet, bundleStr, ts);
+    });
 }
 
 // ============================================================================

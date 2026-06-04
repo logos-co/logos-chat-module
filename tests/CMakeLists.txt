@@ -7,6 +7,7 @@ logos_test(
     NAME chat_module_tests
     MODULE_SOURCES
         ../src/chat_module_plugin.cpp
+        mocks/chat_module_events_stub.cpp
     TEST_SOURCES
         main.cpp
         test_chat_module.cpp
