@@ -19,3 +19,7 @@ CHAT_SHARD_ID = 1
 # namespace, so values can be reused across containers without collision.
 SARO_PORT = 60002
 RAYA_PORT = 60003
+
+# Distinct port for the lifecycle single-user test. Each container has its own
+# netns so collision is impossible, but a separate value keeps log greps unique.
+LIFECYCLE_USER_PORT = 60004

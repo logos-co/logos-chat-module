@@ -25,10 +25,10 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import ExitStack
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -42,13 +42,18 @@ from libs.constants import (
     RAYA_PORT,
     SARO_PORT,
 )
-from libs.helpers import ChatUser, make_chat_config, setup_chat_user
+from libs.helpers import (
+    BareChatClientFactory,
+    ChatUser,
+    ChatUserFactory,
+    make_chat_config,
+    setup_chat_user,
+)
+
+if TYPE_CHECKING:
+    from logoscore import LogoscoreClient
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
-
-
-class ChatUserFactory(Protocol):
-    def __call__(self, name: str, port: int) -> ChatUser: ...
 
 
 def _read_fixture(name: str) -> str:
@@ -139,6 +144,7 @@ def nwaku_bootstrap(shared_docker_network: str) -> Iterator[str]:
         "-p", f"127.0.0.1:{rest_host_port}:{BOOTSTRAP_REST_PORT}",
         NWAKU_IMAGE,
         "--preset=logos.dev", "--shard=1",
+        "--filter=true", "--lightpush=true",
         f"--nodekey={nodekey}",
         f"--tcp-port={BOOTSTRAP_TCP_PORT}",
         f"--nat=extip:{BOOTSTRAP_IP}",
@@ -227,3 +233,37 @@ def saro(chat_user_factory: ChatUserFactory) -> ChatUser:
 @pytest.fixture(scope="module")
 def raya(chat_user_factory: ChatUserFactory) -> ChatUser:
     return chat_user_factory("Raya", RAYA_PORT)
+
+
+@pytest.fixture(scope="function")
+def bare_chat_client_factory(
+    _e2e_env_or_skip: tuple[str, Path],
+    shared_docker_network: str,
+) -> Iterator[BareChatClientFactory]:
+    """Factory for zero-init clients: spawns a daemon and loads chat_module,
+    but does NOT call initChat. For negative-path tests of sync-False branches.
+
+    Function-scope: a daemon poisoned by an intentional bad initChat must not
+    leak into the next negative test. Doesn't need `nwaku_bootstrap` since
+    without initChat there's no waku binding.
+    """
+    image, modules_dir = _e2e_env_or_skip
+
+    from logoscore import LogoscoreDockerDaemon  # noqa: PLC0415
+
+    with ExitStack() as stack:
+        def _create(name: str) -> LogoscoreClient:
+            container_name = f"logoscore-{name.lower()}-{uuid.uuid4().hex[:8]}"
+            daemon = stack.enter_context(LogoscoreDockerDaemon(
+                image=image, modules_dir=modules_dir,
+                container_name=container_name,
+                network=shared_docker_network,
+                startup_timeout=60.0,
+                extra_args=["--verbose"],
+            ))
+            stack.callback(_save_logs, container_name)
+            client = daemon.client()
+            client.load_module("chat_module")
+            return client
+
+        yield _create
