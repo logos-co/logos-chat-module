@@ -42,11 +42,7 @@ def test_stop_destroy_clean_teardown(chat_user_factory: ChatUserFactory) -> None
 
 
 @pytest.mark.xfail(
-    reason="initChat contract mismatch: chat_new is documented to return null on "
-    "failure (tests/stubs/lib/liblogoschat.h), so the plugin promises sync False + "
-    "no event for bad config. The real libchat instead returns a non-null context "
-    "for this malformed config and reports the parse error asynchronously via "
-    "chatInitResult(success=false).",
+    reason="https://github.com/logos-messaging/logos-chat/issues/90",
     strict=True,
 )
 def test_init_chat_bad_config_returns_false_sync(
