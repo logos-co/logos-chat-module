@@ -1,9 +1,11 @@
 #pragma once
 
-#include <functional>
+#include <cstdint>
 #include <string>
 
 #include <QObject>
+
+#include <logos_module_context.h>
 
 extern "C" {
 #include "lib/liblogoschat.h"
@@ -15,8 +17,9 @@ extern "C" {
  * Most operations are asynchronous. For these methods, the call returns
  * immediately — @c true meaning the request was accepted, @c false meaning it
  * was rejected before being sent (e.g. the client has not been initialised yet).
- * The actual result then arrives via @ref emitEvent using a method-specific
- * event name and a JSON-encoded data string.
+ * The actual result then arrives as a typed event declared in the
+ * @c logos_events: section below, using a method-specific event name and
+ * strongly-typed arguments.
  *
  * Some helper operations are synchronous (e.g. @ref setEventCallback) and do
  * not emit an event for completion.
@@ -28,49 +31,48 @@ extern "C" {
  *
  * **Event reference:**
  *
+ * Each event is a typed `logos_events:` method; the universal codegen marshals
+ * its arguments into one QVariant slot each (consumers read them positionally).
+ *
  * *Lifecycle*
- * | Event | JSON fields |
+ * | Event | Arguments |
  * |---|---|
- * | @c chatInitResult       | `success` (bool), `statusCode` (int), `message` (string), `timestamp` (ISO-8601) |
- * | @c chatStartResult      | `success` (bool), `statusCode` (int), `message` (string), `timestamp` (ISO-8601) |
- * | @c chatStopResult       | `success` (bool), `statusCode` (int), `message` (string), `timestamp` (ISO-8601) |
+ * | @c chatInitResult       | `success` (bool), `statusCode` (int64), `message` (string), `timestamp` (ISO-8601) |
+ * | @c chatStartResult      | `success` (bool), `statusCode` (int64), `message` (string), `timestamp` (ISO-8601) |
+ * | @c chatStopResult       | `success` (bool), `statusCode` (int64), `message` (string), `timestamp` (ISO-8601) |
  * | @c chatDestroyResult    | `message` (string), `timestamp` (ISO-8601) |
  *
  * *Client info*
- * | Event | JSON fields |
+ * | Event | Arguments |
  * |---|---|
- * | @c chatGetIdResult | `id` (string), `timestamp` (ISO-8601) |
+ * | @c chatGetIdResult | `clientId` (string), `timestamp` (ISO-8601) |
  *
  * *Conversations*
- * | Event | JSON fields |
+ * | Event | Arguments |
  * |---|---|
  * | @c chatListConversationsResult        | `conversations` (string), `timestamp` (ISO-8601) |
  * | @c chatGetConversationResult          | `conversation` (string — JSON object), `timestamp` (ISO-8601) |
- * | @c chatNewPrivateConversationResult   | `success` (bool), `statusCode` (int), `conversation` (string — JSON object), `timestamp` (ISO-8601) |
- * | @c chatSendMessageResult              | `success` (bool), `statusCode` (int), `result` (string — may include message ID), `timestamp` (ISO-8601) |
+ * | @c chatNewPrivateConversationResult   | `success` (bool), `statusCode` (int64), `conversation` (string — JSON object), `timestamp` (ISO-8601) |
+ * | @c chatSendMessageResult              | `success` (bool), `statusCode` (int64), `result` (string — may include message ID), `timestamp` (ISO-8601) |
  *
  * *Identity*
- * | Event | JSON fields |
+ * | Event | Arguments |
  * |---|---|
  * | @c chatGetIdentityResult        | `identity` (string — JSON object), `timestamp` (ISO-8601) |
- * | @c chatCreateIntroBundleResult  | `success` (bool), `statusCode` (int), `introBundle` (string), `timestamp` (ISO-8601) |
+ * | @c chatCreateIntroBundleResult  | `success` (bool), `statusCode` (int64), `introBundle` (string), `timestamp` (ISO-8601) |
  *
  * *Push events (via @ref setEventCallback)*
- * | Event | JSON fields |
+ * | Event | Arguments |
  * |---|---|
  * | @c chatNewMessage      | `payload` (string — JSON), `timestamp` (ISO-8601) |
  * | @c chatNewConversation | `payload` (string — JSON), `timestamp` (ISO-8601) |
  * | @c chatDeliveryAck     | `payload` (string — JSON), `timestamp` (ISO-8601) |
+ * | @c chatEvent           | `payload` (string — JSON), `timestamp` (ISO-8601) — fallback for unrecognised SDK event types |
  */
-class ChatModuleImpl {
+class ChatModuleImpl : public LogosModuleContext {
 public:
     ChatModuleImpl();
     ~ChatModuleImpl();
-
-    /// Wired automatically by the generated glue layer.
-    /// Call this to emit named events to other modules / the host application.
-    /// Data is a JSON-encoded string (object or array).
-    std::function<void(const std::string& eventName, const std::string& data)> emitEvent;
 
     /// QObject anchor used as the receiver for deferred-emit posts inside
     /// libchat callbacks (see chat_module_plugin.cpp:deferredEmit). When
@@ -94,9 +96,9 @@ public:
      *         no event is emitted and the caller must rely on the return value.
      *
      * @note If this function returns @c true, the result is delivered
-     *       asynchronously as @c emitEvent("chatInitResult", data) where @c data
-     *       is a JSON object with fields: @c success (bool), @c statusCode (int),
-     *       @c message (string), @c timestamp (ISO-8601).
+     *       asynchronously via @ref chatInitResult with arguments: @c success
+     *       (bool), @c statusCode (int64), @c message (string), @c timestamp
+     *       (ISO-8601).
      */
     // TODO: should not be async
     bool initChat(const std::string& configJson);
@@ -109,9 +111,9 @@ public:
      * @return @c true if the request was accepted; @c false if the client is
      *         not yet initialised.
      *
-     * @note Asynchronously returns result via @c emitEvent("chatStartResult", data)
-     *       with fields: @c success (bool), @c statusCode (int), @c message (string),
-     *       @c timestamp (ISO-8601).
+     * @note Asynchronously returns result via @ref chatStartResult with
+     *       arguments: @c success (bool), @c statusCode (int64), @c message
+     *       (string), @c timestamp (ISO-8601).
      */
     bool startChat();
 
@@ -123,9 +125,9 @@ public:
      * @return @c true if the request was accepted; @c false if the client is
      *         not initialised.
      *
-     * @note Asynchronously returns result via @c emitEvent("chatStopResult", data)
-     *       with fields: @c success (bool), @c statusCode (int), @c message (string),
-     *       @c timestamp (ISO-8601).
+     * @note Asynchronously returns result via @ref chatStopResult with
+     *       arguments: @c success (bool), @c statusCode (int64), @c message
+     *       (string), @c timestamp (ISO-8601).
      */
     // TODO: should not be async
     bool stopChat();
@@ -139,8 +141,8 @@ public:
      * @return @c true if the request was accepted; @c false if the client is
      *         not initialised.
      *
-     * @note Asynchronously returns result via @c emitEvent("chatDestroyResult", data)
-     *       — only emitted when the SDK provides a response message — with fields:
+     * @note Asynchronously returns result via @ref chatDestroyResult — only
+     *       emitted when the SDK provides a response message — with arguments:
      *       @c message (string), @c timestamp (ISO-8601).
      */
     // TODO: should not be async
@@ -151,17 +153,17 @@ public:
      *
      * This is a synchronous call that registers a handler for incoming
      * events (new messages, new conversations, delivery acknowledgements) which
-     * are delivered via @ref emitEvent as they arrive. Call this after
+     * are delivered as typed push events as they arrive. Call this after
      * @ref initChat and before @ref startChat to ensure that no messages are
      * missed.
      *
      * Push events will arrive as:
-     * - @c emitEvent("chatNewMessage", data)
-     * - @c emitEvent("chatNewConversation", data)
-     * - @c emitEvent("chatDeliveryAck", data)
+     * - @ref chatNewMessage
+     * - @ref chatNewConversation
+     * - @ref chatDeliveryAck
      *
-     * For all push events @c data is a JSON object with fields:
-     * @c payload (string — JSON describing the event), @c timestamp (ISO-8601).
+     * For all push events the arguments are @c payload (string — JSON describing
+     * the event) and @c timestamp (ISO-8601).
      *
      * @return @c true if the subscription was registered; @c false if the
      *         client is not initialised.
@@ -181,8 +183,8 @@ public:
      *         not initialised.
      *
      * @note When the SDK provides a non-empty identifier, this call
-     *       asynchronously returns a result via @c emitEvent("chatGetIdResult", data)
-     *       with fields: @c id (string), @c timestamp (ISO-8601).
+     *       asynchronously returns a result via @ref chatGetIdResult with
+     *       arguments: @c clientId (string), @c timestamp (ISO-8601).
      *
      *       On some failures the SDK may not provide an identifier or message,
      *       and in those cases no @c chatGetIdResult event is emitted. Callers
@@ -202,8 +204,8 @@ public:
      *         not initialised.
      *
      * @note Asynchronously returns result (when available) via
-     *       @c emitEvent("chatListConversationsResult", data) with fields:
-     *       @c conversations (string), @c timestamp (ISO-8601).
+     *       @ref chatListConversationsResult with arguments: @c conversations
+     *       (string), @c timestamp (ISO-8601).
      *
      * @warning Due to current SDK callback semantics, this event is only emitted
      *          when the underlying SDK provides a non-empty list of conversations
@@ -226,8 +228,8 @@ public:
      *         not initialised.
      *
      * @note When the underlying SDK returns a result message, it is delivered
-     *       asynchronously as @c emitEvent("chatGetConversationResult", data) with
-     *       fields: @c conversation (string — JSON object), @c timestamp (ISO-8601).
+     *       asynchronously via @ref chatGetConversationResult with arguments:
+     *       @c conversation (string — JSON object), @c timestamp (ISO-8601).
      *
      * @attention On certain internal failures (for example, if no result message
      *            is produced by the SDK), no @c chatGetConversationResult event
@@ -253,9 +255,9 @@ public:
      *         not initialised.
      *
      * @note Asynchronously returns result via
-     *       @c emitEvent("chatNewPrivateConversationResult", data) with fields:
-     *       @c success (bool), @c statusCode (int), @c conversation (string —
-     *       JSON object), @c timestamp (ISO-8601).
+     *       @ref chatNewPrivateConversationResult with arguments: @c success
+     *       (bool), @c statusCode (int64), @c conversation (string — JSON
+     *       object), @c timestamp (ISO-8601).
      */
     // TODO: should not be async
     // TODO: content should accept bytes not hex
@@ -269,10 +271,10 @@ public:
      * @return @c true if the request was accepted; @c false if the client is
      *         not initialised.
      *
-     * @note Asynchronously returns result via
-     *       @c emitEvent("chatSendMessageResult", data) with fields:
-     *       @c success (bool), @c statusCode (int), @c result (string — may
-     *       include the assigned message ID), @c timestamp (ISO-8601).
+     * @note Asynchronously returns result via @ref chatSendMessageResult with
+     *       arguments: @c success (bool), @c statusCode (int64), @c result
+     *       (string — may include the assigned message ID), @c timestamp
+     *       (ISO-8601).
      */
     // TODO: content should accept bytes not hex
     bool sendMessage(const std::string& convoId, const std::string& contentHex);
@@ -287,9 +289,9 @@ public:
      * @return @c true if the request was accepted; @c false if the client is
      *         not initialised.
      *
-     * @note On success, asynchronously emits
-     *       @c emitEvent("chatGetIdentityResult", data) with fields:
-     *       @c identity (string — JSON object), @c timestamp (ISO-8601).
+     * @note On success, asynchronously emits @ref chatGetIdentityResult with
+     *       arguments: @c identity (string — JSON object), @c timestamp
+     *       (ISO-8601).
      *
      * @warning On some failure paths (for example, when no identity data is
      *          available or an internal error occurs in the underlying SDK), no
@@ -311,13 +313,38 @@ public:
      * @return @c true if the request was accepted; @c false if the client is
      *         not initialised.
      *
-     * @note Asynchronously returns result via
-     *       @c emitEvent("chatCreateIntroBundleResult", data) with fields:
-     *       @c success (bool), @c statusCode (int), @c introBundle (string),
-     *       @c timestamp (ISO-8601).
+     * @note Asynchronously returns result via @ref chatCreateIntroBundleResult
+     *       with arguments: @c success (bool), @c statusCode (int64),
+     *       @c introBundle (string), @c timestamp (ISO-8601).
      */
     // TODO: should not be async
     bool createIntroBundle();
+
+    // -------------------------------------------------------------------------
+    // Events
+    // -------------------------------------------------------------------------
+    //
+    // Typed asynchronous events. The universal codegen (logos-cpp-generator)
+    // emits the method bodies in a sidecar `chat_module_events.cpp`, marshalling
+    // each argument into a QVariant slot and routing it through
+    // LogosModuleContext::emitEventImpl_. Module code emits an event simply by
+    // calling the corresponding method.
+logos_events:
+    void chatInitResult(bool success, int64_t statusCode, const std::string& message, const std::string& timestamp);
+    void chatStartResult(bool success, int64_t statusCode, const std::string& message, const std::string& timestamp);
+    void chatStopResult(bool success, int64_t statusCode, const std::string& message, const std::string& timestamp);
+    void chatDestroyResult(const std::string& message, const std::string& timestamp);
+    void chatGetIdResult(const std::string& clientId, const std::string& timestamp);
+    void chatListConversationsResult(const std::string& conversations, const std::string& timestamp);
+    void chatGetConversationResult(const std::string& conversation, const std::string& timestamp);
+    void chatNewPrivateConversationResult(bool success, int64_t statusCode, const std::string& conversation, const std::string& timestamp);
+    void chatSendMessageResult(bool success, int64_t statusCode, const std::string& result, const std::string& timestamp);
+    void chatGetIdentityResult(const std::string& identity, const std::string& timestamp);
+    void chatCreateIntroBundleResult(bool success, int64_t statusCode, const std::string& introBundle, const std::string& timestamp);
+    void chatNewMessage(const std::string& payload, const std::string& timestamp);
+    void chatNewConversation(const std::string& payload, const std::string& timestamp);
+    void chatDeliveryAck(const std::string& payload, const std::string& timestamp);
+    void chatEvent(const std::string& payload, const std::string& timestamp);
 
 private:
     void* chatCtx;

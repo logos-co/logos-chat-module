@@ -95,21 +95,56 @@ def assert_no_event(
         raise AssertionError(f"{op}: unexpected {event!r} event arrived: {evt!r}")
 
 
-def parse_event(event: dict[str, Any]) -> dict[str, Any]:
-    """Parse the JSON payload at `arg0` into the named-fields dict the plugin emits.
+# Positional argument schema for each typed `logos_events:` event the plugin
+# declares (see src/chat_module_plugin.h). The universal codegen marshals each
+# typed C++ parameter into its own QVariant slot, which logoscore-cli relays as
+# data["arg0"], data["arg1"], … We map those positions back to named fields so
+# the assertions below can read body["success"], body["clientId"], etc.
+_EVENT_FIELDS: dict[str, list[str]] = {
+    "chatInitResult": ["success", "statusCode", "message", "timestamp"],
+    "chatStartResult": ["success", "statusCode", "message", "timestamp"],
+    "chatStopResult": ["success", "statusCode", "message", "timestamp"],
+    "chatDestroyResult": ["message", "timestamp"],
+    "chatGetIdResult": ["clientId", "timestamp"],
+    "chatListConversationsResult": ["conversations", "timestamp"],
+    "chatGetConversationResult": ["conversation", "timestamp"],
+    "chatNewPrivateConversationResult": ["success", "statusCode", "conversation", "timestamp"],
+    "chatSendMessageResult": ["success", "statusCode", "result", "timestamp"],
+    "chatGetIdentityResult": ["identity", "timestamp"],
+    "chatCreateIntroBundleResult": ["success", "statusCode", "introBundle", "timestamp"],
+    "chatNewMessage": ["payload", "timestamp"],
+    "chatNewConversation": ["payload", "timestamp"],
+    "chatDeliveryAck": ["payload", "timestamp"],
+    "chatEvent": ["payload", "timestamp"],
+}
 
-    Universal codegen wraps the C++ side's single QString-payload signal into a
-    one-arg event; CLI's watch puts that string in `data["arg0"]`. The plugin
-    serialises a `nlohmann::json` object (named fields like `success`,
-    `clientId`, `payload`, `timestamp`, …) and `.dump()`s it — so one
-    `json.loads` gets us the structured event body.
+
+def parse_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Map a typed event's positional args back to its named fields.
+
+    chat_module emits typed `logos_events:` (src/chat_module_plugin.h): each C++
+    parameter becomes its own QVariant slot, which logoscore-cli relays as
+    data["arg0"], data["arg1"], … (no longer a single JSON-object string). The
+    field names come from _EVENT_FIELDS so call sites can use body["success"],
+    body["clientId"], body["statusCode"], etc. Events not in the map fall back
+    to the raw arg0/arg1/… keys.
     """
-    return json.loads(event["data"]["arg0"])
+    data = event["data"]
+    args: list[Any] = []
+    i = 0
+    while f"arg{i}" in data:
+        args.append(data[f"arg{i}"])
+        i += 1
+
+    names = _EVENT_FIELDS.get(event.get("event", ""))
+    if names is None:
+        return {f"arg{i}": v for i, v in enumerate(args)}
+    return {name: args[idx] for idx, name in enumerate(names) if idx < len(args)}
 
 
 def parse_push_payload(event: dict[str, Any]) -> dict[str, Any]:
-    """For chatNew*/chatDeliveryAck push events: parse arg0, then re-parse the
-    `payload` field (raw JSON string from liblogoschat's set_event_callback)."""
+    """For chatNew*/chatDeliveryAck push events: the first arg (`payload`) is the
+    raw JSON string from liblogoschat's set_event_callback."""
     return json.loads(parse_event(event)["payload"])
 
 

@@ -12,7 +12,6 @@
 static ChatModuleImpl* createInitializedImpl(LogosTestContext& t) {
     t.mockCFunction("chat_new").returns(1);
     auto* impl = new ChatModuleImpl();
-    impl->emitEvent = [](const std::string&, const std::string&) {};
     LOGOS_ASSERT_TRUE(impl->initChat(R"({"logLevel":"INFO"})"));
     return impl;
 }
@@ -26,7 +25,6 @@ LOGOS_TEST(initChat_succeeds_when_ffi_returns_non_null_context) {
     t.mockCFunction("chat_new").returns(1);
 
     ChatModuleImpl plugin;
-    plugin.emitEvent = [](const std::string&, const std::string&) {};
     LOGOS_ASSERT_TRUE(plugin.initChat(R"({"logLevel":"INFO"})"));
     LOGOS_ASSERT(t.cFunctionCalled("chat_new"));
 }
@@ -36,7 +34,6 @@ LOGOS_TEST(initChat_fails_when_ffi_returns_null) {
     t.mockCFunction("chat_new").returns(0);
 
     ChatModuleImpl plugin;
-    plugin.emitEvent = [](const std::string&, const std::string&) {};
     LOGOS_ASSERT_FALSE(plugin.initChat(R"({"logLevel":"INFO"})"));
     LOGOS_ASSERT(t.cFunctionCalled("chat_new"));
 }
@@ -46,7 +43,6 @@ LOGOS_TEST(initChat_tracks_call_count) {
     t.mockCFunction("chat_new").returns(1);
 
     ChatModuleImpl plugin;
-    plugin.emitEvent = [](const std::string&, const std::string&) {};
     plugin.initChat(R"({"logLevel":"INFO"})");
     LOGOS_ASSERT_EQ(t.cFunctionCallCount("chat_new"), 1);
 }
