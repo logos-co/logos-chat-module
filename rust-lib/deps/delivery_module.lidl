@@ -1,0 +1,19 @@
+; delivery_module contract — the subset chat_module uses. Supplied as a
+; dependency_override (see metadata.json) because delivery_module (pinned rev
+; 2577383f6, post-v0.1.2) predates the LIDL `lidl` flake output, so there is no
+; published contract to generate from. logos-lidl-gen turns this file into the
+; typed `DeliveryModuleClient` that actions.rs/delivery.rs/inbound.rs call
+; (createNode/start/subscribe/send + the messageReceived/connectionStateChanged
+; decoders). Hand-maintained, so keep it in sync with the pinned rev; delete it
+; and generate from the upstream `lidl` output once delivery_module ships one.
+module delivery_module {
+  version "0.1.2"
+
+  method createNode(config: tstr) -> result
+  method start() -> result
+  method subscribe(contentTopic: tstr) -> result
+  method send(contentTopic: tstr, payload: bstr) -> result
+
+  event messageReceived(messageHash: tstr, contentTopic: tstr, payload: bstr, timestamp: int)
+  event connectionStateChanged(status: tstr, timestamp: int)
+}
