@@ -1,96 +1,82 @@
 # logos-chat-module
 
-A [Logos Core](https://github.com/logos-co/logos-liblogos) module plugin that exposes the [Logos Chat](https://github.com/logos-messaging/logos-chat) to the Logos platform.
+A Rust [Logos Module](https://github.com/logos-co/logos-liblogos) that wraps
+[libchat](https://github.com/logos-messaging/libchat) and exposes
+e2e-encrypted chat over the Logos IPC bus. Loaded as a `cdylib` module by
+`liblogos_core`; depends on `delivery_module` at runtime (declared in
+`metadata.json`).
 
-Loaded into Logos Core, it wraps `liblogoschat` and bridges its C callback API to Qt signals and invokable methods. Consumers interact with it entirely through the module methods and signals — no direct dependency on `liblogoschat` is required.
+A companion QML UI App lives in
+[`logos-chat-ui`](https://github.com/logos-co/logos-chat-ui).
 
-> [`logos-chat-ui`](https://github.com/logos-co/logos-chat-ui) is the reference UI built on top of this module.
+## Build
 
-## What It Provides
+```bash
+nix build .#chat_module    # the full Qt plugin
+```
 
-- **Identity** — query client ID and identity info, generate introduction bundles
-- **Conversations** — list, retrieve, and open new private (1-to-1) conversations
-- **Messaging** — send messages and receive push events for new messages, new conversations, and delivery acknowledgements
-- **Lifecycle management** — initialise, start, stop, and destroy the chat client
+`nix build` is the entry point and needs no manual hash bookkeeping:
+`logos-module-builder` runs `logos-lidl-gen` to emit the module-impl scaffold,
+fetches the Cargo deps recorded in `rust-lib/Cargo.lock`, and compiles the
+staticlib. Bumping the `libchat` pin is just `cargo metadata` (or `cargo update
+-p`) to refresh `rust-lib/Cargo.lock`; the next `nix build` picks it up.
+
+For a bare `cargo build`, first run `nix run .#generate`. It materialises the two
+gitignored inputs `rust-lib/` references into the working tree: the SDK source
+tree (`logos-rust-sdk-src/`) and the generated scaffold (`rust-lib/generated/`),
+both from the rev the builder pins. Then cargo works in `rust-lib/` directly:
+
+```bash
+nix run .#generate                                          # stage SDK source + scaffold
+cargo build --release --manifest-path rust-lib/Cargo.toml   # Rust staticlib only
+```
+
+`cargo` requires `pkg-config`, `perl`, and a C toolchain — `libchat`'s
+storage/crypto stack pulls in `openssl-src`, which compiles OpenSSL from source.
 
 ## API
 
-See [chat_module_plugin.h](chat_module_plugin.h) for the full API — methods, async event names, and per-event `data` layouts are documented there.
+The contract consumers call is [`rust-lib/chat_module.lidl`](rust-lib/chat_module.lidl)
+(`interface: cdylib`) — the single source of truth. `metadata.json#codegen`
+drives `logos-lidl-gen` to generate the module-impl C ABI scaffold (the
+`ChatModule` trait, dispatch, the `emit_*` event emitters, and the
+`logos_module_*` exports) into `rust-lib/generated/provider_gen.rs`, which
+`src/lib.rs` `include!`s and implements; `logos-module-builder` generates the
+matching Qt-plugin glue. There is no `build.rs`.
 
-## How to Build
+Status-bearing methods return `result`: `Ok(value)` carries any payload (a
+conversation id, an intro bundle, or null), `Err(message)` a human-readable
+reason. Collection getters (`list_conversations`, `get_messages`) return JSON
+arrays. See the `.lidl` for the full method list and record shapes.
 
-### Using Nix (recommended)
+## Events
 
-```bash
-# Build everything (plugin + liblogoschat + generated headers)
-nix build
+The module pushes six events over the lp_* IPC event channel (LIDL `event`
+declarations); consumers subscribe via `on_<event>()` — no polling. Each carries
+positional arguments in `.lidl` order:
 
-# Build only the plugin library
-nix build '.#lib'
+- **`message_received`** — an inbound message was decrypted
+  - `convo_id` (`tstr`), `content` (`tstr`), `timestamp_ms` (`int`)
+- **`message_sent`** — an outbound message was recorded
+  - `convo_id` (`tstr`), `content` (`tstr`), `timestamp_ms` (`int`)
+- **`conversation_created`** — a conversation was opened
+  - `convo_id` (`tstr`), `is_outgoing` (`bool`), `peer_label` (`tstr`)
+- **`conversation_updated`** — a conversation's metadata changed
+  - `convo_id` (`tstr`)
+- **`conversation_deleted`** — a conversation was removed
+  - `convo_id` (`tstr`)
+- **`delivery_state_changed`** — network/transport state changed
+  - `delivery_state` (`tstr`), `detail` (`tstr`)
 
-# Enter the development shell
-nix develop
-```
+## Runtime
 
-> [!NOTE]
-> If flakes aren't enabled globally, add `--extra-experimental-features 'nix-command flakes'`. \
-> In zsh, quote the target to prevent glob expansion (e.g., `'.#lib'`).
+End-to-end chat needs a `delivery_module` available to the host at runtime; the
+flake pins [`logos-delivery-module`](https://github.com/logos-co/logos-delivery-module)
+at `v0.1.2`. Load `chat_module` via `logoscore` or Basecamp.
 
-### Using CMake
-
-```bash
-mkdir build && cd build
-cmake .. -GNinja \
-  -DLOGOS_CPP_SDK_ROOT=/path/to/logos-cpp-sdk \
-  -DLOGOS_LIBLOGOS_ROOT=/path/to/logos-liblogos \
-  -DLOGOS_CHAT_ROOT=/path/to/logos-chat
-ninja
-```
-
-`LOGOS_CHAT_ROOT` must point to a `logos-chat` build output containing `include/liblogoschat.h` and `lib/liblogoschat.{dylib,so}`.
-
-If `LOGOS_CPP_SDK_ROOT` and `LOGOS_LIBLOGOS_ROOT` are not set, CMake looks for sibling directories (`../logos-cpp-sdk`, `../logos-liblogos`) and falls back to `vendor/` if those don't exist.
-
-## Output Structure
-
-```
-result/
-├── lib/
-│   ├── chat_module_plugin.dylib   # Module plugin (.so on Linux)
-│   └── liblogoschat.dylib            # Chat library dependency (.so on Linux)
-└── include/
-    ├── chat_module_api.h          # Generated C++ API header
-    └── chat_module_api.cpp        # Generated C++ API implementation
-```
-
-Both libraries must be in the same directory — the plugin uses `@loader_path` / `$ORIGIN` to locate `liblogoschat` at runtime.
-
-## Requirements
-
-> [!TIP]
-> When using Nix, all requirements are acquired automatically.
-
-### Build tools
-
-- CMake ≥ 3.14
-- Ninja
-- pkg-config
-
-### Dependencies
-
-| Dependency | Purpose |
-|---|---|
-| Qt6 Core | Qt plugin infrastructure |
-| Qt6 RemoteObjects | LogosAPI IPC transport |
-| [`logos-cpp-sdk`](https://github.com/logos-co/logos-cpp-sdk) | LogosAPI bindings, C++ generator |
-| [`logos-liblogos`](https://github.com/logos-co/logos-liblogos) | Logos Core plugin interface |
-| [`logos-chat`](https://github.com/logos-messaging/logos-chat) | Provides `liblogoschat` |
-
-## Related Repositories
-
-| Repository | Role |
-|---|---|
-| [`logos-chat-ui`](https://github.com/logos-co/logos-chat-ui) | Reference Qt UI built on this module |
-| [`logos-chat`](https://github.com/logos-messaging/logos-chat) | Logos Chat application (provides `liblogoschat`) |
-| [`logos-liblogos`](https://github.com/logos-co/logos-liblogos) | Logos Core platform |
-| [`logos-cpp-sdk`](https://github.com/logos-co/logos-cpp-sdk) | LogosAPI and C++ module bindings generator |
+Bring-up is `init(instance_path, delivery_preset, tcp_port)` (empty preset →
+`logos.dev`). Its first successful call **must run on a Qt event-loop thread** —
+it subscribes to `delivery_module`'s events, and QtRO's `acquireDynamic` /
+`waitForSource` deadlock otherwise. `init` starts delivery asynchronously and
+returns immediately; readiness arrives later as a `delivery_state_changed` event
+reaching `online`.
