@@ -75,7 +75,7 @@ pub(crate) struct ChatSession {
 pub(crate) struct AppState {
     pub chats: HashMap<String, ChatSession>,
     /// User-overridden installation name. `None` falls back to
-    /// `ChatClient::installation_name()`.
+    /// `ChatClient::installation_name()`. Superseded once Accounts land.
     pub installation_name: Option<String>,
     /// Locally-deleted convo IDs. Inbound messages for these are
     /// dropped — libchat retains the crypto state regardless.

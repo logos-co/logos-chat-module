@@ -25,7 +25,7 @@ use crate::persistence::{load_state, save_state, ChatSession, DisplayMessage};
 pub(crate) enum CoreError {
     #[error("module not initialised")]
     NotInit,
-    #[error("not found")]
+    #[error("conversation not found")]
     NotFound,
     #[error("{0}")]
     Delivery(String),
@@ -94,9 +94,8 @@ pub(crate) fn initialize(instance_path: &str) -> Result<ModuleState, InitError> 
 
     // Register listeners before the node starts — `connectionStateChanged`
     // fires during start and is not re-emitted, so a late subscribe misses it.
-    // Subscribing must run on this (Qt event-loop) thread; see lib.rs. The
-    // subscriptions are handed to the worker, which polls them; nothing arrives
-    // until `start_delivery_bootstrap` starts the node.
+    // The subscriptions are handed to the worker, which polls them; nothing
+    // arrives until `start_delivery_bootstrap` starts the node.
     let mut dm = crate::modules().delivery_module;
     let messages_sub = dm
         .on_message_received()
@@ -171,28 +170,32 @@ pub(crate) fn start_delivery_bootstrap(preset: &str, tcp_port: i32) {
     crate::modules()
         .delivery_module
         .create_node_async(&config_json, move |res| match res {
-            Ok(_) => crate::modules()
-                .delivery_module
-                .start_async(move |res| match res {
-                    Ok(_) => {
-                        crate::modules().delivery_module.subscribe_async(
-                            &inbound_topic,
-                            move |res| {
-                                if let Err(e) = res {
-                                    // Receiving inbound needs this subscription; log
-                                    // but don't withhold readiness — sending and
-                                    // identity work without it, and the node started.
-                                    eprintln!("chat_module: delivery_module.subscribe failed: {e}");
-                                }
-                                with_display_mut(|d| {
-                                    set_delivery_state(d, DeliveryStateKind::Online, "")
-                                });
-                            },
-                        );
-                    }
-                    Err(e) => set_delivery_error(format!("delivery_module.start failed: {e}")),
-                }),
+            Ok(_) => start_node(inbound_topic),
             Err(e) => set_delivery_error(format!("delivery_module.createNode failed: {e}")),
+        });
+}
+
+/// Bootstrap step 2 of 3: start the node, then chain the subscribe.
+fn start_node(inbound_topic: String) {
+    crate::modules()
+        .delivery_module
+        .start_async(move |res| match res {
+            Ok(_) => subscribe_inbound(inbound_topic),
+            Err(e) => set_delivery_error(format!("delivery_module.start failed: {e}")),
+        });
+}
+
+/// Bootstrap step 3 of 3: subscribe to the inbound topic and report readiness.
+fn subscribe_inbound(inbound_topic: String) {
+    crate::modules()
+        .delivery_module
+        .subscribe_async(&inbound_topic, move |res| {
+            if let Err(e) = res {
+                // Receiving inbound needs this subscription; log but don't withhold
+                // readiness — sending and identity work without it, and the node started.
+                eprintln!("chat_module: delivery_module.subscribe failed: {e}");
+            }
+            with_display_mut(|d| set_delivery_state(d, DeliveryStateKind::Online, ""));
         });
 }
 

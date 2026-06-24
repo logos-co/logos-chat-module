@@ -9,10 +9,11 @@
 //! `messageReceived` triggers a libchat decryption + sqlcipher write that
 //! is too long to run on the Qt main thread; the worker takes it off-thread.
 //!
-//! Subscription itself must run on the main thread (QtRO deadlocks
-//! otherwise), so it's done in `init` and the resulting `EventSubscription`s
-//! are moved into the worker — each owns its lp subscription and a share of
-//! the client, keeping events flowing after the proxy is dropped.
+//! Subscription is set up in `init` (before the node starts, so the
+//! `connectionStateChanged` emitted during start isn't missed) and the
+//! resulting `EventSubscription`s are moved into the worker — each owns its lp
+//! subscription and a share of the client, keeping events flowing after the
+//! proxy is dropped.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{RecvTimeoutError, TryRecvError};

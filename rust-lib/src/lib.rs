@@ -13,11 +13,9 @@
 //! guards the conversation history, so the read methods never wait on the slow
 //! client work. The operations below are safe to call from any thread.
 //!
-//! `init` must run on a Qt event-loop thread for its first successful call:
-//! it subscribes to delivery_module's events, and QtRO's `acquireDynamic` +
-//! `waitForSource` deadlock otherwise. Outbound delivery calls (publish) also
-//! run on this thread — that is why create/send stay on the dispatch thread,
-//! not a worker. Re-init calls have no such restriction.
+//! `init` imposes no thread-affinity requirement: the SDK makes calls into
+//! delivery_module (event subscription, publish) thread-safe regardless of the
+//! caller's thread.
 //!
 //! Return conventions. Status-bearing methods return `result`, surfaced here as
 //! `Result<serde_json::Value, String>`: `Ok(value)` carries any payload (a

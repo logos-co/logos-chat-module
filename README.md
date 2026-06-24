@@ -75,8 +75,5 @@ flake pins [`logos-delivery-module`](https://github.com/logos-co/logos-delivery-
 at `v0.1.2`. Load `chat_module` via `logoscore` or Basecamp.
 
 Bring-up is `init(instance_path, delivery_preset, tcp_port)` (empty preset →
-`logos.dev`). Its first successful call **must run on a Qt event-loop thread** —
-it subscribes to `delivery_module`'s events, and QtRO's `acquireDynamic` /
-`waitForSource` deadlock otherwise. `init` starts delivery asynchronously and
-returns immediately; readiness arrives later as a `delivery_state_changed` event
-reaching `online`.
+`logos.dev`). `init` starts delivery asynchronously and returns immediately;
+readiness arrives later as a `delivery_state_changed` event reaching `online`.
