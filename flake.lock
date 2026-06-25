@@ -194,25 +194,24 @@
     "logos-chat": {
       "inputs": {
         "flake-utils": "flake-utils",
-        "logos-delivery": "logos-delivery",
-        "nixpkgs": "nixpkgs_2",
-        "rust-overlay": "rust-overlay_3"
+        "nixpkgs": "nixpkgs",
+        "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1782371373,
-        "narHash": "sha256-Kb0JfLxIshh7mxy4EKd+TXKT/jPGLZZAbZfwWrsvZO0=",
+        "lastModified": 1782380359,
+        "narHash": "sha256-e1ji6BaUmBEn9WgERrXrdisAkIvgVe98aCvxqsmYgiA=",
         "ref": "feat/logos-testnetv02-mix",
-        "rev": "23323a1d24d662ff29c0f7bf707b11ec83bffd0b",
-        "revCount": 196,
+        "rev": "0591caa230067c2cc96b975246d9c5ccbb31c94c",
+        "revCount": 198,
         "submodules": true,
         "type": "git",
-        "url": "file:///Users/prem/Code/logos-chat-canonical"
+        "url": "https://github.com/logos-messaging/logos-chat"
       },
       "original": {
         "ref": "feat/logos-testnetv02-mix",
         "submodules": true,
         "type": "git",
-        "url": "file:///Users/prem/Code/logos-chat-canonical"
+        "url": "https://github.com/logos-messaging/logos-chat"
       }
     },
     "logos-cpp-sdk": {
@@ -551,29 +550,6 @@
         "owner": "logos-co",
         "repo": "logos-cpp-sdk",
         "type": "github"
-      }
-    },
-    "logos-delivery": {
-      "inputs": {
-        "nixpkgs": "nixpkgs",
-        "rust-overlay": "rust-overlay",
-        "zerokit": "zerokit"
-      },
-      "locked": {
-        "lastModified": 1782214131,
-        "narHash": "sha256-9/Z9nGhF+mXlFnNbDP/jWMNDCkq6+dSVfUhcutmHCFs=",
-        "ref": "refs/heads/master",
-        "rev": "efafdfdc24f369942951dd7ceeec37e5913b19eb",
-        "revCount": 2378,
-        "submodules": true,
-        "type": "git",
-        "url": "https://github.com/logos-messaging/logos-delivery"
-      },
-      "original": {
-        "rev": "efafdfdc24f369942951dd7ceeec37e5913b19eb",
-        "submodules": true,
-        "type": "git",
-        "url": "https://github.com/logos-messaging/logos-delivery"
       }
     },
     "logos-design-system": {
@@ -1304,7 +1280,7 @@
     },
     "logos-nix": {
       "inputs": {
-        "nixpkgs": "nixpkgs_3"
+        "nixpkgs": "nixpkgs_2"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -1322,7 +1298,7 @@
     },
     "logos-nix_10": {
       "inputs": {
-        "nixpkgs": "nixpkgs_12"
+        "nixpkgs": "nixpkgs_11"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -1340,7 +1316,7 @@
     },
     "logos-nix_100": {
       "inputs": {
-        "nixpkgs": "nixpkgs_102"
+        "nixpkgs": "nixpkgs_101"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1358,7 +1334,7 @@
     },
     "logos-nix_101": {
       "inputs": {
-        "nixpkgs": "nixpkgs_103"
+        "nixpkgs": "nixpkgs_102"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1376,7 +1352,7 @@
     },
     "logos-nix_102": {
       "inputs": {
-        "nixpkgs": "nixpkgs_104"
+        "nixpkgs": "nixpkgs_103"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1394,7 +1370,7 @@
     },
     "logos-nix_103": {
       "inputs": {
-        "nixpkgs": "nixpkgs_105"
+        "nixpkgs": "nixpkgs_104"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -1412,7 +1388,7 @@
     },
     "logos-nix_104": {
       "inputs": {
-        "nixpkgs": "nixpkgs_106"
+        "nixpkgs": "nixpkgs_105"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1430,7 +1406,7 @@
     },
     "logos-nix_105": {
       "inputs": {
-        "nixpkgs": "nixpkgs_107"
+        "nixpkgs": "nixpkgs_106"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -1448,7 +1424,7 @@
     },
     "logos-nix_106": {
       "inputs": {
-        "nixpkgs": "nixpkgs_108"
+        "nixpkgs": "nixpkgs_107"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -1466,7 +1442,7 @@
     },
     "logos-nix_107": {
       "inputs": {
-        "nixpkgs": "nixpkgs_109"
+        "nixpkgs": "nixpkgs_108"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1484,7 +1460,7 @@
     },
     "logos-nix_108": {
       "inputs": {
-        "nixpkgs": "nixpkgs_110"
+        "nixpkgs": "nixpkgs_109"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1502,7 +1478,7 @@
     },
     "logos-nix_109": {
       "inputs": {
-        "nixpkgs": "nixpkgs_111"
+        "nixpkgs": "nixpkgs_110"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -1520,7 +1496,7 @@
     },
     "logos-nix_11": {
       "inputs": {
-        "nixpkgs": "nixpkgs_13"
+        "nixpkgs": "nixpkgs_12"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1538,7 +1514,7 @@
     },
     "logos-nix_110": {
       "inputs": {
-        "nixpkgs": "nixpkgs_112"
+        "nixpkgs": "nixpkgs_111"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -1556,7 +1532,7 @@
     },
     "logos-nix_111": {
       "inputs": {
-        "nixpkgs": "nixpkgs_113"
+        "nixpkgs": "nixpkgs_112"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1574,7 +1550,7 @@
     },
     "logos-nix_112": {
       "inputs": {
-        "nixpkgs": "nixpkgs_114"
+        "nixpkgs": "nixpkgs_113"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1592,7 +1568,7 @@
     },
     "logos-nix_113": {
       "inputs": {
-        "nixpkgs": "nixpkgs_115"
+        "nixpkgs": "nixpkgs_114"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -1610,7 +1586,7 @@
     },
     "logos-nix_114": {
       "inputs": {
-        "nixpkgs": "nixpkgs_116"
+        "nixpkgs": "nixpkgs_115"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -1628,7 +1604,7 @@
     },
     "logos-nix_115": {
       "inputs": {
-        "nixpkgs": "nixpkgs_117"
+        "nixpkgs": "nixpkgs_116"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1646,7 +1622,7 @@
     },
     "logos-nix_116": {
       "inputs": {
-        "nixpkgs": "nixpkgs_118"
+        "nixpkgs": "nixpkgs_117"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1664,7 +1640,7 @@
     },
     "logos-nix_117": {
       "inputs": {
-        "nixpkgs": "nixpkgs_119"
+        "nixpkgs": "nixpkgs_118"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1682,7 +1658,7 @@
     },
     "logos-nix_118": {
       "inputs": {
-        "nixpkgs": "nixpkgs_120"
+        "nixpkgs": "nixpkgs_119"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1700,7 +1676,7 @@
     },
     "logos-nix_119": {
       "inputs": {
-        "nixpkgs": "nixpkgs_121"
+        "nixpkgs": "nixpkgs_120"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -1718,7 +1694,7 @@
     },
     "logos-nix_12": {
       "inputs": {
-        "nixpkgs": "nixpkgs_14"
+        "nixpkgs": "nixpkgs_13"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -1736,7 +1712,7 @@
     },
     "logos-nix_120": {
       "inputs": {
-        "nixpkgs": "nixpkgs_122"
+        "nixpkgs": "nixpkgs_121"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1754,7 +1730,7 @@
     },
     "logos-nix_121": {
       "inputs": {
-        "nixpkgs": "nixpkgs_123"
+        "nixpkgs": "nixpkgs_122"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1772,7 +1748,7 @@
     },
     "logos-nix_122": {
       "inputs": {
-        "nixpkgs": "nixpkgs_124"
+        "nixpkgs": "nixpkgs_123"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1790,7 +1766,7 @@
     },
     "logos-nix_123": {
       "inputs": {
-        "nixpkgs": "nixpkgs_125"
+        "nixpkgs": "nixpkgs_124"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1808,7 +1784,7 @@
     },
     "logos-nix_124": {
       "inputs": {
-        "nixpkgs": "nixpkgs_126"
+        "nixpkgs": "nixpkgs_125"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1826,7 +1802,7 @@
     },
     "logos-nix_13": {
       "inputs": {
-        "nixpkgs": "nixpkgs_15"
+        "nixpkgs": "nixpkgs_14"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1844,7 +1820,7 @@
     },
     "logos-nix_14": {
       "inputs": {
-        "nixpkgs": "nixpkgs_16"
+        "nixpkgs": "nixpkgs_15"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -1862,7 +1838,7 @@
     },
     "logos-nix_15": {
       "inputs": {
-        "nixpkgs": "nixpkgs_17"
+        "nixpkgs": "nixpkgs_16"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1880,7 +1856,7 @@
     },
     "logos-nix_16": {
       "inputs": {
-        "nixpkgs": "nixpkgs_18"
+        "nixpkgs": "nixpkgs_17"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1898,7 +1874,7 @@
     },
     "logos-nix_17": {
       "inputs": {
-        "nixpkgs": "nixpkgs_19"
+        "nixpkgs": "nixpkgs_18"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -1916,7 +1892,7 @@
     },
     "logos-nix_18": {
       "inputs": {
-        "nixpkgs": "nixpkgs_20"
+        "nixpkgs": "nixpkgs_19"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1934,7 +1910,7 @@
     },
     "logos-nix_19": {
       "inputs": {
-        "nixpkgs": "nixpkgs_21"
+        "nixpkgs": "nixpkgs_20"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1952,7 +1928,7 @@
     },
     "logos-nix_2": {
       "inputs": {
-        "nixpkgs": "nixpkgs_4"
+        "nixpkgs": "nixpkgs_3"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1970,7 +1946,7 @@
     },
     "logos-nix_20": {
       "inputs": {
-        "nixpkgs": "nixpkgs_22"
+        "nixpkgs": "nixpkgs_21"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -1988,7 +1964,7 @@
     },
     "logos-nix_21": {
       "inputs": {
-        "nixpkgs": "nixpkgs_23"
+        "nixpkgs": "nixpkgs_22"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2006,7 +1982,7 @@
     },
     "logos-nix_22": {
       "inputs": {
-        "nixpkgs": "nixpkgs_24"
+        "nixpkgs": "nixpkgs_23"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2024,7 +2000,7 @@
     },
     "logos-nix_23": {
       "inputs": {
-        "nixpkgs": "nixpkgs_25"
+        "nixpkgs": "nixpkgs_24"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2042,7 +2018,7 @@
     },
     "logos-nix_24": {
       "inputs": {
-        "nixpkgs": "nixpkgs_26"
+        "nixpkgs": "nixpkgs_25"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2060,7 +2036,7 @@
     },
     "logos-nix_25": {
       "inputs": {
-        "nixpkgs": "nixpkgs_27"
+        "nixpkgs": "nixpkgs_26"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2078,7 +2054,7 @@
     },
     "logos-nix_26": {
       "inputs": {
-        "nixpkgs": "nixpkgs_28"
+        "nixpkgs": "nixpkgs_27"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2096,7 +2072,7 @@
     },
     "logos-nix_27": {
       "inputs": {
-        "nixpkgs": "nixpkgs_29"
+        "nixpkgs": "nixpkgs_28"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2114,7 +2090,7 @@
     },
     "logos-nix_28": {
       "inputs": {
-        "nixpkgs": "nixpkgs_30"
+        "nixpkgs": "nixpkgs_29"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2132,7 +2108,7 @@
     },
     "logos-nix_29": {
       "inputs": {
-        "nixpkgs": "nixpkgs_31"
+        "nixpkgs": "nixpkgs_30"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2150,7 +2126,7 @@
     },
     "logos-nix_3": {
       "inputs": {
-        "nixpkgs": "nixpkgs_5"
+        "nixpkgs": "nixpkgs_4"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2168,7 +2144,7 @@
     },
     "logos-nix_30": {
       "inputs": {
-        "nixpkgs": "nixpkgs_32"
+        "nixpkgs": "nixpkgs_31"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2186,7 +2162,7 @@
     },
     "logos-nix_31": {
       "inputs": {
-        "nixpkgs": "nixpkgs_33"
+        "nixpkgs": "nixpkgs_32"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2204,7 +2180,7 @@
     },
     "logos-nix_32": {
       "inputs": {
-        "nixpkgs": "nixpkgs_34"
+        "nixpkgs": "nixpkgs_33"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2222,7 +2198,7 @@
     },
     "logos-nix_33": {
       "inputs": {
-        "nixpkgs": "nixpkgs_35"
+        "nixpkgs": "nixpkgs_34"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2240,7 +2216,7 @@
     },
     "logos-nix_34": {
       "inputs": {
-        "nixpkgs": "nixpkgs_36"
+        "nixpkgs": "nixpkgs_35"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2258,7 +2234,7 @@
     },
     "logos-nix_35": {
       "inputs": {
-        "nixpkgs": "nixpkgs_37"
+        "nixpkgs": "nixpkgs_36"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2276,7 +2252,7 @@
     },
     "logos-nix_36": {
       "inputs": {
-        "nixpkgs": "nixpkgs_38"
+        "nixpkgs": "nixpkgs_37"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2294,7 +2270,7 @@
     },
     "logos-nix_37": {
       "inputs": {
-        "nixpkgs": "nixpkgs_39"
+        "nixpkgs": "nixpkgs_38"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2312,7 +2288,7 @@
     },
     "logos-nix_38": {
       "inputs": {
-        "nixpkgs": "nixpkgs_40"
+        "nixpkgs": "nixpkgs_39"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2330,7 +2306,7 @@
     },
     "logos-nix_39": {
       "inputs": {
-        "nixpkgs": "nixpkgs_41"
+        "nixpkgs": "nixpkgs_40"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2348,7 +2324,7 @@
     },
     "logos-nix_4": {
       "inputs": {
-        "nixpkgs": "nixpkgs_6"
+        "nixpkgs": "nixpkgs_5"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2366,7 +2342,7 @@
     },
     "logos-nix_40": {
       "inputs": {
-        "nixpkgs": "nixpkgs_42"
+        "nixpkgs": "nixpkgs_41"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2384,7 +2360,7 @@
     },
     "logos-nix_41": {
       "inputs": {
-        "nixpkgs": "nixpkgs_43"
+        "nixpkgs": "nixpkgs_42"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2402,7 +2378,7 @@
     },
     "logos-nix_42": {
       "inputs": {
-        "nixpkgs": "nixpkgs_44"
+        "nixpkgs": "nixpkgs_43"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2420,7 +2396,7 @@
     },
     "logos-nix_43": {
       "inputs": {
-        "nixpkgs": "nixpkgs_45"
+        "nixpkgs": "nixpkgs_44"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2438,7 +2414,7 @@
     },
     "logos-nix_44": {
       "inputs": {
-        "nixpkgs": "nixpkgs_46"
+        "nixpkgs": "nixpkgs_45"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2456,7 +2432,7 @@
     },
     "logos-nix_45": {
       "inputs": {
-        "nixpkgs": "nixpkgs_47"
+        "nixpkgs": "nixpkgs_46"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2474,7 +2450,7 @@
     },
     "logos-nix_46": {
       "inputs": {
-        "nixpkgs": "nixpkgs_48"
+        "nixpkgs": "nixpkgs_47"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2492,7 +2468,7 @@
     },
     "logos-nix_47": {
       "inputs": {
-        "nixpkgs": "nixpkgs_49"
+        "nixpkgs": "nixpkgs_48"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2510,7 +2486,7 @@
     },
     "logos-nix_48": {
       "inputs": {
-        "nixpkgs": "nixpkgs_50"
+        "nixpkgs": "nixpkgs_49"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2528,7 +2504,7 @@
     },
     "logos-nix_49": {
       "inputs": {
-        "nixpkgs": "nixpkgs_51"
+        "nixpkgs": "nixpkgs_50"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2546,7 +2522,7 @@
     },
     "logos-nix_5": {
       "inputs": {
-        "nixpkgs": "nixpkgs_7"
+        "nixpkgs": "nixpkgs_6"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2564,7 +2540,7 @@
     },
     "logos-nix_50": {
       "inputs": {
-        "nixpkgs": "nixpkgs_52"
+        "nixpkgs": "nixpkgs_51"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2582,7 +2558,7 @@
     },
     "logos-nix_51": {
       "inputs": {
-        "nixpkgs": "nixpkgs_53"
+        "nixpkgs": "nixpkgs_52"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2600,7 +2576,7 @@
     },
     "logos-nix_52": {
       "inputs": {
-        "nixpkgs": "nixpkgs_54"
+        "nixpkgs": "nixpkgs_53"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2618,7 +2594,7 @@
     },
     "logos-nix_53": {
       "inputs": {
-        "nixpkgs": "nixpkgs_55"
+        "nixpkgs": "nixpkgs_54"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2636,7 +2612,7 @@
     },
     "logos-nix_54": {
       "inputs": {
-        "nixpkgs": "nixpkgs_56"
+        "nixpkgs": "nixpkgs_55"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2654,7 +2630,7 @@
     },
     "logos-nix_55": {
       "inputs": {
-        "nixpkgs": "nixpkgs_57"
+        "nixpkgs": "nixpkgs_56"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2672,7 +2648,7 @@
     },
     "logos-nix_56": {
       "inputs": {
-        "nixpkgs": "nixpkgs_58"
+        "nixpkgs": "nixpkgs_57"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2690,7 +2666,7 @@
     },
     "logos-nix_57": {
       "inputs": {
-        "nixpkgs": "nixpkgs_59"
+        "nixpkgs": "nixpkgs_58"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2708,7 +2684,7 @@
     },
     "logos-nix_58": {
       "inputs": {
-        "nixpkgs": "nixpkgs_60"
+        "nixpkgs": "nixpkgs_59"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2726,7 +2702,7 @@
     },
     "logos-nix_59": {
       "inputs": {
-        "nixpkgs": "nixpkgs_61"
+        "nixpkgs": "nixpkgs_60"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2744,7 +2720,7 @@
     },
     "logos-nix_6": {
       "inputs": {
-        "nixpkgs": "nixpkgs_8"
+        "nixpkgs": "nixpkgs_7"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2762,7 +2738,7 @@
     },
     "logos-nix_60": {
       "inputs": {
-        "nixpkgs": "nixpkgs_62"
+        "nixpkgs": "nixpkgs_61"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2780,7 +2756,7 @@
     },
     "logos-nix_61": {
       "inputs": {
-        "nixpkgs": "nixpkgs_63"
+        "nixpkgs": "nixpkgs_62"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2798,7 +2774,7 @@
     },
     "logos-nix_62": {
       "inputs": {
-        "nixpkgs": "nixpkgs_64"
+        "nixpkgs": "nixpkgs_63"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2816,7 +2792,7 @@
     },
     "logos-nix_63": {
       "inputs": {
-        "nixpkgs": "nixpkgs_65"
+        "nixpkgs": "nixpkgs_64"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2834,7 +2810,7 @@
     },
     "logos-nix_64": {
       "inputs": {
-        "nixpkgs": "nixpkgs_66"
+        "nixpkgs": "nixpkgs_65"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2852,7 +2828,7 @@
     },
     "logos-nix_65": {
       "inputs": {
-        "nixpkgs": "nixpkgs_67"
+        "nixpkgs": "nixpkgs_66"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2870,7 +2846,7 @@
     },
     "logos-nix_66": {
       "inputs": {
-        "nixpkgs": "nixpkgs_68"
+        "nixpkgs": "nixpkgs_67"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2888,7 +2864,7 @@
     },
     "logos-nix_67": {
       "inputs": {
-        "nixpkgs": "nixpkgs_69"
+        "nixpkgs": "nixpkgs_68"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2906,7 +2882,7 @@
     },
     "logos-nix_68": {
       "inputs": {
-        "nixpkgs": "nixpkgs_70"
+        "nixpkgs": "nixpkgs_69"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2924,7 +2900,7 @@
     },
     "logos-nix_69": {
       "inputs": {
-        "nixpkgs": "nixpkgs_71"
+        "nixpkgs": "nixpkgs_70"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2942,7 +2918,7 @@
     },
     "logos-nix_7": {
       "inputs": {
-        "nixpkgs": "nixpkgs_9"
+        "nixpkgs": "nixpkgs_8"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -2960,7 +2936,7 @@
     },
     "logos-nix_70": {
       "inputs": {
-        "nixpkgs": "nixpkgs_72"
+        "nixpkgs": "nixpkgs_71"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2978,7 +2954,7 @@
     },
     "logos-nix_71": {
       "inputs": {
-        "nixpkgs": "nixpkgs_73"
+        "nixpkgs": "nixpkgs_72"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -2996,7 +2972,7 @@
     },
     "logos-nix_72": {
       "inputs": {
-        "nixpkgs": "nixpkgs_74"
+        "nixpkgs": "nixpkgs_73"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -3014,7 +2990,7 @@
     },
     "logos-nix_73": {
       "inputs": {
-        "nixpkgs": "nixpkgs_75"
+        "nixpkgs": "nixpkgs_74"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -3032,7 +3008,7 @@
     },
     "logos-nix_74": {
       "inputs": {
-        "nixpkgs": "nixpkgs_76"
+        "nixpkgs": "nixpkgs_75"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -3050,7 +3026,7 @@
     },
     "logos-nix_75": {
       "inputs": {
-        "nixpkgs": "nixpkgs_77"
+        "nixpkgs": "nixpkgs_76"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -3068,7 +3044,7 @@
     },
     "logos-nix_76": {
       "inputs": {
-        "nixpkgs": "nixpkgs_78"
+        "nixpkgs": "nixpkgs_77"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -3086,7 +3062,7 @@
     },
     "logos-nix_77": {
       "inputs": {
-        "nixpkgs": "nixpkgs_79"
+        "nixpkgs": "nixpkgs_78"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -3104,7 +3080,7 @@
     },
     "logos-nix_78": {
       "inputs": {
-        "nixpkgs": "nixpkgs_80"
+        "nixpkgs": "nixpkgs_79"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -3122,7 +3098,7 @@
     },
     "logos-nix_79": {
       "inputs": {
-        "nixpkgs": "nixpkgs_81"
+        "nixpkgs": "nixpkgs_80"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -3140,7 +3116,7 @@
     },
     "logos-nix_8": {
       "inputs": {
-        "nixpkgs": "nixpkgs_10"
+        "nixpkgs": "nixpkgs_9"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -3158,7 +3134,7 @@
     },
     "logos-nix_80": {
       "inputs": {
-        "nixpkgs": "nixpkgs_82"
+        "nixpkgs": "nixpkgs_81"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -3176,7 +3152,7 @@
     },
     "logos-nix_81": {
       "inputs": {
-        "nixpkgs": "nixpkgs_83"
+        "nixpkgs": "nixpkgs_82"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -3194,7 +3170,7 @@
     },
     "logos-nix_82": {
       "inputs": {
-        "nixpkgs": "nixpkgs_84"
+        "nixpkgs": "nixpkgs_83"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -3212,7 +3188,7 @@
     },
     "logos-nix_83": {
       "inputs": {
-        "nixpkgs": "nixpkgs_85"
+        "nixpkgs": "nixpkgs_84"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -3230,7 +3206,7 @@
     },
     "logos-nix_84": {
       "inputs": {
-        "nixpkgs": "nixpkgs_86"
+        "nixpkgs": "nixpkgs_85"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -3248,7 +3224,7 @@
     },
     "logos-nix_85": {
       "inputs": {
-        "nixpkgs": "nixpkgs_87"
+        "nixpkgs": "nixpkgs_86"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -3266,7 +3242,7 @@
     },
     "logos-nix_86": {
       "inputs": {
-        "nixpkgs": "nixpkgs_88"
+        "nixpkgs": "nixpkgs_87"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -3284,7 +3260,7 @@
     },
     "logos-nix_87": {
       "inputs": {
-        "nixpkgs": "nixpkgs_89"
+        "nixpkgs": "nixpkgs_88"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -3302,7 +3278,7 @@
     },
     "logos-nix_88": {
       "inputs": {
-        "nixpkgs": "nixpkgs_90"
+        "nixpkgs": "nixpkgs_89"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -3320,7 +3296,7 @@
     },
     "logos-nix_89": {
       "inputs": {
-        "nixpkgs": "nixpkgs_91"
+        "nixpkgs": "nixpkgs_90"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -3338,7 +3314,7 @@
     },
     "logos-nix_9": {
       "inputs": {
-        "nixpkgs": "nixpkgs_11"
+        "nixpkgs": "nixpkgs_10"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -3356,7 +3332,7 @@
     },
     "logos-nix_90": {
       "inputs": {
-        "nixpkgs": "nixpkgs_92"
+        "nixpkgs": "nixpkgs_91"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -3374,7 +3350,7 @@
     },
     "logos-nix_91": {
       "inputs": {
-        "nixpkgs": "nixpkgs_93"
+        "nixpkgs": "nixpkgs_92"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -3392,7 +3368,7 @@
     },
     "logos-nix_92": {
       "inputs": {
-        "nixpkgs": "nixpkgs_94"
+        "nixpkgs": "nixpkgs_93"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -3410,7 +3386,7 @@
     },
     "logos-nix_93": {
       "inputs": {
-        "nixpkgs": "nixpkgs_95"
+        "nixpkgs": "nixpkgs_94"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -3428,7 +3404,7 @@
     },
     "logos-nix_94": {
       "inputs": {
-        "nixpkgs": "nixpkgs_96"
+        "nixpkgs": "nixpkgs_95"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -3446,7 +3422,7 @@
     },
     "logos-nix_95": {
       "inputs": {
-        "nixpkgs": "nixpkgs_97"
+        "nixpkgs": "nixpkgs_96"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -3464,7 +3440,7 @@
     },
     "logos-nix_96": {
       "inputs": {
-        "nixpkgs": "nixpkgs_98"
+        "nixpkgs": "nixpkgs_97"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -3482,7 +3458,7 @@
     },
     "logos-nix_97": {
       "inputs": {
-        "nixpkgs": "nixpkgs_99"
+        "nixpkgs": "nixpkgs_98"
       },
       "locked": {
         "lastModified": 1774455309,
@@ -3500,7 +3476,7 @@
     },
     "logos-nix_98": {
       "inputs": {
-        "nixpkgs": "nixpkgs_100"
+        "nixpkgs": "nixpkgs_99"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -3518,7 +3494,7 @@
     },
     "logos-nix_99": {
       "inputs": {
-        "nixpkgs": "nixpkgs_101"
+        "nixpkgs": "nixpkgs_100"
       },
       "locked": {
         "lastModified": 1773955630,
@@ -5874,17 +5850,17 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1780511130,
-        "narHash": "sha256-2v9lT4ya59Lh1FqPeLnz1MoX9y/wz2huqfe9RtQZITk=",
+        "lastModified": 1771369470,
+        "narHash": "sha256-0NBlEBKkN3lufyvFegY4TYv5mCNHbi5OmBDrzihbBMQ=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "535f3e6942cb1cead3929c604320d3db54b542b9",
+        "rev": "0182a361324364ae3f436a63005877674cf45efb",
         "type": "github"
       },
       "original": {
         "owner": "NixOS",
+        "ref": "nixos-unstable",
         "repo": "nixpkgs",
-        "rev": "535f3e6942cb1cead3929c604320d3db54b542b9",
         "type": "github"
       }
     },
@@ -6352,22 +6328,6 @@
         "type": "github"
       }
     },
-    "nixpkgs_126": {
-      "locked": {
-        "lastModified": 1759036355,
-        "narHash": "sha256-0m27AKv6ka+q270dw48KflE0LwQYrO7Fm4/2//KCVWg=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "e9f00bd893984bc8ce46c895c3bf7cac95331127",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "nixos-unstable",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
     "nixpkgs_13": {
       "locked": {
         "lastModified": 1759036355,
@@ -6482,11 +6442,11 @@
     },
     "nixpkgs_2": {
       "locked": {
-        "lastModified": 1771369470,
-        "narHash": "sha256-0NBlEBKkN3lufyvFegY4TYv5mCNHbi5OmBDrzihbBMQ=",
+        "lastModified": 1759036355,
+        "narHash": "sha256-0m27AKv6ka+q270dw48KflE0LwQYrO7Fm4/2//KCVWg=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "0182a361324364ae3f436a63005877674cf45efb",
+        "rev": "e9f00bd893984bc8ce46c895c3bf7cac95331127",
         "type": "github"
       },
       "original": {
@@ -7984,51 +7944,6 @@
       "inputs": {
         "nixpkgs": [
           "logos-chat",
-          "logos-delivery",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1775099554,
-        "narHash": "sha256-3xBsGnGDLOFtnPZ1D3j2LU19wpAlYefRKTlkv648rU0=",
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "rev": "8d6387ed6d8e6e6672fd3ed4b61b59d44b124d99",
-        "type": "github"
-      },
-      "original": {
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "type": "github"
-      }
-    },
-    "rust-overlay_2": {
-      "inputs": {
-        "nixpkgs": [
-          "logos-chat",
-          "logos-delivery",
-          "zerokit",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1771297684,
-        "narHash": "sha256-wieWskQxZLPlNXX06JEB0bMoS/ZYQ89xBzF0RL9lyLs=",
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "rev": "755d3669699a7c62aef35af187d75dc2728cfd85",
-        "type": "github"
-      },
-      "original": {
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "type": "github"
-      }
-    },
-    "rust-overlay_3": {
-      "inputs": {
-        "nixpkgs": [
-          "logos-chat",
           "nixpkgs"
         ]
       },
@@ -8058,30 +7973,6 @@
       "original": {
         "owner": "nix-systems",
         "repo": "default",
-        "type": "github"
-      }
-    },
-    "zerokit": {
-      "inputs": {
-        "nixpkgs": [
-          "logos-chat",
-          "logos-delivery",
-          "nixpkgs"
-        ],
-        "rust-overlay": "rust-overlay_2"
-      },
-      "locked": {
-        "lastModified": 1779168423,
-        "narHash": "sha256-OmCnpM+ZcI79EVozdKADj9h4sFsLwfCs5w7OK8Ir6fc=",
-        "owner": "vacp2p",
-        "repo": "zerokit",
-        "rev": "5e64cb8822bee65eed6cf459f95ae72b80c6ba63",
-        "type": "github"
-      },
-      "original": {
-        "owner": "vacp2p",
-        "repo": "zerokit",
-        "rev": "5e64cb8822bee65eed6cf459f95ae72b80c6ba63",
         "type": "github"
       }
     }
