@@ -1,0 +1,38 @@
+[package]
+name     = "chat_module"
+version  = "0.1.1"
+edition  = "2021"
+
+[lib]
+crate-type = ["staticlib"]
+
+# Standalone crate. The empty table keeps cargo from adopting a workspace it
+# finds in a parent directory. resolver = "3" matches libchat's workspace (its
+# members are edition 2024, default resolver 3); aligning here avoids
+# feature-unification drift between our build and libchat's standalone build.
+[workspace]
+resolver = "3"
+
+# Panicking across the FFI boundary is UB; safer-ffi (transitive via libchat)
+# requires abort. Cargo honours [profile.release] only on the resolution root,
+# so libchat's own panic = "abort" is ignored when libchat is a dependency.
+[profile.release]
+panic = "abort"
+
+[dependencies]
+client         = { git = "https://github.com/logos-messaging/libchat.git", package = "client" }
+# The runtime SDK, staged by the module builder (codegen.rust) at this path
+# from the same logos-rust-sdk rev its generator came from, so the generated
+# scaffold and the linked SDK never skew. The path is absent in a standalone
+# checkout; build via `nix build .#chat_module`.
+logos-rust-sdk = { path = "../logos-rust-sdk-src" }
+serde          = { version = "1", features = ["derive"] }
+serde_json     = "1"
+thiserror      = "2"
+
+# libchat's `crypto` crate is written for the xeddsa 1.0 API. Cargo's
+# default SemVer resolution would pick 1.1.0 (released since), whose
+# `Sign::sign` signature changed and no longer compiles against the
+# `crypto` crate. Pin to 1.0.2 (libchat's own declared version) to keep
+# the transitive build working.
+xeddsa         = "=1.0.2"

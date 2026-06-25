@@ -1,14 +1,9 @@
-.DS_Store
-build
-build/
-.deps/
-vendor/*
-lib/*
+target/
 result
-result/
-cmake-build-*
-CMakeLists.txt.user
-generated_code/
+result-*
 .direnv/
-.clangd
-compile_commands.json
+/include/chat_module.h
+# Builder-staged at build time (codegen.rust): the logos-rust-sdk source tree
+# and the generated module-impl scaffold. Neither is committed.
+/logos-rust-sdk-src/
+/rust-lib/generated/

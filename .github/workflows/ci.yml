@@ -6,132 +6,111 @@ on:
   push:
     branches: [master, main]
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  build-and-test:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - uses: cachix/cachix-action@v15
+        with:
+          name: logos-co
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
+      - name: Install Rust toolchain
+        run: rustup update stable && rustup default stable && rustup component add rustfmt clippy
+
+      # The generated scaffold (generated/provider_gen.rs) and the SDK source the
+      # crate path-deps are gitignored, so bare cargo can't resolve them. Generate
+      # both into the working tree, then run cargo in rust-lib/ directly.
+      - name: Generate the rust build inputs
+        run: nix run .#generate -L
+
+      - name: cargo fmt --check
+        working-directory: rust-lib
+        run: cargo fmt --check
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          workspaces: rust-lib
+
+      - name: cargo clippy
+        working-directory: rust-lib
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+  cargo:
+    name: cargo (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
 
-      - name: Setup Cachix
-        uses: cachix/cachix-action@v15
+      - uses: cachix/cachix-action@v15
         with:
           name: logos-co
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
-      - name: Build module
-        run: nix build -L
+      - name: Install Rust toolchain
+        run: rustup update stable && rustup default stable
 
-      - name: Run tests
-        run: nix build .#unit-tests -L
+      - name: Generate the rust build inputs
+        run: nix run .#generate -L
 
-      - name: Pre-warm cachix for install-portable
-        # Builds the install-portable layout that e2e-tests job needs.
-        # Doing it here populates the cachix cache during the existing job's
-        # nix-build context, so e2e-tests can skip the cold rebuild.
-        if: matrix.os == 'ubuntu-latest'
-        run: nix build -L .#install-portable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          workspaces: rust-lib
 
-  e2e-tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 50          # cold cachix-miss can hit ~25min for chat-module + ~5min for smoke-image
-    needs: build-and-test
+      - name: cargo test
+        working-directory: rust-lib
+        run: cargo test --locked
+
+  nix:
+    name: nix (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
 
-      - name: Setup Cachix
-        uses: cachix/cachix-action@v15
+      - uses: cachix/cachix-action@v15
         with:
           name: logos-co
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
-      - name: Build chat-module (install-portable layout)
-        run: |
-          nix build -L .#install-portable
-          echo "LOGOS_MODULES_DIR=$PWD/result/modules" >> $GITHUB_ENV
-
-      - name: Checkout logoscore-py and build smoke image
-        run: |
-          git clone https://github.com/logos-co/logos-logoscore-py.git /tmp/logoscore-py
-          cd /tmp/logoscore-py
-          # Master HEAD post PR #1 + #2 merge; contains network= kwarg + remote-transports.
-          git checkout aa45db52
-          bash tests/docker_smoke/build_smoke_image.sh
-          echo "LOGOSCORE_IMAGE=logoscore:smoke-portable" >> $GITHUB_ENV
-
-      - name: Pull nwaku image
-        run: docker pull wakuorg/nwaku:v0.38.0
-
-      - name: Build logoscore CLI binary (host PATH)
-        # LogoscoreClient.call/subscribe shell out to a host-side `logoscore`
-        # binary; the docker image only provides the daemon. We need a CLI
-        # that reads `client/config.json` (auto-emitted by LogoscoreDockerDaemon).
-        #
-        # Pinned to the SAME commit as the daemon inside the smoke image
-        # (logos-logoscore-py@aa45db52 → flake.lock → logos-logoscore-cli@5a1cf746).
-        # Host CLI and daemon are both built from this repo, so version drift
-        # between the two will silently break the RPC/transport handshake
-        # (e.g. `callModuleMethod` returning a non-QJsonObject → exit 4).
-        # Bump this pin together with the smoke-image SHA above (line 76).
-        run: |
-          nix build -L --out-link /tmp/logoscore-cli "github:logos-co/logos-logoscore-cli/5a1cf746e841e8e8a8fd48333cff55bd12c45c52#cli"
-          echo "/tmp/logoscore-cli/bin" >> $GITHUB_PATH
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
-          cache: pip
-          cache-dependency-path: tests/e2e/requirements.txt
-
-      - name: Install e2e test dependencies
-        run: |
-          cd tests/e2e
-          pip install -r requirements.txt
-
-      - name: Run e2e tests
-        run: |
-          mkdir -p ${{ runner.temp }}/e2e-logs
-          cd tests/e2e
-          pytest -v --maxfail=1
-        env:
-          E2E_LOG_DIR: ${{ runner.temp }}/e2e-logs
-          # Forward host-CLI stderr + daemon container logs into pytest output.
-          # logoscore-py's `_proc.run_json` deliberately does NOT forward stdout
-          # (issue-token tokens would leak through), so a CLI failure carrying
-          # a JSON-encoded error code only surfaces via LogoscoreError.code.
-          LOGOSCORE_PY_FORWARD_OUTPUT: "1"
-
-      - name: Collect docker container logs on failure
-        if: failure()
-        run: |
-          mkdir -p ${{ runner.temp }}/e2e-logs
-          for c in $(docker ps -a --filter "name=logoscore-saro" --filter "name=logoscore-raya" --filter "name=nwaku-bootstrap" -q); do
-            name=$(docker inspect --format '{{.Name}}' "$c" | tr -d '/')
-            docker logs "$c" > "${{ runner.temp }}/e2e-logs/${name}.log" 2>&1 || true
-          done
-
-      - name: Upload daemon logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-test-logs
-          path: ${{ runner.temp }}/e2e-logs/*.log
-          retention-days: 7
+      - name: nix build .#chat_module
+        run: nix build .#chat_module -L

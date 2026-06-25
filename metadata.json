@@ -1,35 +1,43 @@
 {
-    "name": "chat_module",
-    "display_name": "Chat Module",
-    "version": "1.0.0",
-    "description": "Chat module for Logos",
-    "author": "Logos Core Team",
-    "type": "core",
-    "interface": "universal",
-    "codegen": {
-        "impl_header": "chat_module_plugin.h"
-    },
-    "category": "chat",
-    "main": "chat_module_plugin",
-    "dependencies": [],
-    "include": [
-        "liblogoschat.so",
-        "liblogoschat.dylib",
-        "liblogoschat.dll"
-    ],
-    "capabilities": [],
-    "nix": {
-        "packages": {
-            "runtime": ["nlohmann_json"]
-        },
-        "external_libraries": [
-            {
-                "name": "chat",
-                "build_command": "true"
-            }
-        ],
-        "cmake": {
-            "extra_include_dirs": ["lib"]
-        }
+  "name": "chat_module",
+  "display_name": "Chat Module",
+  "version": "0.1.1",
+  "description": "Chat module for Logos",
+  "author": "Logos Core Team",
+  "type": "core",
+  "interface": "cdylib",
+  "category": "chat",
+  "main": "chat_module_plugin",
+  "dependencies": ["delivery_module"],
+  "include": [],
+  "capabilities": [],
+
+  "codegen": {
+    "lidl": "rust-lib/chat_module.lidl",
+    "rust": { "crate": "rust-lib" }
+  },
+
+  "dependency_overrides": {
+    "delivery_module": {
+      "file": "rust-lib/deps/delivery_module.lidl"
     }
+  },
+
+  "nix": {
+    "external_libraries": [],
+    "packages": {
+      "build": [],
+      "runtime": []
+    },
+    "cmake": {
+      "find_packages": [],
+      "extra_include_dirs": []
+    },
+    "rust": {
+      "packages": {
+        "build": ["pkg-config", "perl"],
+        "runtime": []
+      }
+    }
+  }
 }

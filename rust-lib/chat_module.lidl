@@ -1,0 +1,63 @@
+; chat_module — e2e-encrypted chat over delivery_module. Contract consumed by
+; the UI (logos-chat-ui) to generate its typed client.
+;
+; Events push over the lp_* IPC event channel (LIDL `event` decls); the UI
+; subscribes via on_<event>() — no polling. Status-bearing calls return
+; `result` (success + value + error string).
+;
+; The record types below are the contract's source of truth for wire shapes.
+; Today's codegen materializes them as QVariant/QVariantList on the Qt side
+; (no generated C++ struct) — they document the shape and "light up" if the
+; generators gain struct support.
+module chat_module {
+  version "0.1.1"
+  description "Chat module for Logos: e2e-encrypted conversations over delivery_module."
+  category "chat"
+  depends [delivery_module]
+
+  ; --- data shapes ---
+  type Conversation {
+    convo_id: tstr
+    ? nickname: tstr
+    message_count: int
+    last_activity_ms: int
+  }
+  type Message {
+    from_self: bool
+    content: tstr
+    timestamp_ms: int
+  }
+  type Status {
+    convo_count: int
+    delivery_state: tstr
+    detail: tstr
+  }
+
+  ; --- lifecycle ---
+  method init(instance_path: tstr, delivery_preset: tstr, tcp_port: int) -> result
+  method shutdown() -> result
+
+  ; --- identity ---
+  method get_installation_name() -> tstr
+  method set_installation_name(name: tstr) -> result
+  method create_intro_bundle() -> result
+
+  ; --- conversations & messages ---
+  method create_conversation(peer_intro_bundle: tstr, initial_content: tstr) -> result
+  method list_conversations() -> [Conversation]
+  method get_messages(convo_id: tstr) -> [Message]
+  method send_message(convo_id: tstr, content: tstr) -> result
+  method set_conversation_nickname(convo_id: tstr, nickname: tstr) -> result
+  method delete_conversation(convo_id: tstr) -> result
+
+  ; --- status ---
+  method status() -> Status
+
+  ; --- events ---
+  event message_received(convo_id: tstr, content: tstr, timestamp_ms: int)
+  event message_sent(convo_id: tstr, content: tstr, timestamp_ms: int)
+  event conversation_created(convo_id: tstr, is_outgoing: bool, peer_label: tstr)
+  event conversation_updated(convo_id: tstr)
+  event conversation_deleted(convo_id: tstr)
+  event delivery_state_changed(delivery_state: tstr, detail: tstr)
+}
