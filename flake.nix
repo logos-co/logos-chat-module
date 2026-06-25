@@ -37,6 +37,11 @@
           # set `m` (default, install, lidl, …) is exposed too, so the UI module
           # can consume chat_module's published .lidl contract.
           chat_module = m.default;
+
+          # The matching delivery_module .lgx, re-exported from this flake's
+          # locked delivery input, so the exact delivery_module rev chat_module is
+          # built against can be installed alongside it.
+          "delivery_module-lgx" = logos-delivery-module.packages.${system}.lgx;
         });
 
       # `nix run .#generate` materialises the two gitignored inputs `rust-lib/`
