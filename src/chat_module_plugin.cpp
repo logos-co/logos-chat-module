@@ -196,6 +196,25 @@ void ChatModuleImpl::get_id_callback(int callerRet, const char* msg, size_t len,
     }
 }
 
+void ChatModuleImpl::get_mix_status_callback(int callerRet, const char* msg, size_t len, void* userData)
+{
+    fprintf(stderr, "ChatModuleImpl::get_mix_status_callback called with ret: %d\n", callerRet);
+
+    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    if (!impl) {
+        fprintf(stderr, "ChatModuleImpl::get_mix_status_callback: Invalid userData\n");
+        return;
+    }
+
+    if (msg && len > 0) {
+        std::string message(msg, len);
+
+        deferredEmit(impl, [impl, message, ts = isoTimestamp()]() {
+            impl->chatGetMixStatusResult(message, ts);
+        });
+    }
+}
+
 void ChatModuleImpl::list_conversations_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
     fprintf(stderr, "ChatModuleImpl::list_conversations_callback called with ret: %d\n", callerRet);
@@ -423,6 +442,26 @@ bool ChatModuleImpl::getId()
         return true;
     } else {
         fprintf(stderr, "ChatModuleImpl: Failed to get ID, error code: %d\n", result);
+        return false;
+    }
+}
+
+bool ChatModuleImpl::getMixStatus()
+{
+    fprintf(stderr, "ChatModuleImpl::getMixStatus called\n");
+
+    if (!chatCtx) {
+        fprintf(stderr, "ChatModuleImpl: Cannot get mix status - context not initialized\n");
+        return false;
+    }
+
+    int result = chat_get_mix_status(chatCtx, get_mix_status_callback, this);
+
+    if (result == RET_OK) {
+        fprintf(stderr, "ChatModuleImpl: Get mix status initiated successfully\n");
+        return true;
+    } else {
+        fprintf(stderr, "ChatModuleImpl: Failed to get mix status, error code: %d\n", result);
         return false;
     }
 }

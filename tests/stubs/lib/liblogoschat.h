@@ -35,6 +35,10 @@ void set_event_callback(void* ctx, chat_callback cb, void* userData);
 // Retrieve the local client's unique identifier. Callback returns the ID string.
 int chat_get_id(void* ctx, chat_callback cb, void* userData);
 
+// Retrieve the current mixnet status. Callback returns a JSON string with
+// mixEnabled, mixReady, mixPoolSize and minPoolSize.
+int chat_get_mix_status(void* ctx, chat_callback cb, void* userData);
+
 // Retrieve all conversations the local client participates in.
 int chat_list_conversations(void* ctx, chat_callback cb, void* userData);
 

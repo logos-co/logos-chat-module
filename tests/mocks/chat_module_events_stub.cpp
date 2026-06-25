@@ -10,6 +10,7 @@ void ChatModuleImpl::chatStartResult(bool, int64_t, const std::string&, const st
 void ChatModuleImpl::chatStopResult(bool, int64_t, const std::string&, const std::string&) {}
 void ChatModuleImpl::chatDestroyResult(const std::string&, const std::string&) {}
 void ChatModuleImpl::chatGetIdResult(const std::string&, const std::string&) {}
+void ChatModuleImpl::chatGetMixStatusResult(const std::string&, const std::string&) {}
 void ChatModuleImpl::chatListConversationsResult(const std::string&, const std::string&) {}
 void ChatModuleImpl::chatGetConversationResult(const std::string&, const std::string&) {}
 void ChatModuleImpl::chatNewPrivateConversationResult(bool, int64_t, const std::string&, const std::string&) {}

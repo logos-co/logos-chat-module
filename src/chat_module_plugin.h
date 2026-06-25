@@ -193,6 +193,21 @@ public:
     // TODO: should not be async
     bool getId();
 
+    /**
+     * @brief Retrieves the current mixnet status for sender anonymity.
+     *
+     * @return @c true if the request was accepted; @c false if the client is
+     *         not initialised.
+     *
+     * @note Asynchronously returns a result via @ref chatGetMixStatusResult with
+     *       arguments: @c status (string — a JSON object with @c mixEnabled,
+     *       @c mixReady, @c mixPoolSize and @c minPoolSize) and @c timestamp
+     *       (ISO-8601). The UI uses it to reflect whether mix is enabled/ready
+     *       and to disable sending while the mix pool is below @c minPoolSize.
+     */
+    // TODO: should not be async
+    bool getMixStatus();
+
     // -------------------------------------------------------------------------
     // Conversation Operations
     // -------------------------------------------------------------------------
@@ -335,6 +350,7 @@ logos_events:
     void chatStopResult(bool success, int64_t statusCode, const std::string& message, const std::string& timestamp);
     void chatDestroyResult(const std::string& message, const std::string& timestamp);
     void chatGetIdResult(const std::string& clientId, const std::string& timestamp);
+    void chatGetMixStatusResult(const std::string& status, const std::string& timestamp);
     void chatListConversationsResult(const std::string& conversations, const std::string& timestamp);
     void chatGetConversationResult(const std::string& conversation, const std::string& timestamp);
     void chatNewPrivateConversationResult(bool success, int64_t statusCode, const std::string& conversation, const std::string& timestamp);
@@ -359,6 +375,7 @@ private:
     static void destroy_callback(int callerRet, const char* msg, size_t len, void* userData);
     static void event_callback(int callerRet, const char* msg, size_t len, void* userData);
     static void get_id_callback(int callerRet, const char* msg, size_t len, void* userData);
+    static void get_mix_status_callback(int callerRet, const char* msg, size_t len, void* userData);
     static void list_conversations_callback(int callerRet, const char* msg, size_t len, void* userData);
     static void get_conversation_callback(int callerRet, const char* msg, size_t len, void* userData);
     static void new_private_conversation_callback(int callerRet, const char* msg, size_t len, void* userData);

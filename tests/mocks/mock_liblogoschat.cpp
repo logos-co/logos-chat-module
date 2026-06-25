@@ -68,6 +68,12 @@ int chat_get_id(void* /*ctx*/, chat_callback cb, void* userData) {
     return RET_OK;
 }
 
+int chat_get_mix_status(void* /*ctx*/, chat_callback cb, void* userData) {
+    LOGOS_CMOCK_RECORD("chat_get_mix_status");
+    invokeOk("chat_get_mix_status", cb, userData);
+    return RET_OK;
+}
+
 int chat_list_conversations(void* /*ctx*/, chat_callback cb, void* userData) {
     LOGOS_CMOCK_RECORD("chat_list_conversations");
     invokeOk("chat_list_conversations", cb, userData);

@@ -158,6 +158,26 @@ LOGOS_TEST(getId_succeeds_after_initChat) {
 }
 
 // ============================================================================
+// getMixStatus
+// ============================================================================
+
+LOGOS_TEST(getMixStatus_fails_without_initChat) {
+    auto t = LogosTestContext("chat_module");
+    ChatModuleImpl plugin;
+    LOGOS_ASSERT_FALSE(plugin.getMixStatus());
+}
+
+LOGOS_TEST(getMixStatus_succeeds_after_initChat) {
+    auto t = LogosTestContext("chat_module");
+    auto* plugin = createInitializedImpl(t);
+
+    LOGOS_ASSERT_TRUE(plugin->getMixStatus());
+    LOGOS_ASSERT(t.cFunctionCalled("chat_get_mix_status"));
+
+    delete plugin;
+}
+
+// ============================================================================
 // listConversations
 // ============================================================================
 
