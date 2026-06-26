@@ -10,13 +10,14 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use client::{ChatClient, ConversationIdOwned, StorageConfig};
+use libchat::ChatStorage;
+use logos_chat::{ChatClientBuilder, StorageConfig};
 use serde::Serialize;
 
 use crate::delivery::SdkDelivery;
 use crate::module::{
-    module, now_ms, short_label, with_display, with_display_mut, DeliveryState, DeliveryStateKind,
-    Display, ModuleState,
+    module, now_ms, short_label, with_display, with_display_mut, Client, DeliveryState,
+    DeliveryStateKind, Display, ModuleState,
 };
 use crate::persistence::{load_state, save_state, ChatSession, DisplayMessage};
 
@@ -77,24 +78,37 @@ pub(crate) fn initialize(instance_path: &str) -> Result<ModuleState, InitError> 
     // SQLCipher's keying requirement. A user-provided passphrase is a
     // future enhancement.
     let key = format!("rust-chat-{}", instance_path.replace('/', "_"));
-    let storage = StorageConfig::Encrypted { path: db_path, key };
+    let storage = ChatStorage::new(StorageConfig::Encrypted { path: db_path, key })
+        .map_err(|e| InitError::Internal(format!("open store failed: {e:?}")))?;
 
-    // Do the fallible *local* setup (DB open, state load) before touching
-    // delivery_module. The node's lifecycle is irreversible — createNode
-    // rejects duplicates and start is not idempotent (see the TODO in
-    // `start_delivery_bootstrap`) — so an open/load failure must abort init
-    // before any node exists; otherwise a partial init would strand a started,
-    // unowned node with no inbound worker and no way to stop it.
-    let client = ChatClient::open("logos-chat", storage, SdkDelivery)
-        .map_err(|e| InitError::Internal(format!("ChatClient::open failed: {e:?}")))?;
-    let intrinsic_name = client.installation_name().to_owned();
+    // The transport's inbound channel: the bridge worker feeds `inbound_tx` from
+    // delivery_module's `messageReceived`, the client's worker drains the rx (via
+    // `Transport::inbound`). The subscribe channel carries the core's inbound-address
+    // subscriptions to the bridge, which forwards them to delivery_module once the
+    // node is started.
+    let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded();
+    let (subscribe_tx, subscribe_rx) = crossbeam_channel::unbounded();
+
+    // Do the fallible *local* setup (store open, client build) before touching
+    // delivery_module. The node's lifecycle is irreversible — createNode rejects
+    // duplicates and start is not idempotent (see the TODO in
+    // `start_delivery_bootstrap`) — so a build failure must abort init before any
+    // node exists; otherwise a partial init would strand a started, unowned node
+    // with no workers and no way to stop it. Building the client subscribes the
+    // core's inbound addresses, which queue on `subscribe_rx` until the node starts.
+    let (client, events) = ChatClientBuilder::new()
+        .transport(SdkDelivery::new(inbound_rx, subscribe_tx))
+        .storage(storage)
+        .build()
+        .map_err(|e| InitError::Internal(format!("client build failed: {e:?}")))?;
+    let intrinsic_name = client.installation_name();
 
     let state_path = PathBuf::from(format!("{instance_path}/history.json"));
     let state = load_state(&state_path);
 
     // Register listeners before the node starts — `connectionStateChanged`
     // fires during start and is not re-emitted, so a late subscribe misses it.
-    // The subscriptions are handed to the worker, which polls them; nothing
+    // The subscriptions are handed to the bridge worker, which polls them; nothing
     // arrives until `start_delivery_bootstrap` starts the node.
     let mut dm = crate::modules().delivery_module;
     let messages_sub = dm
@@ -111,10 +125,17 @@ pub(crate) fn initialize(instance_path: &str) -> Result<ModuleState, InitError> 
     };
 
     let stop = Arc::new(AtomicBool::new(false));
-    let thread = crate::inbound::spawn(stop.clone(), messages_sub, conn_sub);
+    let inbound_thread = crate::inbound::spawn_bridge(
+        stop.clone(),
+        messages_sub,
+        conn_sub,
+        inbound_tx,
+        subscribe_rx,
+    );
+    let event_thread = crate::inbound::spawn_events(events);
 
-    // Seed the display state read by the getters (the client lives behind the
-    // other lock; its intrinsic name is cached here for get_installation_name).
+    // Seed the display state read by the getters (the client owns its identity;
+    // its intrinsic name is cached here for get_installation_name).
     with_display_mut(|d| {
         d.state = state;
         d.state_path = state_path;
@@ -125,7 +146,8 @@ pub(crate) fn initialize(instance_path: &str) -> Result<ModuleState, InitError> 
     Ok(ModuleState {
         client,
         inbound_stop: stop,
-        inbound_thread: Some(thread),
+        inbound_thread: Some(inbound_thread),
+        event_thread: Some(event_thread),
     })
 }
 
@@ -133,17 +155,17 @@ pub(crate) fn initialize(instance_path: &str) -> Result<ModuleState, InitError> 
 ///
 /// Called by `lib.rs` *after* the module state is installed and the module lock
 /// is released, so the async completion callbacks acquire a free lock and never
-/// re-enter it. createNode → start → subscribe are chained — each step needs the
-/// previous (start rejects until the node exists; the content-topic subscribe
-/// needs a started node) — and every step runs off the dispatch (Qt event-loop)
-/// thread, so bootstrap, which can take tens of seconds, never blocks it.
+/// re-enter it. createNode → start are chained (start rejects until the node
+/// exists), and every step runs off the dispatch (Qt event-loop) thread, so
+/// bootstrap, which can take tens of seconds, never blocks it.
 ///
-/// Readiness (`online`) is reported only once the start/subscribe handshake
-/// completes; we do NOT use delivery's earlier `connectionStateChanged=Connected`,
-/// which fires mid-bootstrap ~tens of seconds before the transport can service a
-/// call (gating the UI on it lets actions run into the IPC timeout). The inbound
-/// worker keeps consuming connectionStateChanged for reconnect/offline handling
-/// once we're started.
+/// Readiness (`online`) is reported once the node has started; the bridge worker
+/// then forwards the core's queued inbound-address subscriptions to delivery_module
+/// (see `inbound::forward_subscriptions`). We do NOT use delivery's earlier
+/// `connectionStateChanged=Connected`, which fires mid-bootstrap ~tens of seconds
+/// before the transport can service a call (gating the UI on it lets actions run
+/// into the IPC timeout). The bridge worker keeps consuming connectionStateChanged
+/// for reconnect/offline handling once we're started.
 ///
 /// TODO: delivery_module's lifecycle should be owned by the host, not the
 /// consumer. createNode rejects duplicates and start is not idempotent, so
@@ -160,42 +182,23 @@ pub(crate) fn start_delivery_bootstrap(preset: &str, tcp_port: i32) {
     })
     .to_string();
 
-    // "delivery_address" is a placeholder segment, not a real address: the
-    // inbound worker filters loosely on the topic prefix and libchat has no
-    // accessor for our own inbound address yet.
-    // TODO: forward libchat's future `DeliveryService::subscribe(addr)` to
-    // delivery_module and drop this literal.
-    let inbound_topic = crate::delivery::content_topic_for("delivery_address");
-
     crate::modules()
         .delivery_module
         .create_node_async(&config_json, move |res| match res {
-            Ok(_) => start_node(inbound_topic),
+            Ok(_) => start_node(),
             Err(e) => set_delivery_error(format!("delivery_module.createNode failed: {e}")),
         });
 }
 
-/// Bootstrap step 2 of 3: start the node, then chain the subscribe.
-fn start_node(inbound_topic: String) {
+/// Bootstrap step 2 of 2: start the node and report readiness. Once online, the
+/// bridge worker forwards the core's queued subscriptions (see
+/// `inbound::forward_subscriptions`).
+fn start_node() {
     crate::modules()
         .delivery_module
         .start_async(move |res| match res {
-            Ok(_) => subscribe_inbound(inbound_topic),
+            Ok(_) => with_display_mut(|d| set_delivery_state(d, DeliveryStateKind::Online, "")),
             Err(e) => set_delivery_error(format!("delivery_module.start failed: {e}")),
-        });
-}
-
-/// Bootstrap step 3 of 3: subscribe to the inbound topic and report readiness.
-fn subscribe_inbound(inbound_topic: String) {
-    crate::modules()
-        .delivery_module
-        .subscribe_async(&inbound_topic, move |res| {
-            if let Err(e) = res {
-                // Receiving inbound needs this subscription; log but don't withhold
-                // readiness — sending and identity work without it, and the node started.
-                eprintln!("chat_module: delivery_module.subscribe failed: {e}");
-            }
-            with_display_mut(|d| set_delivery_state(d, DeliveryStateKind::Online, ""));
         });
 }
 
@@ -215,6 +218,12 @@ pub(crate) fn shutdown(mut ms: ModuleState) {
         // Bounded by inbound::POLL_INTERVAL; ~50 ms worst case.
         let _ = handle.join();
     }
+    // Drop the client so its worker stops and its event sender disconnects; the
+    // event consumer then ends its loop and can be joined.
+    drop(ms.client);
+    if let Some(handle) = ms.event_thread.take() {
+        let _ = handle.join();
+    }
     with_display_mut(|d| {
         // Final write; nothing left to propagate to, so log a failure.
         if let Err(e) = save_state(&d.state, &d.state_path) {
@@ -226,7 +235,7 @@ pub(crate) fn shutdown(mut ms: ModuleState) {
 
 /// Run `f` with the libchat client under the module lock, mapping "no client"
 /// (not initialised) and the unreachable poisoned lock to a [`CoreError`].
-fn with_client<R>(f: impl FnOnce(&mut ChatClient<SdkDelivery>) -> R) -> Result<R, CoreError> {
+fn with_client<R>(f: impl FnOnce(&mut Client) -> R) -> Result<R, CoreError> {
     match module().with_state_mut(|ms| f(&mut ms.client)) {
         Ok(Some(r)) => Ok(r),
         Ok(None) => Err(CoreError::NotInit),
@@ -269,14 +278,12 @@ pub(crate) fn create_intro_bundle() -> Result<String, CoreError> {
 // ── Conversations ────────────────────────────────────────────────────────────
 
 pub(crate) fn create_conversation(bundle: &str, content: &str) -> Result<String, CoreError> {
-    // libchat op under the client lock (on the dispatch thread, where the
-    // delivery replica lives). Publish is async (see SdkDelivery), so this
-    // returns without blocking on the network.
-    let convo_id =
+    // libchat op under the client lock. Publish is async (see SdkDelivery), so
+    // this returns without blocking on the network.
+    let chat_id =
         with_client(|client| client.create_conversation(bundle.as_bytes(), content.as_bytes()))?
             .map_err(|e| CoreError::Internal(format!("create_conversation failed: {e:?}")))?;
 
-    let chat_id = convo_id.to_string();
     let ts = now_ms();
 
     let mut session = ChatSession {
@@ -338,8 +345,7 @@ pub(crate) fn send_message(convo_id: &str, content: &str) -> Result<(), CoreErro
         return Err(CoreError::NotFound);
     }
 
-    let cid: ConversationIdOwned = convo_id.into();
-    with_client(|client| client.send_message(&cid, content.as_bytes()))?
+    with_client(|client| client.send_message(convo_id, content.as_bytes()))?
         .map_err(|e| CoreError::Delivery(format!("send_message failed: {e:?}")))?;
 
     let ts = now_ms();
@@ -414,56 +420,61 @@ pub(crate) fn set_delivery_state(d: &mut Display, state: DeliveryStateKind, deta
     crate::emit_delivery_state_changed(state.as_str(), detail);
 }
 
-/// Decrypt a single inbound payload and reflect it in local state. Called from
-/// the inbound worker thread. The decrypt runs under the client lock (the slow
-/// part); recording the result runs under the display lock, so the read methods
-/// aren't held up by the decrypt.
-pub(crate) fn process_payload(payload: &[u8]) {
-    let content = match module().with_state_mut(|ms| ms.client.receive(payload)) {
-        Ok(Some(Ok(Some(content)))) => content,
-        Ok(Some(Ok(None))) => return, // protocol frame, nothing to record
-        Ok(Some(Err(e))) => {
-            eprintln!("chat_module: receive error: {e:?}");
-            return;
-        }
-        Ok(None) | Err(_) => return, // not initialised / poisoned (unreachable)
-    };
-
-    let chat_id = content.conversation_id.clone();
+/// Record a newly-observed conversation (the client's `ConversationStarted`
+/// event) and surface it. No-op for a locally-deleted or already-known
+/// conversation. Called from the event consumer thread; takes only the display
+/// lock, so it never waits on the client.
+pub(crate) fn record_conversation_started(convo_id: &str) {
     with_display_mut(|d| {
-        // libchat retains crypto state across local deletes, so we still
-        // receive decryptable payloads for deleted convos.
-        if d.state.deleted.contains(&chat_id) {
+        // libchat retains crypto state across local deletes, so we still observe
+        // events for deleted convos.
+        if d.state.deleted.contains(convo_id) || d.state.chats.contains_key(convo_id) {
             return;
         }
+        d.state.chats.insert(
+            convo_id.to_owned(),
+            ChatSession {
+                chat_id: convo_id.to_owned(),
+                nickname: None,
+                messages: Vec::new(),
+            },
+        );
+        crate::emit_conversation_created(convo_id, false, short_label(convo_id));
 
-        let is_new = content.is_new_convo && !d.state.chats.contains_key(&chat_id);
-        if is_new {
-            d.state.chats.insert(
-                chat_id.clone(),
-                ChatSession {
-                    chat_id: chat_id.clone(),
-                    nickname: None,
-                    messages: Vec::new(),
-                },
-            );
-            crate::emit_conversation_created(&chat_id, false, short_label(&chat_id));
+        // Event consumer has no caller to return to; log a failed write.
+        if let Err(e) = save_state(&d.state, &d.state_path) {
+            eprintln!("chat_module: save_state failed after conversation started: {e}");
         }
+    });
+}
 
-        if !content.data.is_empty() {
-            let text = String::from_utf8_lossy(&content.data).to_string();
-            let ts = now_ms();
-            if let Some(session) = d.state.chats.get_mut(&chat_id) {
-                session.messages.push(DisplayMessage {
-                    from_self: false,
-                    content: text.clone(),
-                    timestamp_ms: ts,
-                });
-            }
-            crate::emit_message_received(&chat_id, &text, ts as i64);
+/// Record an inbound message (the client's `MessageReceived` event) and surface
+/// it. No-op for a locally-deleted conversation; an unknown conversation is
+/// created defensively (the preceding `ConversationStarted` normally creates it
+/// first). Called from the event consumer thread; takes only the display lock.
+pub(crate) fn record_message_received(convo_id: &str, content: &[u8]) {
+    with_display_mut(|d| {
+        if d.state.deleted.contains(convo_id) {
+            return;
         }
+        let text = String::from_utf8_lossy(content).to_string();
+        let ts = now_ms();
+        let session = d
+            .state
+            .chats
+            .entry(convo_id.to_owned())
+            .or_insert_with(|| ChatSession {
+                chat_id: convo_id.to_owned(),
+                nickname: None,
+                messages: Vec::new(),
+            });
+        session.messages.push(DisplayMessage {
+            from_self: false,
+            content: text.clone(),
+            timestamp_ms: ts,
+        });
+        crate::emit_message_received(convo_id, &text, ts as i64);
 
-        // Inbound worker has no caller to return to; log a failed write.
         if let Err(e) = save_state(&d.state, &d.state_path) {
             eprintln!("chat_module: save_state failed after inbound message: {e}");
         }

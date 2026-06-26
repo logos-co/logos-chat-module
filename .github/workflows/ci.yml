@@ -49,9 +49,11 @@ jobs:
           cache-on-failure: true
           workspaces: rust-lib
 
+      # clippy compiles the dep graph, so it runs inside the flake devShell for
+      # protoc (see flake.nix); the root flake is referenced via GITHUB_WORKSPACE.
       - name: cargo clippy
         working-directory: rust-lib
-        run: cargo clippy --locked --all-targets -- -D warnings
+        run: nix develop "$GITHUB_WORKSPACE" --command cargo clippy --locked --all-targets -- -D warnings
 
   cargo:
     name: cargo (${{ matrix.os }})
@@ -86,9 +88,11 @@ jobs:
           cache-on-failure: true
           workspaces: rust-lib
 
+      # compiles the dep graph, so it runs inside the flake devShell for protoc
+      # (see flake.nix); the root flake is referenced via GITHUB_WORKSPACE.
       - name: cargo test
         working-directory: rust-lib
-        run: cargo test --locked
+        run: nix develop "$GITHUB_WORKSPACE" --command cargo test --locked
 
   nix:
     name: nix (${{ matrix.os }})
