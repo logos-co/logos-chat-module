@@ -198,11 +198,11 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1782404141,
-        "narHash": "sha256-5GDWbLOEe6uy9kHAt/4K4OVR1VXgWtswDRv+0CslIpg=",
+        "lastModified": 1782461596,
+        "narHash": "sha256-yWBGJK2Tqyx5DTNkGTJZ4nvk8NmFUirrYBsx4X0QveE=",
         "ref": "feat/logos-testnetv02-mix",
-        "rev": "c9dfefa4980e38e5edb04a8a65c688376e71c4ab",
-        "revCount": 148,
+        "rev": "5a6a8c210ff1075e475f23e62749fff7890aaa9d",
+        "revCount": 152,
         "submodules": true,
         "type": "git",
         "url": "https://github.com/logos-messaging/logos-chat"
