@@ -1,6 +1,12 @@
-//! `DeliveryService` impl that forwards `publish()` to delivery_module.
+//! `Transport` impl bridging the client's delivery boundary to delivery_module.
+//!
+//! `publish` forwards each outbound envelope to delivery_module; `subscribe`
+//! queues the core's interest in a delivery address (forwarded once the node is
+//! started, see `inbound.rs`); `inbound` hands the client the channel the module
+//! feeds with received payloads.
 
-use client::{AddressedEnvelope, DeliveryService};
+use crossbeam_channel::{Receiver, Sender};
+use logos_chat::{AddressedEnvelope, DeliveryService, Transport};
 
 /// The single home for chat's content-topic scheme. Both the outbound topic
 /// ([`content_topic_for`]) and the inbound prefix filter (`inbound.rs`) derive
@@ -11,9 +17,26 @@ pub(crate) fn content_topic_for(delivery_address: &str) -> String {
     format!("{TOPIC_PREFIX}{delivery_address}/proto")
 }
 
-/// Stateless delivery service; forwards each publish to delivery_module
-/// through the typed dependency client (cheap to instantiate per call).
-pub(crate) struct SdkDelivery;
+/// Carries each direction of the client's delivery boundary: outbound publishing
+/// and subscription forwarding to delivery_module, plus the inbound payload
+/// stream the client's worker drains.
+#[derive(Debug)]
+pub(crate) struct SdkDelivery {
+    /// Handed to the client once via [`Transport::inbound`]. The module feeds the
+    /// matching sender from delivery_module's `messageReceived` events.
+    inbound_rx: Option<Receiver<Vec<u8>>>,
+    /// Subscription requests from the core, drained by the inbound worker.
+    subscribe_tx: Sender<String>,
+}
+
+impl SdkDelivery {
+    pub(crate) fn new(inbound_rx: Receiver<Vec<u8>>, subscribe_tx: Sender<String>) -> Self {
+        Self {
+            inbound_rx: Some(inbound_rx),
+            subscribe_tx,
+        }
+    }
+}
 
 impl DeliveryService for SdkDelivery {
     type Error = String;
@@ -34,5 +57,22 @@ impl DeliveryService for SdkDelivery {
                 }
             });
         Ok(())
+    }
+
+    fn subscribe(&mut self, delivery_address: &str) -> Result<(), String> {
+        // The core subscribes its inbound addresses at construction, before the
+        // delivery node exists. Queue the topic; the inbound worker forwards it to
+        // delivery_module once the node is started (see `inbound::forward_subscriptions`).
+        self.subscribe_tx
+            .send(content_topic_for(delivery_address))
+            .map_err(|e| e.to_string())
+    }
+}
+
+impl Transport for SdkDelivery {
+    fn inbound(&mut self) -> Receiver<Vec<u8>> {
+        self.inbound_rx
+            .take()
+            .expect("SdkDelivery::inbound called more than once")
     }
 }

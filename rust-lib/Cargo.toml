@@ -20,7 +20,16 @@ resolver = "3"
 panic = "abort"
 
 [dependencies]
-client         = { git = "https://github.com/logos-messaging/libchat.git", package = "client" }
+# libchat's high-level threaded client (package renamed `client` -> `logos-chat`).
+# It owns the inbound worker that drives `Core::handle_payload` and surfaces
+# observations as `Event`s on a channel the module drains.
+logos-chat     = { git = "https://github.com/logos-messaging/libchat.git", package = "logos-chat" }
+# The umbrella `libchat` crate, for `ChatStorage`: the builder's `storage_config`
+# panics on a bad DB, so we build the store fallibly and pass it in.
+libchat        = { git = "https://github.com/logos-messaging/libchat.git", package = "libchat" }
+# The client hands back a `Receiver<Event>` and drains a `Receiver<Vec<u8>>`
+# through its `Transport`, so the module's plumbing speaks the same channel type.
+crossbeam-channel = "0.5"
 # The runtime SDK, staged by the module builder (codegen.rust) at this path
 # from the same logos-rust-sdk rev its generator came from, so the generated
 # scaffold and the linked SDK never skew. The path is absent in a standalone
