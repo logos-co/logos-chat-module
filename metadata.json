@@ -1,6 +1,6 @@
 {
-    "name": "chat_module",
-    "display_name": "Chat Module",
+    "name": "chat_module_mix",
+    "display_name": "Chat Module (Mix)",
     "version": "1.0.0",
     "description": "Chat module for Logos",
     "author": "Logos Core Team",
@@ -10,7 +10,7 @@
         "impl_header": "chat_module_plugin.h"
     },
     "category": "chat",
-    "main": "chat_module_plugin",
+    "main": "chat_module_mix_plugin",
     "dependencies": [],
     "include": [
         "liblogoschat.so",

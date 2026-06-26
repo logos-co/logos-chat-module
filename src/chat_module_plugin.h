@@ -69,14 +69,14 @@ extern "C" {
  * | @c chatDeliveryAck     | `payload` (string — JSON), `timestamp` (ISO-8601) |
  * | @c chatEvent           | `payload` (string — JSON), `timestamp` (ISO-8601) — fallback for unrecognised SDK event types |
  */
-class ChatModuleImpl : public LogosModuleContext {
+class ChatModuleMixImpl : public LogosModuleContext {
 public:
-    ChatModuleImpl();
-    ~ChatModuleImpl();
+    ChatModuleMixImpl();
+    ~ChatModuleMixImpl();
 
     /// QObject anchor used as the receiver for deferred-emit posts inside
     /// libchat callbacks (see chat_module_plugin.cpp:deferredEmit). When
-    /// this ChatModuleImpl is destroyed the anchor is destroyed too, so
+    /// this ChatModuleMixImpl is destroyed the anchor is destroyed too, so
     /// any pending `QMetaObject::invokeMethod(..., Qt::QueuedConnection)`
     /// targeting it is dropped by Qt — preventing use-after-free of a
     /// captured `impl` pointer if a callback fires shortly before teardown.

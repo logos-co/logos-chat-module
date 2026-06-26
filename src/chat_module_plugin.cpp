@@ -14,7 +14,7 @@ namespace {
 // Every libchat callback (init/start/stop/destroy/get_id/...) is invoked
 // synchronously from inside the corresponding libchat C API call (e.g.
 // chat_new, chat_start), which is itself invoked synchronously from a
-// LOGOS_METHOD on ChatModuleImpl. The plugin host's Q_INVOKABLE slot
+// LOGOS_METHOD on ChatModuleMixImpl. The plugin host's Q_INVOKABLE slot
 // is still on the stack at that point; the host thread cannot reach
 // the next event-loop iteration (which is when QLocalSocket flushes
 // the QRO reply packet) until every synchronous emit has unwound.
@@ -30,7 +30,7 @@ namespace {
 // pending queued metacall — so the captured raw `impl` pointer in the
 // emit closure cannot be dereferenced after free.
 template <typename EmitFn>
-void deferredEmit(ChatModuleImpl* impl, EmitFn&& emitFn)
+void deferredEmit(ChatModuleMixImpl* impl, EmitFn&& emitFn)
 {
     QMetaObject::invokeMethod(
         impl->emitRouter(),
@@ -50,13 +50,13 @@ static std::string isoTimestamp()
     return out;
 }
 
-ChatModuleImpl::ChatModuleImpl() : chatCtx(nullptr)
+ChatModuleMixImpl::ChatModuleMixImpl() : chatCtx(nullptr)
 {
-    fprintf(stderr, "ChatModuleImpl: Initializing...\n");
-    fprintf(stderr, "ChatModuleImpl: Initialized successfully\n");
+    fprintf(stderr, "ChatModuleMixImpl: Initializing...\n");
+    fprintf(stderr, "ChatModuleMixImpl: Initialized successfully\n");
 }
 
-ChatModuleImpl::~ChatModuleImpl()
+ChatModuleMixImpl::~ChatModuleMixImpl()
 {
     if (chatCtx) {
         chat_destroy(chatCtx, destroy_callback, this);
@@ -68,13 +68,13 @@ ChatModuleImpl::~ChatModuleImpl()
 // Static Callback Functions
 // ============================================================================
 
-void ChatModuleImpl::init_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleMixImpl::init_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    fprintf(stderr, "ChatModuleImpl::init_callback called with ret: %d\n", callerRet);
+    fprintf(stderr, "ChatModuleMixImpl::init_callback called with ret: %d\n", callerRet);
 
-    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    auto* impl = static_cast<ChatModuleMixImpl*>(userData);
     if (!impl) {
-        fprintf(stderr, "ChatModuleImpl::init_callback: Invalid userData\n");
+        fprintf(stderr, "ChatModuleMixImpl::init_callback: Invalid userData\n");
         return;
     }
 
@@ -86,13 +86,13 @@ void ChatModuleImpl::init_callback(int callerRet, const char* msg, size_t len, v
     });
 }
 
-void ChatModuleImpl::start_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleMixImpl::start_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    fprintf(stderr, "ChatModuleImpl::start_callback called with ret: %d\n", callerRet);
+    fprintf(stderr, "ChatModuleMixImpl::start_callback called with ret: %d\n", callerRet);
 
-    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    auto* impl = static_cast<ChatModuleMixImpl*>(userData);
     if (!impl) {
-        fprintf(stderr, "ChatModuleImpl::start_callback: Invalid userData\n");
+        fprintf(stderr, "ChatModuleMixImpl::start_callback: Invalid userData\n");
         return;
     }
 
@@ -104,13 +104,13 @@ void ChatModuleImpl::start_callback(int callerRet, const char* msg, size_t len, 
     });
 }
 
-void ChatModuleImpl::stop_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleMixImpl::stop_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    fprintf(stderr, "ChatModuleImpl::stop_callback called with ret: %d\n", callerRet);
+    fprintf(stderr, "ChatModuleMixImpl::stop_callback called with ret: %d\n", callerRet);
 
-    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    auto* impl = static_cast<ChatModuleMixImpl*>(userData);
     if (!impl) {
-        fprintf(stderr, "ChatModuleImpl::stop_callback: Invalid userData\n");
+        fprintf(stderr, "ChatModuleMixImpl::stop_callback: Invalid userData\n");
         return;
     }
 
@@ -122,19 +122,19 @@ void ChatModuleImpl::stop_callback(int callerRet, const char* msg, size_t len, v
     });
 }
 
-void ChatModuleImpl::destroy_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleMixImpl::destroy_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    fprintf(stderr, "ChatModuleImpl::destroy_callback called with ret: %d\n", callerRet);
+    fprintf(stderr, "ChatModuleMixImpl::destroy_callback called with ret: %d\n", callerRet);
 
-    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    auto* impl = static_cast<ChatModuleMixImpl*>(userData);
     if (!impl) {
-        fprintf(stderr, "ChatModuleImpl::destroy_callback: Invalid userData\n");
+        fprintf(stderr, "ChatModuleMixImpl::destroy_callback: Invalid userData\n");
         return;
     }
 
     if (msg && len > 0) {
         std::string message(msg, len);
-        fprintf(stderr, "ChatModuleImpl::destroy_callback message: %s\n", message.c_str());
+        fprintf(stderr, "ChatModuleMixImpl::destroy_callback message: %s\n", message.c_str());
 
         deferredEmit(impl, [impl, message, ts = isoTimestamp()]() {
             impl->chatDestroyResult(message, ts);
@@ -142,13 +142,13 @@ void ChatModuleImpl::destroy_callback(int callerRet, const char* msg, size_t len
     }
 }
 
-void ChatModuleImpl::event_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleMixImpl::event_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    fprintf(stderr, "ChatModuleImpl::event_callback called with ret: %d\n", callerRet);
+    fprintf(stderr, "ChatModuleMixImpl::event_callback called with ret: %d\n", callerRet);
 
-    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    auto* impl = static_cast<ChatModuleMixImpl*>(userData);
     if (!impl) {
-        fprintf(stderr, "ChatModuleImpl::event_callback: Invalid userData\n");
+        fprintf(stderr, "ChatModuleMixImpl::event_callback: Invalid userData\n");
         return;
     }
 
@@ -177,13 +177,13 @@ void ChatModuleImpl::event_callback(int callerRet, const char* msg, size_t len, 
     }
 }
 
-void ChatModuleImpl::get_id_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleMixImpl::get_id_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    fprintf(stderr, "ChatModuleImpl::get_id_callback called with ret: %d\n", callerRet);
+    fprintf(stderr, "ChatModuleMixImpl::get_id_callback called with ret: %d\n", callerRet);
 
-    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    auto* impl = static_cast<ChatModuleMixImpl*>(userData);
     if (!impl) {
-        fprintf(stderr, "ChatModuleImpl::get_id_callback: Invalid userData\n");
+        fprintf(stderr, "ChatModuleMixImpl::get_id_callback: Invalid userData\n");
         return;
     }
 
@@ -196,13 +196,13 @@ void ChatModuleImpl::get_id_callback(int callerRet, const char* msg, size_t len,
     }
 }
 
-void ChatModuleImpl::get_mix_status_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleMixImpl::get_mix_status_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    fprintf(stderr, "ChatModuleImpl::get_mix_status_callback called with ret: %d\n", callerRet);
+    fprintf(stderr, "ChatModuleMixImpl::get_mix_status_callback called with ret: %d\n", callerRet);
 
-    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    auto* impl = static_cast<ChatModuleMixImpl*>(userData);
     if (!impl) {
-        fprintf(stderr, "ChatModuleImpl::get_mix_status_callback: Invalid userData\n");
+        fprintf(stderr, "ChatModuleMixImpl::get_mix_status_callback: Invalid userData\n");
         return;
     }
 
@@ -215,13 +215,13 @@ void ChatModuleImpl::get_mix_status_callback(int callerRet, const char* msg, siz
     }
 }
 
-void ChatModuleImpl::list_conversations_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleMixImpl::list_conversations_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    fprintf(stderr, "ChatModuleImpl::list_conversations_callback called with ret: %d\n", callerRet);
+    fprintf(stderr, "ChatModuleMixImpl::list_conversations_callback called with ret: %d\n", callerRet);
 
-    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    auto* impl = static_cast<ChatModuleMixImpl*>(userData);
     if (!impl) {
-        fprintf(stderr, "ChatModuleImpl::list_conversations_callback: Invalid userData\n");
+        fprintf(stderr, "ChatModuleMixImpl::list_conversations_callback: Invalid userData\n");
         return;
     }
 
@@ -234,13 +234,13 @@ void ChatModuleImpl::list_conversations_callback(int callerRet, const char* msg,
     }
 }
 
-void ChatModuleImpl::get_conversation_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleMixImpl::get_conversation_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    fprintf(stderr, "ChatModuleImpl::get_conversation_callback called with ret: %d\n", callerRet);
+    fprintf(stderr, "ChatModuleMixImpl::get_conversation_callback called with ret: %d\n", callerRet);
 
-    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    auto* impl = static_cast<ChatModuleMixImpl*>(userData);
     if (!impl) {
-        fprintf(stderr, "ChatModuleImpl::get_conversation_callback: Invalid userData\n");
+        fprintf(stderr, "ChatModuleMixImpl::get_conversation_callback: Invalid userData\n");
         return;
     }
 
@@ -253,13 +253,13 @@ void ChatModuleImpl::get_conversation_callback(int callerRet, const char* msg, s
     }
 }
 
-void ChatModuleImpl::new_private_conversation_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleMixImpl::new_private_conversation_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    fprintf(stderr, "ChatModuleImpl::new_private_conversation_callback called with ret: %d\n", callerRet);
+    fprintf(stderr, "ChatModuleMixImpl::new_private_conversation_callback called with ret: %d\n", callerRet);
 
-    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    auto* impl = static_cast<ChatModuleMixImpl*>(userData);
     if (!impl) {
-        fprintf(stderr, "ChatModuleImpl::new_private_conversation_callback: Invalid userData\n");
+        fprintf(stderr, "ChatModuleMixImpl::new_private_conversation_callback: Invalid userData\n");
         return;
     }
 
@@ -271,18 +271,18 @@ void ChatModuleImpl::new_private_conversation_callback(int callerRet, const char
     });
 }
 
-void ChatModuleImpl::send_message_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleMixImpl::send_message_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    fprintf(stderr, "ChatModuleImpl::send_message_callback called with ret: %d\n", callerRet);
+    fprintf(stderr, "ChatModuleMixImpl::send_message_callback called with ret: %d\n", callerRet);
 
-    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    auto* impl = static_cast<ChatModuleMixImpl*>(userData);
     if (!impl) {
-        fprintf(stderr, "ChatModuleImpl::send_message_callback: Invalid userData\n");
+        fprintf(stderr, "ChatModuleMixImpl::send_message_callback: Invalid userData\n");
         return;
     }
 
     std::string resultJson = (msg && len > 0) ? std::string(msg, len) : "";
-    fprintf(stderr, "ChatModuleImpl::send_message_callback result: %s\n", resultJson.c_str());
+    fprintf(stderr, "ChatModuleMixImpl::send_message_callback result: %s\n", resultJson.c_str());
     bool success = (callerRet == RET_OK);
 
     deferredEmit(impl, [impl, success, callerRet, resultJson, ts = isoTimestamp()]() {
@@ -290,13 +290,13 @@ void ChatModuleImpl::send_message_callback(int callerRet, const char* msg, size_
     });
 }
 
-void ChatModuleImpl::get_identity_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleMixImpl::get_identity_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    fprintf(stderr, "ChatModuleImpl::get_identity_callback called with ret: %d\n", callerRet);
+    fprintf(stderr, "ChatModuleMixImpl::get_identity_callback called with ret: %d\n", callerRet);
 
-    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    auto* impl = static_cast<ChatModuleMixImpl*>(userData);
     if (!impl) {
-        fprintf(stderr, "ChatModuleImpl::get_identity_callback: Invalid userData\n");
+        fprintf(stderr, "ChatModuleMixImpl::get_identity_callback: Invalid userData\n");
         return;
     }
 
@@ -309,13 +309,13 @@ void ChatModuleImpl::get_identity_callback(int callerRet, const char* msg, size_
     }
 }
 
-void ChatModuleImpl::create_intro_bundle_callback(int callerRet, const char* msg, size_t len, void* userData)
+void ChatModuleMixImpl::create_intro_bundle_callback(int callerRet, const char* msg, size_t len, void* userData)
 {
-    fprintf(stderr, "ChatModuleImpl::create_intro_bundle_callback called with ret: %d\n", callerRet);
+    fprintf(stderr, "ChatModuleMixImpl::create_intro_bundle_callback called with ret: %d\n", callerRet);
 
-    auto* impl = static_cast<ChatModuleImpl*>(userData);
+    auto* impl = static_cast<ChatModuleMixImpl*>(userData);
     if (!impl) {
-        fprintf(stderr, "ChatModuleImpl::create_intro_bundle_callback: Invalid userData\n");
+        fprintf(stderr, "ChatModuleMixImpl::create_intro_bundle_callback: Invalid userData\n");
         return;
     }
 
@@ -331,94 +331,94 @@ void ChatModuleImpl::create_intro_bundle_callback(int callerRet, const char* msg
 // Client Lifecycle Methods
 // ============================================================================
 
-bool ChatModuleImpl::initChat(const std::string& configJson)
+bool ChatModuleMixImpl::initChat(const std::string& configJson)
 {
-    fprintf(stderr, "ChatModuleImpl::initChat called with config: %s\n", configJson.c_str());
+    fprintf(stderr, "ChatModuleMixImpl::initChat called with config: %s\n", configJson.c_str());
 
     chatCtx = chat_new(configJson.c_str(), init_callback, this);
 
     if (chatCtx) {
-        fprintf(stderr, "ChatModuleImpl: Chat context created successfully\n");
+        fprintf(stderr, "ChatModuleMixImpl: Chat context created successfully\n");
         return true;
     } else {
-        fprintf(stderr, "ChatModuleImpl: Failed to create Chat context\n");
+        fprintf(stderr, "ChatModuleMixImpl: Failed to create Chat context\n");
         return false;
     }
 }
 
-bool ChatModuleImpl::startChat()
+bool ChatModuleMixImpl::startChat()
 {
-    fprintf(stderr, "ChatModuleImpl::startChat called\n");
+    fprintf(stderr, "ChatModuleMixImpl::startChat called\n");
 
     if (!chatCtx) {
-        fprintf(stderr, "ChatModuleImpl: Cannot start Chat - context not initialized. Call initChat first.\n");
+        fprintf(stderr, "ChatModuleMixImpl: Cannot start Chat - context not initialized. Call initChat first.\n");
         return false;
     }
 
     int result = chat_start(chatCtx, start_callback, this);
 
     if (result == RET_OK) {
-        fprintf(stderr, "ChatModuleImpl: Chat start initiated successfully\n");
+        fprintf(stderr, "ChatModuleMixImpl: Chat start initiated successfully\n");
         return true;
     } else {
-        fprintf(stderr, "ChatModuleImpl: Failed to start Chat, error code: %d\n", result);
+        fprintf(stderr, "ChatModuleMixImpl: Failed to start Chat, error code: %d\n", result);
         return false;
     }
 }
 
-bool ChatModuleImpl::stopChat()
+bool ChatModuleMixImpl::stopChat()
 {
-    fprintf(stderr, "ChatModuleImpl::stopChat called\n");
+    fprintf(stderr, "ChatModuleMixImpl::stopChat called\n");
 
     if (!chatCtx) {
-        fprintf(stderr, "ChatModuleImpl: Cannot stop Chat - context not initialized.\n");
+        fprintf(stderr, "ChatModuleMixImpl: Cannot stop Chat - context not initialized.\n");
         return false;
     }
 
     int result = chat_stop(chatCtx, stop_callback, this);
 
     if (result == RET_OK) {
-        fprintf(stderr, "ChatModuleImpl: Chat stop initiated successfully\n");
+        fprintf(stderr, "ChatModuleMixImpl: Chat stop initiated successfully\n");
         return true;
     } else {
-        fprintf(stderr, "ChatModuleImpl: Failed to stop Chat, error code: %d\n", result);
+        fprintf(stderr, "ChatModuleMixImpl: Failed to stop Chat, error code: %d\n", result);
         return false;
     }
 }
 
-bool ChatModuleImpl::destroyChat()
+bool ChatModuleMixImpl::destroyChat()
 {
-    fprintf(stderr, "ChatModuleImpl::destroyChat called\n");
+    fprintf(stderr, "ChatModuleMixImpl::destroyChat called\n");
 
     if (!chatCtx) {
-        fprintf(stderr, "ChatModuleImpl: Cannot destroy Chat - context not initialized.\n");
+        fprintf(stderr, "ChatModuleMixImpl: Cannot destroy Chat - context not initialized.\n");
         return false;
     }
 
     int result = chat_destroy(chatCtx, destroy_callback, this);
 
     if (result == RET_OK) {
-        fprintf(stderr, "ChatModuleImpl: Chat destroy initiated successfully\n");
+        fprintf(stderr, "ChatModuleMixImpl: Chat destroy initiated successfully\n");
         chatCtx = nullptr;
         return true;
     } else {
-        fprintf(stderr, "ChatModuleImpl: Failed to destroy Chat, error code: %d\n", result);
+        fprintf(stderr, "ChatModuleMixImpl: Failed to destroy Chat, error code: %d\n", result);
         return false;
     }
 }
 
-bool ChatModuleImpl::setEventCallback()
+bool ChatModuleMixImpl::setEventCallback()
 {
-    fprintf(stderr, "ChatModuleImpl::setEventCallback called\n");
+    fprintf(stderr, "ChatModuleMixImpl::setEventCallback called\n");
 
     if (!chatCtx) {
-        fprintf(stderr, "ChatModuleImpl: Cannot set event callback - context not initialized. Call initChat first.\n");
+        fprintf(stderr, "ChatModuleMixImpl: Cannot set event callback - context not initialized. Call initChat first.\n");
         return false;
     }
 
     set_event_callback(chatCtx, event_callback, this);
 
-    fprintf(stderr, "ChatModuleImpl: Event callback set successfully\n");
+    fprintf(stderr, "ChatModuleMixImpl: Event callback set successfully\n");
     return true;
 }
 
@@ -426,42 +426,42 @@ bool ChatModuleImpl::setEventCallback()
 // Client Info Methods
 // ============================================================================
 
-bool ChatModuleImpl::getId()
+bool ChatModuleMixImpl::getId()
 {
-    fprintf(stderr, "ChatModuleImpl::getId called\n");
+    fprintf(stderr, "ChatModuleMixImpl::getId called\n");
 
     if (!chatCtx) {
-        fprintf(stderr, "ChatModuleImpl: Cannot get ID - context not initialized\n");
+        fprintf(stderr, "ChatModuleMixImpl: Cannot get ID - context not initialized\n");
         return false;
     }
 
     int result = chat_get_id(chatCtx, get_id_callback, this);
 
     if (result == RET_OK) {
-        fprintf(stderr, "ChatModuleImpl: Get ID initiated successfully\n");
+        fprintf(stderr, "ChatModuleMixImpl: Get ID initiated successfully\n");
         return true;
     } else {
-        fprintf(stderr, "ChatModuleImpl: Failed to get ID, error code: %d\n", result);
+        fprintf(stderr, "ChatModuleMixImpl: Failed to get ID, error code: %d\n", result);
         return false;
     }
 }
 
-bool ChatModuleImpl::getMixStatus()
+bool ChatModuleMixImpl::getMixStatus()
 {
-    fprintf(stderr, "ChatModuleImpl::getMixStatus called\n");
+    fprintf(stderr, "ChatModuleMixImpl::getMixStatus called\n");
 
     if (!chatCtx) {
-        fprintf(stderr, "ChatModuleImpl: Cannot get mix status - context not initialized\n");
+        fprintf(stderr, "ChatModuleMixImpl: Cannot get mix status - context not initialized\n");
         return false;
     }
 
     int result = chat_get_mix_status(chatCtx, get_mix_status_callback, this);
 
     if (result == RET_OK) {
-        fprintf(stderr, "ChatModuleImpl: Get mix status initiated successfully\n");
+        fprintf(stderr, "ChatModuleMixImpl: Get mix status initiated successfully\n");
         return true;
     } else {
-        fprintf(stderr, "ChatModuleImpl: Failed to get mix status, error code: %d\n", result);
+        fprintf(stderr, "ChatModuleMixImpl: Failed to get mix status, error code: %d\n", result);
         return false;
     }
 }
@@ -470,52 +470,52 @@ bool ChatModuleImpl::getMixStatus()
 // Conversation Operations
 // ============================================================================
 
-bool ChatModuleImpl::listConversations()
+bool ChatModuleMixImpl::listConversations()
 {
-    fprintf(stderr, "ChatModuleImpl::listConversations called\n");
+    fprintf(stderr, "ChatModuleMixImpl::listConversations called\n");
 
     if (!chatCtx) {
-        fprintf(stderr, "ChatModuleImpl: Cannot list conversations - context not initialized\n");
+        fprintf(stderr, "ChatModuleMixImpl: Cannot list conversations - context not initialized\n");
         return false;
     }
 
     int result = chat_list_conversations(chatCtx, list_conversations_callback, this);
 
     if (result == RET_OK) {
-        fprintf(stderr, "ChatModuleImpl: List conversations initiated successfully\n");
+        fprintf(stderr, "ChatModuleMixImpl: List conversations initiated successfully\n");
         return true;
     } else {
-        fprintf(stderr, "ChatModuleImpl: Failed to list conversations, error code: %d\n", result);
+        fprintf(stderr, "ChatModuleMixImpl: Failed to list conversations, error code: %d\n", result);
         return false;
     }
 }
 
-bool ChatModuleImpl::getConversation(const std::string& convoId)
+bool ChatModuleMixImpl::getConversation(const std::string& convoId)
 {
-    fprintf(stderr, "ChatModuleImpl::getConversation called with convoId: %s\n", convoId.c_str());
+    fprintf(stderr, "ChatModuleMixImpl::getConversation called with convoId: %s\n", convoId.c_str());
 
     if (!chatCtx) {
-        fprintf(stderr, "ChatModuleImpl: Cannot get conversation - context not initialized\n");
+        fprintf(stderr, "ChatModuleMixImpl: Cannot get conversation - context not initialized\n");
         return false;
     }
 
     int result = chat_get_conversation(chatCtx, get_conversation_callback, this, convoId.c_str());
 
     if (result == RET_OK) {
-        fprintf(stderr, "ChatModuleImpl: Get conversation initiated successfully\n");
+        fprintf(stderr, "ChatModuleMixImpl: Get conversation initiated successfully\n");
         return true;
     } else {
-        fprintf(stderr, "ChatModuleImpl: Failed to get conversation, error code: %d\n", result);
+        fprintf(stderr, "ChatModuleMixImpl: Failed to get conversation, error code: %d\n", result);
         return false;
     }
 }
 
-bool ChatModuleImpl::newPrivateConversation(const std::string& introBundleStr, const std::string& contentHex)
+bool ChatModuleMixImpl::newPrivateConversation(const std::string& introBundleStr, const std::string& contentHex)
 {
-    fprintf(stderr, "ChatModuleImpl::newPrivateConversation called\n");
+    fprintf(stderr, "ChatModuleMixImpl::newPrivateConversation called\n");
 
     if (!chatCtx) {
-        fprintf(stderr, "ChatModuleImpl: Cannot create new private conversation - context not initialized\n");
+        fprintf(stderr, "ChatModuleMixImpl: Cannot create new private conversation - context not initialized\n");
         return false;
     }
 
@@ -523,20 +523,20 @@ bool ChatModuleImpl::newPrivateConversation(const std::string& introBundleStr, c
                                                 introBundleStr.c_str(), contentHex.c_str());
 
     if (result == RET_OK) {
-        fprintf(stderr, "ChatModuleImpl: New private conversation initiated successfully\n");
+        fprintf(stderr, "ChatModuleMixImpl: New private conversation initiated successfully\n");
         return true;
     } else {
-        fprintf(stderr, "ChatModuleImpl: Failed to create new private conversation, error code: %d\n", result);
+        fprintf(stderr, "ChatModuleMixImpl: Failed to create new private conversation, error code: %d\n", result);
         return false;
     }
 }
 
-bool ChatModuleImpl::sendMessage(const std::string& convoId, const std::string& contentHex)
+bool ChatModuleMixImpl::sendMessage(const std::string& convoId, const std::string& contentHex)
 {
-    fprintf(stderr, "ChatModuleImpl::sendMessage called with convoId: %s\n", convoId.c_str());
+    fprintf(stderr, "ChatModuleMixImpl::sendMessage called with convoId: %s\n", convoId.c_str());
 
     if (!chatCtx) {
-        fprintf(stderr, "ChatModuleImpl: Cannot send message - context not initialized\n");
+        fprintf(stderr, "ChatModuleMixImpl: Cannot send message - context not initialized\n");
         return false;
     }
 
@@ -544,10 +544,10 @@ bool ChatModuleImpl::sendMessage(const std::string& convoId, const std::string& 
                                     convoId.c_str(), contentHex.c_str());
 
     if (result == RET_OK) {
-        fprintf(stderr, "ChatModuleImpl: Send message initiated successfully\n");
+        fprintf(stderr, "ChatModuleMixImpl: Send message initiated successfully\n");
         return true;
     } else {
-        fprintf(stderr, "ChatModuleImpl: Failed to send message, error code: %d\n", result);
+        fprintf(stderr, "ChatModuleMixImpl: Failed to send message, error code: %d\n", result);
         return false;
     }
 }
@@ -556,42 +556,42 @@ bool ChatModuleImpl::sendMessage(const std::string& convoId, const std::string& 
 // Identity Operations
 // ============================================================================
 
-bool ChatModuleImpl::getIdentity()
+bool ChatModuleMixImpl::getIdentity()
 {
-    fprintf(stderr, "ChatModuleImpl::getIdentity called\n");
+    fprintf(stderr, "ChatModuleMixImpl::getIdentity called\n");
 
     if (!chatCtx) {
-        fprintf(stderr, "ChatModuleImpl: Cannot get identity - context not initialized\n");
+        fprintf(stderr, "ChatModuleMixImpl: Cannot get identity - context not initialized\n");
         return false;
     }
 
     int result = chat_get_identity(chatCtx, get_identity_callback, this);
 
     if (result == RET_OK) {
-        fprintf(stderr, "ChatModuleImpl: Get identity initiated successfully\n");
+        fprintf(stderr, "ChatModuleMixImpl: Get identity initiated successfully\n");
         return true;
     } else {
-        fprintf(stderr, "ChatModuleImpl: Failed to get identity, error code: %d\n", result);
+        fprintf(stderr, "ChatModuleMixImpl: Failed to get identity, error code: %d\n", result);
         return false;
     }
 }
 
-bool ChatModuleImpl::createIntroBundle()
+bool ChatModuleMixImpl::createIntroBundle()
 {
-    fprintf(stderr, "ChatModuleImpl::createIntroBundle called\n");
+    fprintf(stderr, "ChatModuleMixImpl::createIntroBundle called\n");
 
     if (!chatCtx) {
-        fprintf(stderr, "ChatModuleImpl: Cannot create intro bundle - context not initialized\n");
+        fprintf(stderr, "ChatModuleMixImpl: Cannot create intro bundle - context not initialized\n");
         return false;
     }
 
     int result = chat_create_intro_bundle(chatCtx, create_intro_bundle_callback, this);
 
     if (result == RET_OK) {
-        fprintf(stderr, "ChatModuleImpl: Create intro bundle initiated successfully\n");
+        fprintf(stderr, "ChatModuleMixImpl: Create intro bundle initiated successfully\n");
         return true;
     } else {
-        fprintf(stderr, "ChatModuleImpl: Failed to create intro bundle, error code: %d\n", result);
+        fprintf(stderr, "ChatModuleMixImpl: Failed to create intro bundle, error code: %d\n", result);
         return false;
     }
 }

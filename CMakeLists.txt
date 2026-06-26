@@ -9,7 +9,7 @@ else()
 endif()
 
 logos_module(
-    NAME chat_module
+    NAME chat_module_mix
     SOURCES
         src/chat_module_plugin.h
         src/chat_module_plugin.cpp
