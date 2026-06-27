@@ -11,10 +11,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use libchat::ChatStorage;
-use logos_chat::{ChatClientBuilder, StorageConfig};
+use logos_chat::{ChatClientBuilder, DelegateSigner, HttpRegistry, IdentityProvider, StorageConfig};
 use serde::Serialize;
 
 use crate::delivery::SdkDelivery;
+
+/// The devnet KeyPackage registry DirectV1 uses to publish this installation's
+/// key package and fetch a peer's. Hardcoded for now; a configurable endpoint is
+/// a future enhancement (the wiring is behind libchat's `RegistrationService`,
+/// so swapping it later is localized).
+const DEFAULT_REGISTRY_URL: &str = "https://devnet.chat-kc.logos.co";
 use crate::module::{
     module, now_ms, short_label, with_display, with_display_mut, Client, DeliveryState,
     DeliveryStateKind, Display, ModuleState,
@@ -96,12 +102,25 @@ pub(crate) fn initialize(instance_path: &str) -> Result<ModuleState, InitError> 
     // node exists; otherwise a partial init would strand a started, unowned node
     // with no workers and no way to stop it. Building the client subscribes the
     // core's inbound addresses, which queue on `subscribe_rx` until the node starts.
+    // Account == device (devnet identity model): associate the delegate with its
+    // own device-key hex as the account address, so the auto-published account
+    // bundle maps `get_address` to this installation's key package and a peer can
+    // open a DirectV1 conversation. Stable, account != device identity is later
+    // work; today the address changes each run (the delegate key is random).
+    let mut delegate = DelegateSigner::random();
+    let account_id = hex::encode(delegate.public_key().as_ref());
+    delegate.associate(account_id);
     let (client, events) = ChatClientBuilder::new()
+        .ident(delegate)
         .transport(SdkDelivery::new(inbound_rx, subscribe_tx))
+        .registration(HttpRegistry::new(DEFAULT_REGISTRY_URL))
         .storage(storage)
         .build()
         .map_err(|e| InitError::Internal(format!("client build failed: {e:?}")))?;
     let intrinsic_name = client.installation_name();
+    // The address a peer needs to open a DirectV1 conversation with us. Cached in
+    // the display so `get_address` needn't take the client lock.
+    let address = client.addr().to_string();
 
     let state_path = PathBuf::from(format!("{instance_path}/history.json"));
     let state = load_state(&state_path);
@@ -141,6 +160,7 @@ pub(crate) fn initialize(instance_path: &str) -> Result<ModuleState, InitError> 
         d.state_path = state_path;
         d.delivery_state = DeliveryState::initialising();
         d.intrinsic_name = intrinsic_name;
+        d.address = address;
     });
 
     Ok(ModuleState {
@@ -268,39 +288,36 @@ pub(crate) fn installation_name() -> String {
     with_display(crate::module::effective_installation_name)
 }
 
-pub(crate) fn create_intro_bundle() -> Result<String, CoreError> {
-    let bytes = with_client(|client| client.create_intro_bundle())?
-        .map_err(|e| CoreError::Internal(format!("create_intro_bundle failed: {e:?}")))?;
-    String::from_utf8(bytes)
-        .map_err(|_| CoreError::Internal("create_intro_bundle: bundle bytes are not UTF-8".into()))
+/// The local installation address, which a peer needs to open a DirectV1
+/// conversation with this installation (pass it to their `create_conversation`).
+/// Read from the cached display value, so it returns the empty string before
+/// `init`.
+pub(crate) fn get_address() -> String {
+    with_display(|d| d.address.clone())
 }
 
 // ── Conversations ────────────────────────────────────────────────────────────
 
-pub(crate) fn create_conversation(bundle: &str, content: &str) -> Result<String, CoreError> {
+/// Open a DirectV1 conversation with `peer_address` (the peer's installation
+/// address from their `get_address`). This sends an MLS Welcome to the peer; the
+/// first message is sent separately via `send_message` once the peer has joined.
+/// Returns the local conversation id.
+pub(crate) fn create_conversation(peer_address: &str) -> Result<String, CoreError> {
     // libchat op under the client lock. Publish is async (see SdkDelivery), so
     // this returns without blocking on the network.
-    let chat_id =
-        with_client(|client| client.create_conversation(bundle.as_bytes(), content.as_bytes()))?
-            .map_err(|e| CoreError::Internal(format!("create_conversation failed: {e:?}")))?;
+    let chat_id = with_client(|client| client.create_direct_conversation(peer_address))?
+        .map_err(|e| CoreError::Internal(format!("create_conversation failed: {e:?}")))?;
 
-    let ts = now_ms();
-
-    let mut session = ChatSession {
-        chat_id: chat_id.clone(),
-        nickname: None,
-        messages: Vec::new(),
-    };
-    if !content.is_empty() {
-        session.messages.push(DisplayMessage {
-            from_self: true,
-            content: content.to_string(),
-            timestamp_ms: ts,
-        });
-    }
     let peer_label = short_label(&chat_id).to_owned();
     with_display_mut(|d| {
-        d.state.chats.insert(chat_id.clone(), session);
+        d.state.chats.insert(
+            chat_id.clone(),
+            ChatSession {
+                chat_id: chat_id.clone(),
+                nickname: None,
+                messages: Vec::new(),
+            },
+        );
         persist(d)
     })?;
     crate::emit_conversation_created(&chat_id, true, &peer_label);

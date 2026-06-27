@@ -25,17 +25,18 @@ use std::thread::JoinHandle;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use libchat::ChatStorage;
-use logos_chat::{ChatClient, DelegateSigner, EphemeralRegistry};
+use logos_chat::{ChatClient, DelegateSigner, HttpRegistry};
 use serde::Serialize;
 
 use crate::delivery::SdkDelivery;
 use crate::persistence::AppState;
 
 /// The chat client as this module configures it: a random delegate identity, the
-/// delivery_module-backed [`SdkDelivery`] transport, an in-process registry (only
-/// the intro-bundle path is used, which needs no shared registry), and a
+/// delivery_module-backed [`SdkDelivery`] transport, the devnet HTTP KeyPackage
+/// registry (DirectV1 fetches a peer's key package from it to open a
+/// conversation, and the client publishes its own on init), and a
 /// SQLCipher-backed store.
-pub(crate) type Client = ChatClient<DelegateSigner, SdkDelivery, EphemeralRegistry, ChatStorage>;
+pub(crate) type Client = ChatClient<DelegateSigner, SdkDelivery, HttpRegistry, ChatStorage>;
 
 // ── Delivery state ──────────────────────────────────────────────────────────
 
@@ -178,6 +179,10 @@ pub(crate) struct Display {
     /// libchat's intrinsic installation name, cached so `get_installation_name`
     /// needn't touch the client (which is behind the other lock).
     pub intrinsic_name: String,
+    /// The local installation address (libchat `ChatClient::addr`), cached so
+    /// `get_address` needn't touch the client. A peer needs this value to open a
+    /// DirectV1 conversation with this installation.
+    pub address: String,
 }
 
 impl Default for Display {
@@ -187,6 +192,7 @@ impl Default for Display {
             state_path: PathBuf::new(),
             delivery_state: DeliveryState::stopped(),
             intrinsic_name: String::new(),
+            address: String::new(),
         }
     }
 }

@@ -23,10 +23,12 @@ panic = "abort"
 # libchat's high-level threaded client (package renamed `client` -> `logos-chat`).
 # It owns the inbound worker that drives `Core::handle_payload` and surfaces
 # observations as `Event`s on a channel the module drains.
-logos-chat     = { git = "https://github.com/logos-messaging/libchat.git", package = "logos-chat" }
+# rev pins the DirectV1 account-routing fix (libchat PR #155, branch
+# fix/directv1-account-routing); drop the rev once it merges to main.
+logos-chat     = { git = "https://github.com/logos-messaging/libchat.git", package = "logos-chat", rev = "5d02196e6a930558a874ff7d059e6f5bef325829" }
 # The umbrella `libchat` crate, for `ChatStorage`: the builder's `storage_config`
 # panics on a bad DB, so we build the store fallibly and pass it in.
-libchat        = { git = "https://github.com/logos-messaging/libchat.git", package = "libchat" }
+libchat        = { git = "https://github.com/logos-messaging/libchat.git", package = "libchat", rev = "5d02196e6a930558a874ff7d059e6f5bef325829" }
 # The client hands back a `Receiver<Event>` and drains a `Receiver<Vec<u8>>`
 # through its `Transport`, so the module's plumbing speaks the same channel type.
 crossbeam-channel = "0.5"
@@ -38,6 +40,9 @@ logos-rust-sdk = { path = "../logos-rust-sdk-src" }
 serde          = { version = "1", features = ["derive"] }
 serde_json     = "1"
 thiserror      = "2"
+# Hex-encodes the device verifying key as this installation's account address
+# (the account == device association in actions.rs `initialize`).
+hex            = "0.4"
 
 # libchat's `crypto` crate is written for the xeddsa 1.0 API. Cargo's
 # default SemVer resolution would pick 1.1.0 (released since), whose
