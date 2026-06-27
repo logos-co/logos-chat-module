@@ -6,20 +6,29 @@
 //! from the `ChatModule` trait implementation.
 
 use std::fs;
-use std::path::PathBuf;
+use std::io;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use libchat::ChatStorage;
-use logos_chat::{ChatClientBuilder, StorageConfig};
+use logos_account::TestLogosAccount;
+use logos_chat::{ChatClientBuilder, DelegateSigner, HttpRegistry, StorageConfig};
 use serde::Serialize;
 
 use crate::delivery::SdkDelivery;
+
+/// The devnet KeyPackage registry DirectV1 uses to publish this installation's
+/// key package and fetch a peer's. Hardcoded for now; a configurable endpoint is
+/// a future enhancement (the wiring is behind libchat's `RegistrationService`,
+/// so swapping it later is localized).
+const DEFAULT_REGISTRY_URL: &str = "https://devnet.chat-kc.logos.co";
+
 use crate::module::{
     module, now_ms, short_label, with_display, with_display_mut, Client, DeliveryState,
-    DeliveryStateKind, Display, ModuleState,
+    DeliveryStateKind, Display, ModuleState, PERSISTENCE_ENABLED,
 };
-use crate::persistence::{load_state, save_state, ChatSession, DisplayMessage};
+use crate::persistence::{load_state, save_state, AppState, ChatSession, DisplayMessage};
 
 /// Failure modes for the steady-state methods (post-`initialize`).
 #[derive(Debug, thiserror::Error)]
@@ -73,13 +82,21 @@ pub(crate) fn initialize(instance_path: &str) -> Result<ModuleState, InitError> 
     fs::create_dir_all(instance_path)
         .map_err(|e| InitError::Internal(format!("cannot create instance_path: {e}")))?;
 
-    let db_path = format!("{instance_path}/identity.db");
-    // Static key derived from the instance path. Not secret; satisfies
-    // SQLCipher's keying requirement. A user-provided passphrase is a
-    // future enhancement.
-    let key = format!("rust-chat-{}", instance_path.replace('/', "_"));
-    let storage = ChatStorage::new(StorageConfig::Encrypted { path: db_path, key })
-        .map_err(|e| InitError::Internal(format!("open store failed: {e:?}")))?;
+    // Storage backs libchat's identity and MLS/crypto state. Ephemeral by
+    // default (see `PERSISTENCE_ENABLED`): DirectV1 has no reload path yet, so an
+    // in-memory store is honest about chats not surviving a restart. The
+    // SQLCipher path stays here, behind the switch, for when reload lands.
+    let storage = if PERSISTENCE_ENABLED {
+        let db_path = format!("{instance_path}/identity.db");
+        // Static key derived from the instance path. Not secret; satisfies
+        // SQLCipher's keying requirement. A user-provided passphrase is a
+        // future enhancement.
+        let key = format!("rust-chat-{}", instance_path.replace('/', "_"));
+        ChatStorage::new(StorageConfig::Encrypted { path: db_path, key })
+            .map_err(|e| InitError::Internal(format!("open store failed: {e:?}")))?
+    } else {
+        ChatStorage::in_memory()
+    };
 
     // The transport's inbound channel: the bridge worker feeds `inbound_tx` from
     // delivery_module's `messageReceived`, the client's worker drains the rx (via
@@ -96,15 +113,43 @@ pub(crate) fn initialize(instance_path: &str) -> Result<ModuleState, InitError> 
     // node exists; otherwise a partial init would strand a started, unowned node
     // with no workers and no way to stop it. Building the client subscribes the
     // core's inbound addresses, which queue on `subscribe_rx` until the node starts.
-    let (client, events) = ChatClientBuilder::new()
+    //
+    // Identity is ephemeral (see `PERSISTENCE_ENABLED`): a fresh account and
+    // delegate are minted each launch. `TestLogosAccount` holds the account key;
+    // the `DelegateSigner` is a pure device keypair, and the client composes
+    // the account claim into its wire credential from the builder's account
+    // address. The account signs a bundle endorsing the delegate's device key,
+    // published to the registry's account directory below, so a peer given only
+    // the account address resolves this device's key package and opens a
+    // DirectV1 conversation. account != device: the client routes on the
+    // delegate's signer id; the account address is what we share.
+    let account = TestLogosAccount::new();
+    let account_addr = account.address();
+    let delegate = DelegateSigner::random();
+    let device_key = delegate.public_key().clone();
+    let (client, events) = ChatClientBuilder::new(account_addr.clone())
+        .ident(delegate)
         .transport(SdkDelivery::new(inbound_rx, subscribe_tx))
+        .registration(HttpRegistry::new(DEFAULT_REGISTRY_URL))
         .storage(storage)
         .build()
         .map_err(|e| InitError::Internal(format!("client build failed: {e:?}")))?;
+
+    // Endorse the delegate's device key in the registry's account directory so
+    // a peer holding only the account address resolves this device's key package.
+    // (The client registers its own key package during build.)
+    let mut directory = HttpRegistry::new(DEFAULT_REGISTRY_URL);
+    account
+        .add_delegate_signer(&mut directory, &device_key)
+        .map_err(|e| InitError::Internal(format!("publish device bundle failed: {e:?}")))?;
     let intrinsic_name = client.installation_name();
+    // The address a peer needs to open a DirectV1 conversation with us: the
+    // account address (what `client.addr()` returns). Cached in the display
+    // so `get_address` needn't take the client lock.
+    let address = account_addr;
 
     let state_path = PathBuf::from(format!("{instance_path}/history.json"));
-    let state = load_state(&state_path);
+    let state = load_display(&state_path);
 
     // Register listeners before the node starts — `connectionStateChanged`
     // fires during start and is not re-emitted, so a late subscribe misses it.
@@ -141,6 +186,7 @@ pub(crate) fn initialize(instance_path: &str) -> Result<ModuleState, InitError> 
         d.state_path = state_path;
         d.delivery_state = DeliveryState::initialising();
         d.intrinsic_name = intrinsic_name;
+        d.address = address;
     });
 
     Ok(ModuleState {
@@ -226,7 +272,7 @@ pub(crate) fn shutdown(mut ms: ModuleState) {
     }
     with_display_mut(|d| {
         // Final write; nothing left to propagate to, so log a failure.
-        if let Err(e) = save_state(&d.state, &d.state_path) {
+        if let Err(e) = save_display(d) {
             eprintln!("chat_module: save_state failed on shutdown: {e}");
         }
         *d = Display::default();
@@ -247,8 +293,27 @@ fn with_client<R>(f: impl FnOnce(&mut Client) -> R) -> Result<R, CoreError> {
 /// so a failed write surfaces to the caller instead of being silently reported
 /// as success and then vanishing on the next `load_state`.
 fn persist(d: &Display) -> Result<(), CoreError> {
+    save_display(d).map_err(|e| CoreError::Internal(format!("save_state failed: {e}")))
+}
+
+/// Persist the display state, unless persistence is disabled (ephemeral mode),
+/// in which case this is a no-op reporting success. See
+/// [`module::PERSISTENCE_ENABLED`](crate::module::PERSISTENCE_ENABLED).
+fn save_display(d: &Display) -> io::Result<()> {
+    if !PERSISTENCE_ENABLED {
+        return Ok(());
+    }
     save_state(&d.state, &d.state_path)
-        .map_err(|e| CoreError::Internal(format!("save_state failed: {e}")))
+}
+
+/// Load the display state, or start empty when persistence is disabled
+/// (ephemeral mode). See
+/// [`module::PERSISTENCE_ENABLED`](crate::module::PERSISTENCE_ENABLED).
+fn load_display(path: &Path) -> AppState {
+    if !PERSISTENCE_ENABLED {
+        return AppState::default();
+    }
+    load_state(path)
 }
 
 // ── Identity ─────────────────────────────────────────────────────────────────
@@ -268,39 +333,36 @@ pub(crate) fn installation_name() -> String {
     with_display(crate::module::effective_installation_name)
 }
 
-pub(crate) fn create_intro_bundle() -> Result<String, CoreError> {
-    let bytes = with_client(|client| client.create_intro_bundle())?
-        .map_err(|e| CoreError::Internal(format!("create_intro_bundle failed: {e:?}")))?;
-    String::from_utf8(bytes)
-        .map_err(|_| CoreError::Internal("create_intro_bundle: bundle bytes are not UTF-8".into()))
+/// The local installation address, which a peer needs to open a DirectV1
+/// conversation with this installation (pass it to their `create_conversation`).
+/// Read from the cached display value, so it returns the empty string before
+/// `init`.
+pub(crate) fn get_address() -> String {
+    with_display(|d| d.address.clone())
 }
 
 // ── Conversations ────────────────────────────────────────────────────────────
 
-pub(crate) fn create_conversation(bundle: &str, content: &str) -> Result<String, CoreError> {
+/// Open a DirectV1 conversation with `peer_address` (the peer's installation
+/// address from their `get_address`). This sends an MLS Welcome to the peer; the
+/// first message is sent separately via `send_message` once the peer has joined.
+/// Returns the local conversation id.
+pub(crate) fn create_conversation(peer_address: &str) -> Result<String, CoreError> {
     // libchat op under the client lock. Publish is async (see SdkDelivery), so
     // this returns without blocking on the network.
-    let chat_id =
-        with_client(|client| client.create_conversation(bundle.as_bytes(), content.as_bytes()))?
-            .map_err(|e| CoreError::Internal(format!("create_conversation failed: {e:?}")))?;
+    let chat_id = with_client(|client| client.create_direct_conversation(peer_address))?
+        .map_err(|e| CoreError::Internal(format!("create_conversation failed: {e:?}")))?;
 
-    let ts = now_ms();
-
-    let mut session = ChatSession {
-        chat_id: chat_id.clone(),
-        nickname: None,
-        messages: Vec::new(),
-    };
-    if !content.is_empty() {
-        session.messages.push(DisplayMessage {
-            from_self: true,
-            content: content.to_string(),
-            timestamp_ms: ts,
-        });
-    }
     let peer_label = short_label(&chat_id).to_owned();
     with_display_mut(|d| {
-        d.state.chats.insert(chat_id.clone(), session);
+        d.state.chats.insert(
+            chat_id.clone(),
+            ChatSession {
+                chat_id: chat_id.clone(),
+                nickname: None,
+                messages: Vec::new(),
+            },
+        );
         persist(d)
     })?;
     crate::emit_conversation_created(&chat_id, true, &peer_label);
@@ -442,7 +504,7 @@ pub(crate) fn record_conversation_started(convo_id: &str) {
         crate::emit_conversation_created(convo_id, false, short_label(convo_id));
 
         // Event consumer has no caller to return to; log a failed write.
-        if let Err(e) = save_state(&d.state, &d.state_path) {
+        if let Err(e) = save_display(d) {
             eprintln!("chat_module: save_state failed after conversation started: {e}");
         }
     });
@@ -475,7 +537,7 @@ pub(crate) fn record_message_received(convo_id: &str, content: &[u8]) {
         });
         crate::emit_message_received(convo_id, &text, ts as i64);
 
-        if let Err(e) = save_state(&d.state, &d.state_path) {
+        if let Err(e) = save_display(d) {
             eprintln!("chat_module: save_state failed after inbound message: {e}");
         }
     });
