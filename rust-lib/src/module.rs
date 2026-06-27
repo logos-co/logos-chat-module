@@ -25,17 +25,25 @@ use std::thread::JoinHandle;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use libchat::ChatStorage;
-use logos_chat::{ChatClient, DelegateSigner, EphemeralRegistry};
+use logos_chat::{ChatClient, HttpRegistry};
 use serde::Serialize;
 
 use crate::delivery::SdkDelivery;
 use crate::persistence::AppState;
 
-/// The chat client as this module configures it: a random delegate identity, the
-/// delivery_module-backed [`SdkDelivery`] transport, an in-process registry (only
-/// the intro-bundle path is used, which needs no shared registry), and a
-/// SQLCipher-backed store.
-pub(crate) type Client = ChatClient<DelegateSigner, SdkDelivery, EphemeralRegistry, ChatStorage>;
+/// The chat client as this module configures it: a delegate identity associated
+/// with an ephemeral account, the delivery_module-backed [`SdkDelivery`]
+/// transport, the devnet HTTP registry, and an in-memory store. Chats are
+/// ephemeral (see [`PERSISTENCE_ENABLED`]).
+pub(crate) type Client = ChatClient<SdkDelivery, HttpRegistry, ChatStorage>;
+
+/// Whether chat state persists across restarts. Off: identity, MLS/crypto state,
+/// and the display history are all ephemeral. DirectV1 has no reload path in
+/// libchat yet (a DirectV1 conversation's MLS state is never reloaded), so
+/// persisting would strand crypto state a restart can't resume. The persistence
+/// code (SQLCipher store, `history.json`) is kept behind this switch; flip it on
+/// once libchat can reload DirectV1 state.
+pub(crate) const PERSISTENCE_ENABLED: bool = false;
 
 // ── Delivery state ──────────────────────────────────────────────────────────
 
@@ -178,6 +186,10 @@ pub(crate) struct Display {
     /// libchat's intrinsic installation name, cached so `get_installation_name`
     /// needn't touch the client (which is behind the other lock).
     pub intrinsic_name: String,
+    /// The local installation address (libchat `ChatClient::addr`), cached so
+    /// `get_address` needn't touch the client. A peer needs this value to open a
+    /// DirectV1 conversation with this installation.
+    pub address: String,
 }
 
 impl Default for Display {
@@ -187,6 +199,7 @@ impl Default for Display {
             state_path: PathBuf::new(),
             delivery_state: DeliveryState::stopped(),
             intrinsic_name: String::new(),
+            address: String::new(),
         }
     }
 }

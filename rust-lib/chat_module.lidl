@@ -40,10 +40,14 @@ module chat_module {
   ; --- identity ---
   method get_installation_name() -> tstr
   method set_installation_name(name: tstr) -> result
-  method create_intro_bundle() -> result
+  ; The local installation address, shared out-of-band so a peer can open a
+  ; conversation with this installation via create_conversation.
+  method get_address() -> tstr
 
   ; --- conversations & messages ---
-  method create_conversation(peer_intro_bundle: tstr, initial_content: tstr) -> result
+  ; Open a 1:1 conversation with the peer at peer_address (their get_address).
+  ; Sends the cryptographic invite; the first message follows via send_message.
+  method create_conversation(peer_address: tstr) -> result
   method list_conversations() -> [Conversation]
   method get_messages(convo_id: tstr) -> [Message]
   method send_message(convo_id: tstr, content: tstr) -> result
