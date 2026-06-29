@@ -1,0 +1,301 @@
+name: "Headless two-instance message exchange"
+output: chat-module-exchange.md
+project_name: logos-chat-module
+release: ""
+
+intro: |
+  This tutorial shows how to use `chat_module` end to end, by example. A
+  conversation takes two parties: one shares an intro bundle, the other opens a
+  conversation from it with a first message, and a reply flows back. That
+  round-trip spans **two** independent `chat_module` instances talking over the
+  live delivery network.
+
+  So the tutorial runs two headless [`logoscore`](https://github.com/logos-co/logos-logoscore-cli)
+  daemons (Alice and Bob), each loading `chat_module` and its runtime dependency
+  `delivery_module`, and drives them through the `logoscore call` CLI: `init`,
+  `create_intro_bundle`, `create_conversation`, `send_message`, and reading the
+  thread back with `list_conversations` / `get_messages`.
+
+  `logoscore call` is request/response, so it never receives the module's push
+  events; instead each side **polls** its own persisted state (`status`,
+  `list_conversations`, `get_messages`) for what an event-driven consumer would
+  get as `delivery_state_changed` / `conversation_created` / `message_received`.
+  The exchange itself (X3DH bundle, end-to-end-encrypted messages over
+  `delivery_module`) is exactly what an application drives.
+
+what_you_build: "A verified end-to-end, end-to-end-encrypted message round-trip between two headless chat_module instances, with no UI."
+
+what_you_learn:
+  - "Run two isolated `logoscore` daemons on one host, selected by `--config-dir`"
+  - "Bring a `chat_module` instance online with `init()` and poll `status()` for `delivery_state == online`"
+  - "Drive the full round-trip over the CLI (share a bundle, open a conversation, reply) and observe receipt by polling `list_conversations` / `get_messages` instead of events"
+  - "How the `result`-bearing methods wrap their payload as `{success, value, error}` while the collection/status getters return their value directly"
+
+prerequisites:
+  - |
+    **Nix** with flakes enabled. Install from [nixos.org](https://nixos.org/download.html), then:
+
+    ```bash
+    mkdir -p ~/.config/nix
+    echo 'experimental-features = nix-command flakes' >> ~/.config/nix/nix.conf
+    ```
+  - "**A Linux or macOS machine.** Nix provides every toolchain (Qt, CMake, cargo, rustc) during the builds."
+  - "**`jq`** on `PATH` (used to read the JSON the CLI prints). GitHub runners ship it; locally, run the spec inside `nix shell nixpkgs#jq`."
+  - "**Network access.** The two delivery nodes discover each other over the `logos.test` Waku fleet; an isolated sandbox won't complete the exchange. Expect ~5-40s to reach Online and up to ~2 min for messages to propagate."
+
+sections:
+  - title: "Build the tools and the two modules"
+    step: true
+    text: |
+      Two tools drive the exchange: `logoscore` (the headless module runtime, which
+      also bundles `capability_module` under `logos/modules/`) and `lgpm` (the
+      package installer). Then the two modules the daemons load: `chat_module`, and
+      its runtime dependency `delivery_module`.
+
+      `chat_module` is built as `#lgx`, and `delivery_module` as
+      `#delivery_module-lgx`, a passthrough this flake re-exports from its own
+      delivery input, so the running `delivery_module` is the exact rev
+      `chat_module` is built against.
+    steps:
+      - title: "Build logoscore"
+        run: "nix build 'github:logos-co/logos-logoscore-cli' --out-link ./logos"
+        check_file: "logos/bin/logoscore"
+      - title: "Build lgpm"
+        run: "nix build 'github:logos-co/logos-package-manager#cli' -o lgpm"
+        check_file: "lgpm/bin/lgpm"
+      - title: "Build chat_module (the commit under test)"
+        run: "nix build \"github:logos-co/logos-chat-module{release}#lgx\" -o chat-lgx"
+        code_block: "nix build 'github:logos-co/logos-chat-module#lgx' -o chat-lgx"
+        check_file: "chat-lgx"
+        post_text: |
+          `#lgx` is the installable bundle (`chat_module` staticlib + the Qt-plugin
+          glue + `metadata.json`). `{release}` is pinned to this commit in CI via
+          `--release-for logos-chat-module=<sha>`.
+      - title: "Build delivery_module (chat_module's runtime dependency)"
+        run: "nix build \"github:logos-co/logos-chat-module{release}#delivery_module-lgx\" -o delivery-lgx"
+        code_block: "nix build 'github:logos-co/logos-chat-module#delivery_module-lgx' -o delivery-lgx"
+        check_file: "delivery-lgx"
+        post_text: |
+          Built from `chat_module`'s own flake, so the running `delivery_module` is
+          the exact rev `chat_module` is built against.
+
+  - title: "Assemble the modules directory"
+    step: true
+    text: |
+      Both daemons load from one shared modules directory: the `capability_module`
+      that ships with `logoscore`, plus the two `.lgx`s installed on top.
+    steps:
+      - title: "Install the bundled and built modules"
+        run: |
+          mkdir -p modules
+          cp -RL ./logos/modules/. ./modules/
+          ./lgpm/bin/lgpm --modules-dir ./modules --allow-unsigned install --file delivery-lgx/*.lgx
+          ./lgpm/bin/lgpm --modules-dir ./modules --allow-unsigned install --file chat-lgx/*.lgx
+        code_block: |
+          mkdir -p modules
+          cp -RL ./logos/modules/. ./modules/                       # bundled capability_module
+          lgpm --modules-dir ./modules --allow-unsigned install --file delivery-lgx/*.lgx
+          lgpm --modules-dir ./modules --allow-unsigned install --file chat-lgx/*.lgx
+        expect_contains:
+          - "Installed to:"
+
+  - title: "Start two isolated daemons"
+    step: true
+    text: |
+      One module is a per-host singleton inside a daemon, so Alice and Bob are
+      **separate daemons**. The only thing that keeps them apart is `--config-dir`:
+      it scopes each daemon's control socket, client token, and persistence to its
+      own tree, so a `logoscore call --config-dir alice ...` always reaches Alice's
+      daemon. (Their delivery nodes are kept apart separately, by the distinct
+      `tcp_port` passed to `init` in the next step.)
+    steps:
+      - run: "mkdir -p alice-data bob-data"
+      - title: "Start Alice's daemon"
+        run: "sh -c './logos/bin/logoscore --config-dir alice -D -m ./modules > alice-daemon.log 2>&1 &'"
+        code_block: "logoscore --config-dir alice -D -m ./modules > alice-daemon.log &"
+      - title: "Start Bob's daemon"
+        run: "sh -c './logos/bin/logoscore --config-dir bob -D -m ./modules > bob-daemon.log 2>&1 &'"
+        code_block: "logoscore --config-dir bob -D -m ./modules > bob-daemon.log &"
+      - title: "Wait for both control planes to come up"
+        run: |
+          for who in alice bob; do
+            up=""
+            for i in $(seq 1 30); do
+              if ./logos/bin/logoscore --config-dir "$who" list-modules >/dev/null 2>&1; then
+                up=1; echo "${who}_DAEMON_UP"; break
+              fi
+              sleep 1
+            done
+            if [ -z "$up" ]; then echo "$who daemon never came up" >&2; tail -n 40 "${who}-daemon.log" >&2; exit 1; fi
+          done
+        code_block: |
+          # poll each daemon's control plane until it answers
+          logoscore --config-dir alice list-modules
+          logoscore --config-dir bob   list-modules
+        expect_contains:
+          - "alice_DAEMON_UP"
+          - "bob_DAEMON_UP"
+      - title: "Load chat_module on each (delivery_module auto-resolves)"
+        run: |
+          ./logos/bin/logoscore --config-dir alice load-module chat_module
+          ./logos/bin/logoscore --config-dir bob   load-module chat_module
+        code_block: |
+          logoscore --config-dir alice load-module chat_module
+          logoscore --config-dir bob   load-module chat_module
+        expect_contains:
+          - "delivery_module"
+        post_text: "`chat_module` declares `dependencies: [delivery_module]`, so the host loads delivery_module on each daemon automatically."
+
+  - title: "Bring both instances online"
+    step: true
+    text: |
+      `init(instance_path, delivery_preset, tcp_port)` returns immediately and
+      kicks off the delivery bootstrap asynchronously; readiness arrives later when
+      the subscribe handshake completes and `status().delivery_state` flips to
+      `online`. Both instances are initialised **first** so their two cold Waku
+      bootstraps overlap, then each is polled; the wait is ~the slower of the two,
+      not their sum.
+    steps:
+      - title: "Initialise Alice (delivery port 60010) and Bob (60011)"
+        run: |
+          ./logos/bin/logoscore --config-dir alice call chat_module init "$PWD/alice-data" logos.test 60010
+          ./logos/bin/logoscore --config-dir bob   call chat_module init "$PWD/bob-data"   logos.test 60011
+        code_block: |
+          logoscore --config-dir alice call chat_module init "$PWD/alice-data" logos.test 60010
+          logoscore --config-dir bob   call chat_module init "$PWD/bob-data"   logos.test 60011
+        expect_contains:
+          - '"status":"ok"'
+        post_text: |
+          Distinct `instance_path` and `tcp_port` per instance: `tcp_port` is bound
+          for both the Waku TCP listener and the discv5 UDP port, so the two nodes
+          must not share it.
+      - title: "Wait for both to reach Online"
+        run: |
+          for who in alice bob; do
+            online=""
+            for i in $(seq 1 60); do
+              out=$(./logos/bin/logoscore --config-dir "$who" call chat_module status 2>/dev/null || true)
+              case "$out" in
+                *'"delivery_state":"online"'*) online=1; echo "${who}_ONLINE"; break;;
+                *'"delivery_state":"error"'*) echo "$who delivery error: $out" >&2; tail -n 40 "${who}-daemon.log" >&2; exit 1;;
+              esac
+              sleep 2
+            done
+            if [ -z "$online" ]; then echo "$who never came online" >&2; tail -n 40 "${who}-daemon.log" >&2; exit 1; fi
+          done
+        code_block: |
+          # poll status() until delivery_state == online (fail fast on "error")
+          logoscore --config-dir alice call chat_module status
+          logoscore --config-dir bob   call chat_module status
+        expect_contains:
+          - "alice_ONLINE"
+          - "bob_ONLINE"
+        post_text: |
+          `status()` returns the `Status` record directly under `result`
+          (`{"status":"ok","result":{"delivery_state":"online",...}}`), unlike the
+          `result`-bearing methods below, which nest their payload one level deeper.
+
+  - title: "The round-trip"
+    step: true
+    text: |
+      Alice shares her intro bundle, Bob opens a conversation from it with a first
+      message, Alice sees it and replies, and the reply reaches Bob.
+    steps:
+      - title: "Alice creates her intro bundle"
+        run: |
+          out=$(./logos/bin/logoscore --config-dir alice call chat_module create_intro_bundle)
+          echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "bundle failed: $out" >&2; exit 1; }
+          echo "$out" | jq -j '.result.value' > alice-bundle.txt
+          echo "alice bundle bytes: $(wc -c < alice-bundle.txt)"
+        code_block: |
+          logoscore --config-dir alice call chat_module create_intro_bundle | jq -j '.result.value' > alice-bundle.txt
+        expect_contains:
+          - "alice bundle bytes:"
+        check_file: "alice-bundle.txt"
+        post_text: |
+          `create_intro_bundle` returns the LIDL `result` type, so its payload is at
+          `.result.value` (the X3DH prekey bundle a peer needs to start a
+          conversation with Alice), with `.result.success` / `.result.error`
+          alongside.
+      - title: "Bob opens a conversation from the bundle and sends the first message"
+        run: |
+          out=$(./logos/bin/logoscore --config-dir bob call chat_module create_conversation @alice-bundle.txt hello-from-bob)
+          echo "$out"
+          echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "create_conversation failed: $out" >&2; exit 1; }
+          echo "$out" | jq -j '.result.value' > bob-convo.txt
+          echo "bob convo: $(cat bob-convo.txt)"
+        code_block: |
+          logoscore --config-dir bob call chat_module create_conversation @alice-bundle.txt hello-from-bob
+        expect_contains:
+          - '"status":"ok"'
+          - "bob convo:"
+        post_text: |
+          `@alice-bundle.txt` feeds the bundle file as the first argument. The
+          returned `result.value` is Bob's **local** conversation id; the first
+          message is published to Alice asynchronously.
+      - title: "Alice receives the conversation and Bob's message"
+        run: |
+          for i in $(seq 1 50); do
+            cid=$(./logos/bin/logoscore --config-dir alice call chat_module list_conversations 2>/dev/null | jq -r '.result[0].convo_id // empty')
+            if [ -n "$cid" ]; then echo "$cid" > alice-convo.txt; echo "ALICE_HAS_CONVO $cid"; break; fi
+            sleep 3
+          done
+          [ -s alice-convo.txt ] || { echo "alice never received the conversation" >&2; exit 1; }
+          cid=$(cat alice-convo.txt)
+          for i in $(seq 1 50); do
+            msgs=$(./logos/bin/logoscore --config-dir alice call chat_module get_messages "$cid" 2>/dev/null || true)
+            case "$msgs" in *'"content":"hello-from-bob"'*) echo "ALICE_GOT_BOB_MSG"; exit 0;; esac
+            sleep 3
+          done
+          echo "alice never received bob's message" >&2; exit 1
+        code_block: |
+          # Alice's local conversation id (X3DH-asymmetric: differs from Bob's)
+          logoscore --config-dir alice call chat_module list_conversations | jq -r '.result[0].convo_id'
+          # poll her thread until Bob's message lands
+          logoscore --config-dir alice call chat_module get_messages "$ALICE_CONVO"
+        expect_contains:
+          - "ALICE_HAS_CONVO"
+          - "ALICE_GOT_BOB_MSG"
+        post_text: |
+          Each side has its **own** local conversation id (X3DH gives the initiator
+          and responder different ids for the one logical conversation). Alice reads
+          hers from her own `list_conversations`; received messages are persisted
+          and surface via `get_messages` with no event subscription.
+          `list_conversations` / `get_messages` return their arrays directly under
+          `result`.
+      - title: "Alice replies"
+        run: |
+          cid=$(cat alice-convo.txt)
+          ./logos/bin/logoscore --config-dir alice call chat_module send_message "$cid" hi-bob-got-it
+        code_block: |
+          logoscore --config-dir alice call chat_module send_message "$ALICE_CONVO" hi-bob-got-it
+        expect_contains:
+          - '"status":"ok"'
+      - title: "Bob receives Alice's reply"
+        run: |
+          cid=$(cat bob-convo.txt)
+          for i in $(seq 1 50); do
+            msgs=$(./logos/bin/logoscore --config-dir bob call chat_module get_messages "$cid" 2>/dev/null || true)
+            case "$msgs" in *'"content":"hi-bob-got-it"'*) echo "BOB_GOT_REPLY"; exit 0;; esac
+            sleep 3
+          done
+          echo "bob never received alice's reply" >&2; exit 1
+        code_block: |
+          logoscore --config-dir bob call chat_module get_messages "$BOB_CONVO"
+        expect_contains:
+          - "BOB_GOT_REPLY"
+        post_text: |
+          The same path in reverse: a real bidirectional, end-to-end-encrypted
+          round-trip between two independent headless `chat_module` instances.
+
+  - title: "Stop the daemons"
+    step: true
+    steps:
+      - title: "Shut both down gracefully"
+        run: |
+          ./logos/bin/logoscore --config-dir alice stop || true
+          ./logos/bin/logoscore --config-dir bob   stop || true
+        code_block: |
+          logoscore --config-dir alice stop
+          logoscore --config-dir bob   stop
+        post_text: "Always stop through the control socket rather than killing the process group: two daemons share one shell here."

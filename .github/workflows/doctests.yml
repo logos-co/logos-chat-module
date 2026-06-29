@@ -1,0 +1,207 @@
+name: Doc-Tests
+
+# Runs chat_module's usage doc-test via the shared doctest CLI, against the commit
+# under test. The spec is an executable tutorial that builds this module's `.lgx`,
+# loads it into two headless `logoscore` daemons, and drives a real two-party
+# message round-trip over the live delivery network. Because it exercises the
+# module end to end, the job also serves as an integration check and fails if the
+# round-trip does not complete.
+#
+# Linux-only: it runs two real delivery instances on one host (distinct data dirs
+# and delivery ports). The exchange needs outbound network to reach the logos.test
+# Waku fleet, which GitHub-hosted runners have.
+
+on:
+  pull_request:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+concurrency:
+  group: doctests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  doctests:
+    name: doc-tests (ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - uses: cachix/cachix-action@v15
+        with:
+          name: logos-co
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
+      # Resolve the commit under test. For pull requests this is the PR's head
+      # commit (not the synthetic merge commit); for pushes it's the pushed commit.
+      # Passed to --release-for so the doc-test builds chat_module against THIS
+      # commit instead of latest master. Fork PRs are the exception: their head
+      # commit lives in the fork, not in logos-co/logos-chat-module, so nix could
+      # not fetch github:logos-co/logos-chat-module/<sha>. Blank the SHA for forks
+      # (--release-for repo= -> pins that repo to latest), so the doc-test still
+      # runs for fork PRs, just against master.
+      - name: Resolve commit under test
+        id: commit
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ] && \
+             [ "${{ github.event.pull_request.head.repo.fork }}" = "true" ]; then
+            echo "sha=" >> "$GITHUB_OUTPUT"
+            echo "Fork PR detected; doc-test will run against latest master."
+          else
+            echo "sha=${{ github.event.pull_request.head.sha || github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Pre-build the closures the spec builds inline, so its bash steps hit the
+      # nix store instead of compiling under the run (and inside its poll budgets).
+      # chat_module#lgx (libchat + openssl from source) is the heavy, uncached one
+      # (it's the commit under test); logoscore / delivery / lgpm should be cachix
+      # hits. Fork PRs blank the SHA -> build the default branch, as the spec does.
+      - name: Pre-build doc-test closures
+        shell: bash
+        run: |
+          ref="github:logos-co/logos-chat-module"
+          [ -n "${{ steps.commit.outputs.sha }}" ] && ref="$ref/${{ steps.commit.outputs.sha }}"
+          nix build --no-link "$ref#lgx" -L
+          nix build --no-link "$ref#delivery_module-lgx" -L
+          nix build --no-link 'github:logos-co/logos-logoscore-cli' -L
+          nix build --no-link 'github:logos-co/logos-package-manager#cli' -L
+
+      # The runner is the shared `doctest` CLI invoked via its flake. --release-for
+      # pins the {release} placeholder for logos-chat-module to the commit under
+      # test, so `github:logos-co/logos-chat-module{release}#lgx` in the spec builds
+      # this PR/push. --continue-on-fail so the run walks every step and the report
+      # is complete; the job still exits non-zero if any step failed.
+      - name: Run doc-test
+        run: |
+          nix run github:logos-co/logos-doctest -- run \
+            doctests/chat-module-exchange.test.yaml \
+            --verbose \
+            --continue-on-fail \
+            --release-for logos-chat-module=${{ steps.commit.outputs.sha }} \
+            --report "${{ runner.temp }}/chat-module-doctest-report.html"
+
+      - name: Stage report for upload
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p report-out
+          if [ -f "${{ runner.temp }}/chat-module-doctest-report.html" ]; then
+            cp "${{ runner.temp }}/chat-module-doctest-report.html" report-out/index.html
+          else
+            echo "<h1>No report produced</h1>" > report-out/index.html
+          fi
+
+      - name: Upload execution report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-module-doctest-report-ubuntu-latest
+          path: report-out/index.html
+          if-no-files-found: warn
+
+      - name: Verify markdown generation
+        run: |
+          out="${{ runner.temp }}/chat-module-exchange.md"
+          nix run github:logos-co/logos-doctest -- generate \
+            doctests/chat-module-exchange.test.yaml \
+            --release-for logos-chat-module=${{ steps.commit.outputs.sha }} \
+            -o "$out"
+          test -s "$out"
+          echo "Generated markdown successfully"
+
+  publish-report:
+    name: Publish doc-test report
+    needs: doctests
+    # Run even when the doc-test fails: a failing run is exactly when you want the
+    # report. Skip on forks, where GITHUB_TOKEN can't push or comment.
+    if: ${{ always() && github.event.pull_request.head.repo.fork != true }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write          # push to the gh-pages branch
+      pull-requests: write      # post/update the PR comment
+
+    # Serialize Pages pushes so two refs can't race on the gh-pages branch.
+    concurrency:
+      group: gh-pages-publish
+      cancel-in-progress: false
+
+    steps:
+      - name: Download report
+        uses: actions/download-artifact@v4
+        with:
+          name: chat-module-doctest-report-ubuntu-latest
+          path: report
+
+      - name: Arrange site directory
+        id: arrange
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="pr-${{ github.event.pull_request.number }}"
+          else
+            BASE="master"
+          fi
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          mkdir -p "site/$BASE"
+          if [ -f report/index.html ]; then
+            cp report/index.html "site/$BASE/index.html"
+            echo "found=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy to gh-pages
+        if: steps.arrange.outputs.found != ''
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          keep_files: true          # don't wipe other PRs' directories
+          commit_message: "Publish doc-test report for ${{ steps.arrange.outputs.base }} (${{ github.sha }})"
+
+      # Post the comment even if the Pages deploy had trouble, so the link is
+      # always surfaced (it resolves once Pages is enabled for the repo, one time,
+      # to deploy from the gh-pages branch).
+      - name: Comment on PR with the report link
+        if: ${{ always() && github.event_name == 'pull_request' && steps.arrange.outputs.found != '' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const base = "${{ steps.arrange.outputs.base }}";
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const url = `https://${owner}.github.io/${repo}/${base}/`;
+            const marker = "<!-- chat-module-doctest-report-link -->";
+            const body =
+              `${marker}\n` +
+              `### Doc-test report\n\n` +
+              `Two headless \`chat_module\` instances built against this commit, ` +
+              `driven through the full message round-trip, rendered alongside the ` +
+              `commands actually run and their output ` +
+              `(updated each run, commit \`${context.sha.slice(0,7)}\`):\n\n` +
+              `- [Execution report](${url})\n\n` +
+              `_Pages can take a minute to update after the run finishes._`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number: context.issue.number, per_page: 100,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number: context.issue.number, body });
+            }
