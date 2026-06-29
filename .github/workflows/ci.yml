@@ -26,10 +26,13 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
 
-      - uses: cachix/cachix-action@v15
+      - name: Setup Attic cache
+        uses: ryanccn/attic-action@v0
         with:
-          name: logos-co
-          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+          endpoint: ${{ secrets.ATTIC_ENDPOINT }}
+          cache: public
+          token: ${{ secrets.ATTIC_TOKEN_PUBLIC }}
+          skip-push: ${{ github.event_name == 'pull_request' }}
 
       - name: Install Rust toolchain
         run: rustup update stable && rustup default stable && rustup component add rustfmt clippy
@@ -72,10 +75,13 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
 
-      - uses: cachix/cachix-action@v15
+      - name: Setup Attic cache
+        uses: ryanccn/attic-action@v0
         with:
-          name: logos-co
-          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+          endpoint: ${{ secrets.ATTIC_ENDPOINT }}
+          cache: public
+          token: ${{ secrets.ATTIC_TOKEN_PUBLIC }}
+          skip-push: ${{ github.event_name == 'pull_request' }}
 
       - name: Install Rust toolchain
         run: rustup update stable && rustup default stable
@@ -111,10 +117,13 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
 
-      - uses: cachix/cachix-action@v15
+      - name: Setup Attic cache
+        uses: ryanccn/attic-action@v0
         with:
-          name: logos-co
-          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+          endpoint: ${{ secrets.ATTIC_ENDPOINT }}
+          cache: public
+          token: ${{ secrets.ATTIC_TOKEN_PUBLIC }}
+          skip-push: ${{ github.event_name == 'pull_request' }}
 
       - name: nix build .#chat_module
         run: nix build .#chat_module -L
