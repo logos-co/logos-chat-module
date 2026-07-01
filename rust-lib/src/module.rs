@@ -31,12 +31,19 @@ use serde::Serialize;
 use crate::delivery::SdkDelivery;
 use crate::persistence::AppState;
 
-/// The chat client as this module configures it: a random delegate identity, the
-/// delivery_module-backed [`SdkDelivery`] transport, the devnet HTTP KeyPackage
-/// registry (DirectV1 fetches a peer's key package from it to open a
-/// conversation, and the client publishes its own on init), and a
-/// SQLCipher-backed store.
+/// The chat client as this module configures it: a delegate identity associated
+/// with an ephemeral account, the delivery_module-backed [`SdkDelivery`]
+/// transport, the devnet HTTP registry, and an in-memory store. Chats are
+/// ephemeral (see [`PERSISTENCE_ENABLED`]).
 pub(crate) type Client = ChatClient<DelegateSigner, SdkDelivery, HttpRegistry, ChatStorage>;
+
+/// Whether chat state persists across restarts. Off: identity, MLS/crypto state,
+/// and the display history are all ephemeral. DirectV1 has no reload path in
+/// libchat yet (a DirectV1 conversation's MLS state is never reloaded), so
+/// persisting would strand crypto state a restart can't resume. The persistence
+/// code (SQLCipher store, `history.json`) is kept behind this switch; flip it on
+/// once libchat can reload DirectV1 state.
+pub(crate) const PERSISTENCE_ENABLED: bool = false;
 
 // ── Delivery state ──────────────────────────────────────────────────────────
 
