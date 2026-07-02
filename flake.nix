@@ -4,10 +4,9 @@
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder";
 
-    # Pinned to the commit (post-v0.1.2) carrying the zerokit/RLN nix build fix
-    # (delivery-module #49). Kept in lockstep with logos-chat-ui's pin. Not yet
-    # tagged — re-pin to the release tag once one is cut.
-    logos-delivery-module.url = "github:logos-co/logos-delivery-module/2577383f6e0de24793b523d6ea4991aa6339afd8";
+    # Pinned to the v0.1.3 release tag, which includes the zerokit/RLN nix
+    # build fix (delivery-module #49). Kept in lockstep with logos-chat-ui's pin.
+    logos-delivery-module.url = "github:logos-co/logos-delivery-module/v0.1.3";
   };
 
   outputs = inputs@{ self, logos-module-builder, logos-delivery-module, ... }:
