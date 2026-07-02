@@ -34,8 +34,9 @@
       "extra_include_dirs": []
     },
     "rust": {
+      "toolchain": "1.95.0",
       "packages": {
-        "build": ["pkg-config", "perl"],
+        "build": ["pkg-config", "perl", "protobuf"],
         "runtime": []
       }
     }

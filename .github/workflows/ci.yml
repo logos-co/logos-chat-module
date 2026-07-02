@@ -34,6 +34,14 @@ jobs:
       - name: Install Rust toolchain
         run: rustup update stable && rustup default stable && rustup component add rustfmt clippy
 
+      # hashgraph-like-consensus (via the libchat dep graph) runs prost-build in
+      # its build script, which needs protoc on PATH. The nix build gets it from
+      # the flake (metadata.json's `protobuf`); the bare-cargo jobs install it here.
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
       # The generated scaffold (generated/provider_gen.rs) and the SDK source the
       # crate path-deps are gitignored, so bare cargo can't resolve them. Generate
       # both into the working tree, then run cargo in rust-lib/ directly.
@@ -77,6 +85,13 @@ jobs:
 
       - name: Install Rust toolchain
         run: rustup update stable && rustup default stable
+
+      # protoc is needed by hashgraph-like-consensus's prost-build build script
+      # (see the lint job). The nix build gets it from the flake; install it here.
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate the rust build inputs
         run: nix run .#generate -L

@@ -20,7 +20,26 @@ resolver = "3"
 panic = "abort"
 
 [dependencies]
-client         = { git = "https://github.com/logos-messaging/libchat.git", package = "client" }
+# libchat's high-level threaded client (package renamed `client` -> `logos-chat`).
+# It owns the inbound worker that drives `Core::handle_payload` and surfaces
+# observations as `Event`s on a channel the module drains.
+# rev pins fix/directv1-account-routing (origin/main plus the InboxV2 routing_id
+# fix, without which a DirectV1 Welcome can't route over the devnet HttpRegistry:
+# the peer subscribes on its credential id while the Welcome routes to the shared
+# account address). Drop the rev once routing_id merges to main.
+logos-chat     = { git = "https://github.com/logos-messaging/libchat.git", package = "logos-chat", rev = "2321e4cb6db2c41b61984335acc4e17632cf3d28" }
+# The umbrella `libchat` crate, for `ChatStorage` and the account-directory codec
+# (`SignedDeviceBundle`, `encode_bundle_payload`, `AccountDirectory`): the builder's
+# `storage_config` panics on a bad DB, so we build the store fallibly and pass it in.
+libchat        = { git = "https://github.com/logos-messaging/libchat.git", package = "libchat", rev = "2321e4cb6db2c41b61984335acc4e17632cf3d28" }
+# `TestLogosAccount` (gated behind logos-account's `dev` feature): the ephemeral
+# account identity that signs this installation's device bundle and whose key is
+# the shared account address. Enable `dev` on our own dep so its availability
+# doesn't hinge on another crate happening to turn the feature on.
+logos-account  = { git = "https://github.com/logos-messaging/libchat.git", package = "logos-account", features = ["dev"], rev = "2321e4cb6db2c41b61984335acc4e17632cf3d28" }
+# The client hands back a `Receiver<Event>` and drains a `Receiver<Vec<u8>>`
+# through its `Transport`, so the module's plumbing speaks the same channel type.
+crossbeam-channel = "0.5"
 # The runtime SDK, staged by the module builder (codegen.rust) at this path
 # from the same logos-rust-sdk rev its generator came from, so the generated
 # scaffold and the linked SDK never skew. The path is absent in a standalone
@@ -29,6 +48,9 @@ logos-rust-sdk = { path = "../logos-rust-sdk-src" }
 serde          = { version = "1", features = ["derive"] }
 serde_json     = "1"
 thiserror      = "2"
+# Hex-encodes the account verifying key as this installation's shared address,
+# and the delegate device key into the account's signed device bundle.
+hex            = "0.4"
 
 # libchat's `crypto` crate is written for the xeddsa 1.0 API. Cargo's
 # default SemVer resolution would pick 1.1.0 (released since), whose
