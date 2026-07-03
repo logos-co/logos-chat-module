@@ -49,6 +49,16 @@ conversation id, an intro bundle, or null), `Err(message)` a human-readable
 reason. Collection getters (`list_conversations`, `get_messages`) return JSON
 arrays. See the `.lidl` for the full method list and record shapes.
 
+Two conversation shapes are exposed. `create_conversation(peer_address)` opens
+a 1:1 DirectV1 conversation. `create_group_conversation()` creates a GroupV2
+(de-mls) group with this installation as its only member, grown one peer at a
+time with `add_group_member(convo_id, peer_address)`; every member sees the
+same conversation id, and adds are committed by the group's steward
+asynchronously, so a peer joins some time after the call returns. Received
+messages carry a `sender` (on the `Message` record and the `message_received`
+event): the sender's directory-verified account address, or its device id
+when the sender claims no account.
+
 ## Events
 
 The module pushes six events over the lp_* IPC event channel (LIDL `event`
@@ -56,7 +66,7 @@ declarations); consumers subscribe via `on_<event>()` — no polling. Each carri
 positional arguments in `.lidl` order:
 
 - **`message_received`** — an inbound message was decrypted
-  - `convo_id` (`tstr`), `content` (`tstr`), `timestamp_ms` (`int`)
+  - `convo_id` (`tstr`), `content` (`tstr`), `timestamp_ms` (`int`), `sender` (`tstr`)
 - **`message_sent`** — an outbound message was recorded
   - `convo_id` (`tstr`), `content` (`tstr`), `timestamp_ms` (`int`)
 - **`conversation_created`** — a conversation was opened
@@ -80,16 +90,21 @@ readiness arrives later as a `delivery_state_changed` event reaching `online`.
 
 ## Doc-tests
 
-[`doctests/chat-module-exchange.test.yaml`](doctests/chat-module-exchange.test.yaml)
-is an executable usage tutorial: it loads `chat_module` into two headless
-[`logoscore`](https://github.com/logos-co/logos-logoscore-cli) daemons and drives
-a real, end-to-end-encrypted message round-trip between them over the live
-delivery network, documenting the module's API by example. It runs on every PR
-via [`.github/workflows/doctests.yml`](.github/workflows/doctests.yml) (the
-[shared doctest CLI](https://github.com/logos-co/logos-doctest) builds the commit
-under test), which also makes it an integration check. Run it locally against
-latest master (add `--release-for logos-chat-module=<branch-or-sha>` to pin it to
-a pushed commit instead):
+The specs under [`doctests/`](doctests/) are executable usage tutorials: each
+loads `chat_module` into headless
+[`logoscore`](https://github.com/logos-co/logos-logoscore-cli) daemons and
+drives a real, end-to-end-encrypted exchange between them over the live
+delivery network, documenting the module's API by example.
+[`chat-module-exchange.test.yaml`](doctests/chat-module-exchange.test.yaml) is
+the two-instance 1:1 round-trip;
+[`chat-module-group.test.yaml`](doctests/chat-module-group.test.yaml) runs a
+three-instance GroupV2 conversation (create, grow member by member, fan-out
+messages with sender attribution). They run on every PR via
+[`.github/workflows/doctests.yml`](.github/workflows/doctests.yml) (the
+[shared doctest CLI](https://github.com/logos-co/logos-doctest) builds the
+commit under test), which also makes them an integration check. Run one locally
+against latest master (add `--release-for logos-chat-module=<branch-or-sha>` to
+pin it to a pushed commit instead):
 
 ```bash
 nix run github:logos-co/logos-doctest -- run doctests/chat-module-exchange.test.yaml

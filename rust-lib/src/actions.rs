@@ -370,6 +370,45 @@ pub(crate) fn create_conversation(peer_address: &str) -> Result<String, CoreErro
     Ok(chat_id)
 }
 
+/// Create a GroupV2 conversation with this installation as its only member;
+/// peers are invited afterwards via [`add_group_member`]. Returns the
+/// conversation id, which every member observes once joined.
+pub(crate) fn create_group_conversation() -> Result<String, CoreError> {
+    let chat_id = with_client(|client| client.create_group_conversation(&[]))?
+        .map_err(|e| CoreError::Internal(format!("create_group_conversation failed: {e:?}")))?;
+
+    let label = short_label(&chat_id).to_owned();
+    with_display_mut(|d| {
+        d.state.chats.insert(
+            chat_id.clone(),
+            ChatSession {
+                chat_id: chat_id.clone(),
+                nickname: None,
+                messages: Vec::new(),
+            },
+        );
+        persist(d)
+    })?;
+    crate::emit_conversation_created(&chat_id, true, &label);
+
+    Ok(chat_id)
+}
+
+/// Invite the peer at `peer_address` (all its endorsed devices) into an
+/// existing group conversation. The group's steward commits the add and the
+/// welcome is delivered asynchronously, so the peer joins some time after
+/// this returns.
+pub(crate) fn add_group_member(convo_id: &str, peer_address: &str) -> Result<(), CoreError> {
+    if !with_display(|d| d.state.chats.contains_key(convo_id)) {
+        return Err(CoreError::NotFound);
+    }
+
+    with_client(|client| client.add_group_members(convo_id, &[peer_address]))?
+        .map_err(|e| CoreError::Internal(format!("add_group_member failed: {e:?}")))?;
+    crate::emit_conversation_updated(convo_id);
+    Ok(())
+}
+
 pub(crate) fn list_conversations() -> serde_json::Value {
     with_display(|d| {
         let items: Vec<ConversationSummary> = d
@@ -420,6 +459,7 @@ pub(crate) fn send_message(convo_id: &str, content: &str) -> Result<(), CoreErro
                 from_self: true,
                 content: content.to_string(),
                 timestamp_ms: ts,
+                sender: None,
             });
         }
         persist(d)
@@ -511,10 +551,11 @@ pub(crate) fn record_conversation_started(convo_id: &str) {
 }
 
 /// Record an inbound message (the client's `MessageReceived` event) and surface
-/// it. No-op for a locally-deleted conversation; an unknown conversation is
+/// it. `sender` is the sender's account address (device id if unassociated).
+/// No-op for a locally-deleted conversation; an unknown conversation is
 /// created defensively (the preceding `ConversationStarted` normally creates it
 /// first). Called from the event consumer thread; takes only the display lock.
-pub(crate) fn record_message_received(convo_id: &str, content: &[u8]) {
+pub(crate) fn record_message_received(convo_id: &str, content: &[u8], sender: &str) {
     with_display_mut(|d| {
         if d.state.deleted.contains(convo_id) {
             return;
@@ -534,8 +575,9 @@ pub(crate) fn record_message_received(convo_id: &str, content: &[u8]) {
             from_self: false,
             content: text.clone(),
             timestamp_ms: ts,
+            sender: Some(sender.to_owned()),
         });
-        crate::emit_message_received(convo_id, &text, ts as i64);
+        crate::emit_message_received(convo_id, &text, ts as i64, sender);
 
         if let Err(e) = save_display(d) {
             eprintln!("chat_module: save_state failed after inbound message: {e}");

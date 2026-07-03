@@ -54,6 +54,9 @@ pub(crate) struct DisplayMessage {
     /// Milliseconds since the Unix epoch when the message was recorded
     /// locally — not authoritative across peers.
     pub timestamp_ms: u64,
+    /// Sender's account address (device id if unassociated); `None` on
+    /// messages this installation sent.
+    pub sender: Option<String>,
 }
 
 /// Per-conversation state held alongside libchat's cryptographic state.
@@ -245,6 +248,7 @@ mod tests {
                     from_self: true,
                     content: "hi".into(),
                     timestamp_ms: 42,
+                    sender: None,
                 }],
             },
         );

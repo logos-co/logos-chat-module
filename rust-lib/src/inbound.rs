@@ -137,9 +137,14 @@ fn run_events(events: Receiver<Event>) {
                 record_conversation_started(&convo_id);
             }
             Event::MessageReceived {
-                convo_id, content, ..
+                convo_id,
+                content,
+                sender,
             } => {
-                record_message_received(&convo_id, &content);
+                // The account is directory-verified by the client; a sender
+                // that claims none surfaces as its device id.
+                let sender_addr = sender.account.as_ref().unwrap_or(&sender.local_identity);
+                record_message_received(&convo_id, &content, sender_addr.as_str());
             }
             Event::InboundError { message } => {
                 eprintln!("chat_module: inbound error: {message}");

@@ -138,6 +138,22 @@ impl ChatModule for ChatModuleImpl {
             .map_err(|e| e.to_string())
     }
 
+    fn create_group_conversation(&mut self) -> Result<Value, String> {
+        actions::create_group_conversation()
+            .map(Value::String)
+            .map_err(|e| e.to_string())
+    }
+
+    fn add_group_member(
+        &mut self,
+        convo_id: String,
+        peer_address: String,
+    ) -> Result<Value, String> {
+        actions::add_group_member(&convo_id, &peer_address)
+            .map(|()| Value::Null)
+            .map_err(|e| e.to_string())
+    }
+
     fn list_conversations(&mut self) -> Value {
         actions::list_conversations()
     }
