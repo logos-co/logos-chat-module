@@ -20,11 +20,12 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender};
-use logos_chat::Event;
+use logos_chat::{ConversationClass, Event};
 use logos_rust_sdk::{EventData, EventSubscription};
 
 use crate::actions::{record_conversation_started, record_message_received, set_delivery_state};
 use crate::module::{with_display, with_display_mut, DeliveryStateKind};
+use crate::persistence::ConversationKind;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 
@@ -133,8 +134,8 @@ fn forward_subscriptions(subscribe_rx: &Receiver<String>) {
 fn run_events(events: Receiver<Event>) {
     for event in events {
         match event {
-            Event::ConversationStarted { convo_id, .. } => {
-                record_conversation_started(&convo_id);
+            Event::ConversationStarted { convo_id, class } => {
+                record_conversation_started(&convo_id, kind_for_class(class));
             }
             Event::MessageReceived {
                 convo_id,
@@ -152,6 +153,15 @@ fn run_events(events: Receiver<Event>) {
             // `Event` is `#[non_exhaustive]`; ignore variants added upstream.
             _ => {}
         }
+    }
+}
+
+/// Map libchat's display class to the module's contract kind: the pairwise
+/// shape (PrivateV1 / DirectV1) is `direct`, GroupV2 is `group`.
+fn kind_for_class(class: ConversationClass) -> ConversationKind {
+    match class {
+        ConversationClass::Private => ConversationKind::Direct,
+        ConversationClass::Group => ConversationKind::Group,
     }
 }
 
@@ -243,6 +253,18 @@ mod tests {
         assert_eq!(
             connection_transition(DeliveryStateKind::Error, "Connected"),
             Some(DeliveryStateKind::Online)
+        );
+    }
+
+    #[test]
+    fn class_maps_to_contract_kind() {
+        assert_eq!(
+            kind_for_class(ConversationClass::Private),
+            ConversationKind::Direct
+        );
+        assert_eq!(
+            kind_for_class(ConversationClass::Group),
+            ConversationKind::Group
         );
     }
 }

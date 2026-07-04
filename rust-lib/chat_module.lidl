@@ -10,7 +10,7 @@
 ; (no generated C++ struct) — they document the shape and "light up" if the
 ; generators gain struct support.
 module chat_module {
-  version "0.2.0"
+  version "0.3.0"
   description "Chat module for Logos: e2e-encrypted conversations over delivery_module."
   category "chat"
   depends [delivery_module]
@@ -21,6 +21,8 @@ module chat_module {
     ? nickname: tstr
     message_count: int
     last_activity_ms: int
+    ; "direct" (1:1) or "group". PrivateV1 and DirectV1 are both "direct".
+    kind: tstr
   }
   type Message {
     from_self: bool
@@ -60,6 +62,11 @@ module chat_module {
   method add_group_member(convo_id: tstr, peer_address: tstr) -> result
   method list_conversations() -> [Conversation]
   method get_messages(convo_id: tstr) -> [Message]
+  ; The roster of a group conversation, one member per element: each is the
+  ; member's directory-verified account address, or its device id when the
+  ; member claims no account (the same convention `sender` uses). Errors when
+  ; convo_id names a direct (non-group) conversation.
+  method list_group_members(convo_id: tstr) -> [tstr]
   method send_message(convo_id: tstr, content: tstr) -> result
   method set_conversation_nickname(convo_id: tstr, nickname: tstr) -> result
   method delete_conversation(convo_id: tstr) -> result
@@ -72,7 +79,8 @@ module chat_module {
   ; when the sender claims no account.
   event message_received(convo_id: tstr, content: tstr, timestamp_ms: int, sender: tstr)
   event message_sent(convo_id: tstr, content: tstr, timestamp_ms: int)
-  event conversation_created(convo_id: tstr, is_outgoing: bool, peer_label: tstr)
+  ; kind: "direct" (1:1) or "group", matching the Conversation record's field.
+  event conversation_created(convo_id: tstr, is_outgoing: bool, peer_label: tstr, kind: tstr)
   event conversation_updated(convo_id: tstr)
   event conversation_deleted(convo_id: tstr)
   event delivery_state_changed(delivery_state: tstr, detail: tstr)

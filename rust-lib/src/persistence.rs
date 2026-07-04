@@ -59,6 +59,26 @@ pub(crate) struct DisplayMessage {
     pub sender: Option<String>,
 }
 
+/// Whether a conversation is pairwise or a group; drives the members-panel
+/// affordance in the UI. Serialised as the contract's `"direct"`/`"group"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ConversationKind {
+    #[default]
+    Direct,
+    Group,
+}
+
+impl ConversationKind {
+    /// The contract wire string (`"direct"` / `"group"`).
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            ConversationKind::Direct => "direct",
+            ConversationKind::Group => "group",
+        }
+    }
+}
+
 /// Per-conversation state held alongside libchat's cryptographic state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ChatSession {
@@ -66,6 +86,9 @@ pub(crate) struct ChatSession {
     pub chat_id: String,
     /// User-set display label. `None` falls back to `module::short_label`.
     pub nickname: Option<String>,
+    /// Pairwise vs group. `#[serde(default)]` reads pre-kind history as direct.
+    #[serde(default)]
+    pub kind: ConversationKind,
     /// Append-only render log of messages exchanged in this conversation.
     pub messages: Vec<DisplayMessage>,
 }
@@ -182,6 +205,8 @@ mod tests {
         let s = load_state(&p);
         assert_eq!(s.chats.len(), 1);
         assert!(s.chats.contains_key("abc"));
+        // A pre-kind record defaults to direct rather than failing the parse.
+        assert_eq!(s.chats["abc"].kind, ConversationKind::Direct);
         assert_eq!(s.installation_name, None);
         assert!(s.deleted.is_empty());
         let _ = fs::remove_dir_all(&dir);
@@ -244,6 +269,7 @@ mod tests {
             ChatSession {
                 chat_id: "convo".into(),
                 nickname: Some("bob".into()),
+                kind: ConversationKind::Group,
                 messages: vec![DisplayMessage {
                     from_self: true,
                     content: "hi".into(),
@@ -259,8 +285,24 @@ mod tests {
         assert_eq!(loaded.chats.len(), 1);
         let convo = &loaded.chats["convo"];
         assert_eq!(convo.nickname.as_deref(), Some("bob"));
+        assert_eq!(convo.kind, ConversationKind::Group);
         assert_eq!(convo.messages.len(), 1);
         assert_eq!(convo.messages[0].content, "hi");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn conversation_kind_uses_contract_strings() {
+        assert_eq!(ConversationKind::Direct.as_str(), "direct");
+        assert_eq!(ConversationKind::Group.as_str(), "group");
+        // serde emits the same wire form `as_str` returns.
+        assert_eq!(
+            serde_json::to_value(ConversationKind::Group).unwrap(),
+            serde_json::json!("group")
+        );
+        assert_eq!(
+            serde_json::from_value::<ConversationKind>(serde_json::json!("direct")).unwrap(),
+            ConversationKind::Direct
+        );
     }
 }
