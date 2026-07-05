@@ -10,7 +10,7 @@
 ; (no generated C++ struct) — they document the shape and "light up" if the
 ; generators gain struct support.
 module chat_module {
-  version "0.3.0"
+  version "0.4.0"
   description "Chat module for Logos: e2e-encrypted conversations over delivery_module."
   category "chat"
   depends [delivery_module]
@@ -37,6 +37,11 @@ module chat_module {
     delivery_state: tstr
     detail: tstr
   }
+  type GroupMember {
+    ; The member's directory-verified account address, or empty when the member
+    ; claims no confirmed account (the UI renders these as an unknown account).
+    address: tstr
+  }
 
   ; --- lifecycle ---
   method init(instance_path: tstr, delivery_preset: tstr, tcp_port: int) -> result
@@ -62,11 +67,9 @@ module chat_module {
   method add_group_member(convo_id: tstr, peer_address: tstr) -> result
   method list_conversations() -> [Conversation]
   method get_messages(convo_id: tstr) -> [Message]
-  ; The roster of a group conversation, one member per element: each is the
-  ; member's directory-verified account address, or its device id when the
-  ; member claims no account (the same convention `sender` uses). Errors when
+  ; The roster of a group conversation, one GroupMember per element. Errors when
   ; convo_id names a direct (non-group) conversation.
-  method list_group_members(convo_id: tstr) -> [tstr]
+  method list_group_members(convo_id: tstr) -> [GroupMember]
   method send_message(convo_id: tstr, content: tstr) -> result
   method set_conversation_nickname(convo_id: tstr, nickname: tstr) -> result
   method delete_conversation(convo_id: tstr) -> result

@@ -310,7 +310,7 @@ sections:
           for who in alice bob carol; do
             ok=""
             for i in $(seq 1 60); do
-              roster=$(./logos/bin/logoscore --config-dir "$who" call chat_module list_group_members "$gid" 2>/dev/null | jq -r '.result[]?' || true)
+              roster=$(./logos/bin/logoscore --config-dir "$who" call chat_module list_group_members "$gid" 2>/dev/null | jq -r '.result[]?.address' || true)
               if printf '%s\n' "$roster" | grep -qF "$a" && printf '%s\n' "$roster" | grep -qF "$b" && printf '%s\n' "$roster" | grep -qF "$c"; then
                 ok=1; echo "$(echo "$who" | tr a-z A-Z)_ROSTER_COMPLETE"; break
               fi

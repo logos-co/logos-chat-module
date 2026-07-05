@@ -425,10 +425,16 @@ fn member_address(member: logos_chat::GroupMember) -> String {
         .unwrap_or_default()
 }
 
-/// The roster of the group conversation `convo_id`, one member address per
-/// element (see [`member_address`]). This is a plain list with no error channel,
-/// mirroring `get_messages`: an unknown or non-group conversation, or a client
-/// error, yields an empty array (the client error is logged).
+/// One roster entry — mirrors the `GroupMember` record.
+#[derive(Serialize)]
+struct GroupMemberRow {
+    address: String,
+}
+
+/// The roster of the group conversation `convo_id`, one [`GroupMemberRow`] per
+/// element. This is a plain list with no error channel, mirroring `get_messages`:
+/// an unknown or non-group conversation, or a client error, yields an empty
+/// array (the client error is logged).
 pub(crate) fn list_group_members(convo_id: &str) -> serde_json::Value {
     let empty = || serde_json::Value::Array(vec![]);
     if !with_display(|d| d.state.chats.contains_key(convo_id)) {
@@ -436,8 +442,13 @@ pub(crate) fn list_group_members(convo_id: &str) -> serde_json::Value {
     }
     match with_client(|client| client.group_members(convo_id)) {
         Ok(Ok(members)) => {
-            let addrs: Vec<String> = members.into_iter().map(member_address).collect();
-            serde_json::to_value(addrs).unwrap_or_else(|_| empty())
+            let rows: Vec<GroupMemberRow> = members
+                .into_iter()
+                .map(|m| GroupMemberRow {
+                    address: member_address(m),
+                })
+                .collect();
+            serde_json::to_value(rows).unwrap_or_else(|_| empty())
         }
         Ok(Err(e)) => {
             eprintln!("chat_module: list_group_members failed: {e:?}");
