@@ -414,14 +414,15 @@ pub(crate) fn add_group_member(convo_id: &str, peer_address: &str) -> Result<(),
     Ok(())
 }
 
-/// A group member's display string: its directory-verified account address, or
-/// its device id when the member claims no account (the `sender` convention).
+/// A group member's directory-verified account address, or an empty string when
+/// no account is confirmed (an unassociated or unconfirmable member). The empty
+/// string is the roster's "no account" signal, which the UI renders as an
+/// unknown-account placeholder.
 fn member_address(member: logos_chat::GroupMember) -> String {
     member
         .account
-        .unwrap_or(member.local_identity)
-        .as_str()
-        .to_string()
+        .map(|account| account.as_str().to_string())
+        .unwrap_or_default()
 }
 
 /// The roster of the group conversation `convo_id`, one member address per
@@ -636,18 +637,20 @@ mod tests {
     use libchat::IdentId;
     use logos_chat::GroupMember;
 
+    /// A verified account surfaces its address; a member with no confirmed
+    /// account surfaces the empty "no account" signal, not its device id.
     #[test]
-    fn member_address_prefers_account_then_device() {
+    fn member_address_is_account_or_empty() {
         let verified = GroupMember {
             account: Some(IdentId::new("acct-addr")),
             local_identity: IdentId::new("device-id"),
         };
         assert_eq!(member_address(verified), "acct-addr");
 
-        let device_only = GroupMember {
+        let no_account = GroupMember {
             account: None,
             local_identity: IdentId::new("device-id"),
         };
-        assert_eq!(member_address(device_only), "device-id");
+        assert_eq!(member_address(no_account), "");
     }
 }
