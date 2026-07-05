@@ -27,15 +27,15 @@ panic = "abort"
 # ops need (create_group_conversation / add_group_members, injectable GroupV2
 # timing), plus the group roster (`group_members`) and the honest DirectV1
 # display class this module now surfaces. Drop the rev once it merges to main.
-logos-chat     = { git = "https://github.com/logos-messaging/libchat.git", package = "logos-chat", rev = "89afa0b0866164735a33c9f374addbd4467e1348" }
+logos-chat     = { git = "https://github.com/logos-messaging/libchat.git", package = "logos-chat", rev = "6691ef1f2465f491205a02de3e08aeb60fda09ea" }
 # The umbrella `libchat` crate, for `ChatStorage`: the builder's
 # `storage_config` panics on a bad DB, so we build the store fallibly and pass it in.
-libchat        = { git = "https://github.com/logos-messaging/libchat.git", package = "libchat", rev = "89afa0b0866164735a33c9f374addbd4467e1348" }
+libchat        = { git = "https://github.com/logos-messaging/libchat.git", package = "libchat", rev = "6691ef1f2465f491205a02de3e08aeb60fda09ea" }
 # `TestLogosAccount` (gated behind logos-account's `dev` feature): the ephemeral
 # account identity that signs this installation's device bundle and whose key is
 # the shared account address. Enable `dev` on our own dep so its availability
 # doesn't hinge on another crate happening to turn the feature on.
-logos-account  = { git = "https://github.com/logos-messaging/libchat.git", package = "logos-account", features = ["dev"], rev = "89afa0b0866164735a33c9f374addbd4467e1348" }
+logos-account  = { git = "https://github.com/logos-messaging/libchat.git", package = "logos-account", features = ["dev"], rev = "6691ef1f2465f491205a02de3e08aeb60fda09ea" }
 # The client hands back a `Receiver<Event>` and drains a `Receiver<Vec<u8>>`
 # through its `Transport`, so the module's plumbing speaks the same channel type.
 crossbeam-channel = "0.5"
