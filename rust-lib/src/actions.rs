@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use libchat::ChatStorage;
 use logos_account::TestLogosAccount;
-use logos_chat::{ChatClientBuilder, DelegateSigner, HttpRegistry, StorageConfig};
+use logos_generic_chat::{ChatClientBuilder, DelegateSigner, HttpRegistry, StorageConfig};
 use serde::Serialize;
 
 use crate::delivery::SdkDelivery;

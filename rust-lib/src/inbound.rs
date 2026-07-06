@@ -20,7 +20,7 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender};
-use logos_chat::Event;
+use logos_generic_chat::Event;
 use logos_rust_sdk::{EventData, EventSubscription};
 
 use crate::actions::{record_conversation_started, record_message_received, set_delivery_state};

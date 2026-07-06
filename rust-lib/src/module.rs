@@ -25,7 +25,7 @@ use std::thread::JoinHandle;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use libchat::ChatStorage;
-use logos_chat::{ChatClient, HttpRegistry};
+use logos_generic_chat::{ChatClient, HttpRegistry};
 use serde::Serialize;
 
 use crate::delivery::SdkDelivery;
