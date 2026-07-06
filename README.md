@@ -93,16 +93,21 @@ readiness arrives later as a `delivery_state_changed` event reaching `online`.
 
 ## Doc-tests
 
-[`doctests/chat-module-exchange.test.yaml`](doctests/chat-module-exchange.test.yaml)
-is an executable usage tutorial: it loads `chat_module` into two headless
-[`logoscore`](https://github.com/logos-co/logos-logoscore-cli) daemons and drives
-a real, end-to-end-encrypted message round-trip between them over the live
-delivery network, documenting the module's API by example. It runs on every PR
-via [`.github/workflows/doctests.yml`](.github/workflows/doctests.yml) (the
-[shared doctest CLI](https://github.com/logos-co/logos-doctest) builds the commit
-under test), which also makes it an integration check. Run it locally against
-latest master (add `--release-for logos-chat-module=<branch-or-sha>` to pin it to
-a pushed commit instead):
+The specs under [`doctests/`](doctests/) are executable usage tutorials: each
+loads `chat_module` into headless
+[`logoscore`](https://github.com/logos-co/logos-logoscore-cli) daemons and
+drives a real, end-to-end-encrypted exchange between them over the live
+delivery network, documenting the module's API by example.
+[`chat-module-exchange.test.yaml`](doctests/chat-module-exchange.test.yaml) is
+the two-instance 1:1 round-trip;
+[`chat-module-group.test.yaml`](doctests/chat-module-group.test.yaml) runs a
+three-instance GroupV2 conversation (create, grow member by member, fan-out
+messages with sender attribution). They run on every PR via
+[`.github/workflows/doctests.yml`](.github/workflows/doctests.yml) (the
+[shared doctest CLI](https://github.com/logos-co/logos-doctest) builds the
+commit under test), which also makes them an integration check. Run one locally
+against latest master (add `--release-for logos-chat-module=<branch-or-sha>` to
+pin it to a pushed commit instead):
 
 ```bash
 nix run github:logos-co/logos-doctest -- run doctests/chat-module-exchange.test.yaml
