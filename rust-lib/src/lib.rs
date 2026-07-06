@@ -19,9 +19,10 @@
 //!
 //! Return conventions. Status-bearing methods return `result`, surfaced here as
 //! `Result<serde_json::Value, String>`: `Ok(value)` carries any payload (a
-//! conversation id, an intro bundle, or `Null`), `Err(message)` a human-readable
-//! reason. Collection getters return `serde_json::Value` (a JSON array/object);
-//! `get_installation_name` returns a plain string, empty when not initialised.
+//! conversation id or `Null`), `Err(message)` a human-readable reason.
+//! Collection getters return `serde_json::Value` (a JSON array/object);
+//! `get_installation_name`/`get_address` return a plain string, empty when not
+//! initialised.
 //!
 //! Events reach consumers over the lp_* IPC channel: the operations below call
 //! the generated `emit_*` functions (see the included scaffold), which the host
@@ -127,18 +128,12 @@ impl ChatModule for ChatModuleImpl {
             .map_err(|e| e.to_string())
     }
 
-    fn create_intro_bundle(&mut self) -> Result<Value, String> {
-        actions::create_intro_bundle()
-            .map(Value::String)
-            .map_err(|e| e.to_string())
+    fn get_address(&mut self) -> String {
+        actions::get_address()
     }
 
-    fn create_conversation(
-        &mut self,
-        peer_intro_bundle: String,
-        initial_content: String,
-    ) -> Result<Value, String> {
-        actions::create_conversation(&peer_intro_bundle, &initial_content)
+    fn create_conversation(&mut self, peer_address: String) -> Result<Value, String> {
+        actions::create_conversation(&peer_address)
             .map(Value::String)
             .map_err(|e| e.to_string())
     }

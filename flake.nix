@@ -77,5 +77,18 @@
             program = "${generate}/bin/chat-module-generate";
           };
         });
+
+      # Build tools for bare `cargo` (clippy/test) that the module build needs but
+      # the CI runner image lacks: `protobuf` (protoc) for hashgraph-like-consensus's
+      # prost-build build script. Sourced from the same pinned nixpkgs as the nix
+      # build (metadata.json#nix.rust.packages.build), so `nix develop --command
+      # cargo …` uses the repo's own pin, not a separate toolchain.
+      devShells = forAllSystems (system:
+        let pkgs = import nixpkgs { inherit system; };
+        in {
+          default = pkgs.mkShell {
+            packages = [ pkgs.protobuf ];
+          };
+        });
     };
 }

@@ -5,30 +5,31 @@ release: ""
 
 intro: |
   This tutorial shows how to use `chat_module` end to end, by example. A
-  conversation takes two parties: one shares an intro bundle, the other opens a
-  conversation from it with a first message, and a reply flows back. That
+  conversation takes two parties: one shares their address, the other opens a
+  conversation with it, the first side joins, and messages flow both ways. That
   round-trip spans **two** independent `chat_module` instances talking over the
   live delivery network.
 
   So the tutorial runs two headless [`logoscore`](https://github.com/logos-co/logos-logoscore-cli)
   daemons (Alice and Bob), each loading `chat_module` and its runtime dependency
   `delivery_module`, and drives them through the `logoscore call` CLI: `init`,
-  `create_intro_bundle`, `create_conversation`, `send_message`, and reading the
-  thread back with `list_conversations` / `get_messages`.
+  `get_address`, `create_conversation`, `send_message`, and reading the thread
+  back with `list_conversations` / `get_messages`.
 
   `logoscore call` is request/response, so it never receives the module's push
   events; instead each side **polls** its own persisted state (`status`,
   `list_conversations`, `get_messages`) for what an event-driven consumer would
   get as `delivery_state_changed` / `conversation_created` / `message_received`.
-  The exchange itself (X3DH bundle, end-to-end-encrypted messages over
-  `delivery_module`) is exactly what an application drives.
+  The exchange itself (an MLS group keyed from key packages exchanged through a
+  registry, end-to-end-encrypted messages over `delivery_module`) is exactly what
+  an application drives.
 
 what_you_build: "A verified end-to-end, end-to-end-encrypted message round-trip between two headless chat_module instances, with no UI."
 
 what_you_learn:
   - "Run two isolated `logoscore` daemons on one host, selected by `--config-dir`"
   - "Bring a `chat_module` instance online with `init()` and poll `status()` for `delivery_state == online`"
-  - "Drive the full round-trip over the CLI (share a bundle, open a conversation, reply) and observe receipt by polling `list_conversations` / `get_messages` instead of events"
+  - "Drive the full round-trip over the CLI (share an address, open a conversation, reply) and observe receipt by polling `list_conversations` / `get_messages` instead of events"
   - "How the `result`-bearing methods wrap their payload as `{success, value, error}` while the collection/status getters return their value directly"
 
 prerequisites:
@@ -198,49 +199,74 @@ sections:
   - title: "The round-trip"
     step: true
     text: |
-      Alice shares her intro bundle, Bob opens a conversation from it with a first
-      message, Alice sees it and replies, and the reply reaches Bob.
+      Alice shares her address, Bob opens a DirectV1 conversation with her, Alice
+      joins via the invite, then Bob sends the first message and Alice replies — a
+      bidirectional round-trip between two independent headless instances.
     steps:
-      - title: "Alice creates her intro bundle"
+      - title: "Alice publishes her address"
         run: |
-          out=$(./logos/bin/logoscore --config-dir alice call chat_module create_intro_bundle)
-          echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "bundle failed: $out" >&2; exit 1; }
-          echo "$out" | jq -j '.result.value' > alice-bundle.txt
-          echo "alice bundle bytes: $(wc -c < alice-bundle.txt)"
+          out=$(./logos/bin/logoscore --config-dir alice call chat_module get_address)
+          echo "$out"
+          echo "$out" | jq -j '.result' > alice-addr.txt
+          echo "alice address: $(cat alice-addr.txt)"
         code_block: |
-          logoscore --config-dir alice call chat_module create_intro_bundle | jq -j '.result.value' > alice-bundle.txt
+          logoscore --config-dir alice call chat_module get_address | jq -j '.result' > alice-addr.txt
         expect_contains:
-          - "alice bundle bytes:"
-        check_file: "alice-bundle.txt"
+          - "alice address:"
+        check_file: "alice-addr.txt"
         post_text: |
-          `create_intro_bundle` returns the LIDL `result` type, so its payload is at
-          `.result.value` (the X3DH prekey bundle a peer needs to start a
-          conversation with Alice), with `.result.success` / `.result.error`
-          alongside.
-      - title: "Bob opens a conversation from the bundle and sends the first message"
+          `get_address` returns the LIDL `tstr` type, so its payload is the string
+          directly at `.result` — Alice's installation address, what a peer needs to
+          open a conversation with her. Her key package was published to the registry
+          during `init`, so the address alone lets Bob reach her.
+      - title: "Bob opens a conversation with Alice"
         run: |
-          out=$(./logos/bin/logoscore --config-dir bob call chat_module create_conversation @alice-bundle.txt hello-from-bob)
+          out=$(./logos/bin/logoscore --config-dir bob call chat_module create_conversation @alice-addr.txt)
           echo "$out"
           echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "create_conversation failed: $out" >&2; exit 1; }
           echo "$out" | jq -j '.result.value' > bob-convo.txt
           echo "bob convo: $(cat bob-convo.txt)"
         code_block: |
-          logoscore --config-dir bob call chat_module create_conversation @alice-bundle.txt hello-from-bob
+          logoscore --config-dir bob call chat_module create_conversation @alice-addr.txt
         expect_contains:
           - '"status":"ok"'
           - "bob convo:"
         post_text: |
-          `@alice-bundle.txt` feeds the bundle file as the first argument. The
-          returned `result.value` is Bob's **local** conversation id; the first
-          message is published to Alice asynchronously.
-      - title: "Alice receives the conversation and Bob's message"
+          `@alice-addr.txt` feeds Alice's address as the argument. Bob fetches her
+          key package from the registry and sends her an MLS invite; `result.value`
+          is Bob's conversation id. The first message is sent separately, once Alice
+          has joined.
+      - title: "Alice joins the conversation"
         run: |
           for i in $(seq 1 50); do
             cid=$(./logos/bin/logoscore --config-dir alice call chat_module list_conversations 2>/dev/null | jq -r '.result[0].convo_id // empty')
             if [ -n "$cid" ]; then echo "$cid" > alice-convo.txt; echo "ALICE_HAS_CONVO $cid"; break; fi
             sleep 3
           done
-          [ -s alice-convo.txt ] || { echo "alice never received the conversation" >&2; exit 1; }
+          [ -s alice-convo.txt ] || { echo "alice never joined the conversation" >&2; exit 1; }
+        code_block: |
+          # poll until Alice has processed the invite and joined
+          logoscore --config-dir alice call chat_module list_conversations | jq -r '.result[0].convo_id'
+        expect_contains:
+          - "ALICE_HAS_CONVO"
+        post_text: |
+          DirectV1 is group-based, so both sides share one conversation id (the
+          group id) — unlike PrivateV1's asymmetric ids. Once the conversation
+          appears, Alice has joined and subscribed to its delivery address, so she
+          is ready to receive messages on it.
+      - title: "Bob sends the first message"
+        run: |
+          cid=$(cat bob-convo.txt)
+          ./logos/bin/logoscore --config-dir bob call chat_module send_message "$cid" hello-from-bob
+        code_block: |
+          logoscore --config-dir bob call chat_module send_message "$BOB_CONVO" hello-from-bob
+        expect_contains:
+          - '"status":"ok"'
+        post_text: |
+          Bob sends only after Alice has joined (previous step), so the message
+          reaches her subscribed thread rather than racing ahead of her join.
+      - title: "Alice receives Bob's message"
+        run: |
           cid=$(cat alice-convo.txt)
           for i in $(seq 1 50); do
             msgs=$(./logos/bin/logoscore --config-dir alice call chat_module get_messages "$cid" 2>/dev/null || true)
@@ -249,20 +275,14 @@ sections:
           done
           echo "alice never received bob's message" >&2; exit 1
         code_block: |
-          # Alice's local conversation id (X3DH-asymmetric: differs from Bob's)
-          logoscore --config-dir alice call chat_module list_conversations | jq -r '.result[0].convo_id'
-          # poll her thread until Bob's message lands
           logoscore --config-dir alice call chat_module get_messages "$ALICE_CONVO"
         expect_contains:
-          - "ALICE_HAS_CONVO"
           - "ALICE_GOT_BOB_MSG"
         post_text: |
-          Each side has its **own** local conversation id (X3DH gives the initiator
-          and responder different ids for the one logical conversation). Alice reads
-          hers from her own `list_conversations`; received messages are persisted
-          and surface via `get_messages` with no event subscription.
-          `list_conversations` / `get_messages` return their arrays directly under
-          `result`.
+          DirectV1 gives both sides the **same** conversation id (the MLS group id).
+          Received messages are persisted and surface via `get_messages` with no
+          event subscription; `list_conversations` / `get_messages` return their
+          arrays directly under `result`.
       - title: "Alice replies"
         run: |
           cid=$(cat alice-convo.txt)

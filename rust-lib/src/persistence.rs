@@ -59,7 +59,7 @@ pub(crate) struct DisplayMessage {
 /// Per-conversation state held alongside libchat's cryptographic state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ChatSession {
-    /// libchat conversation ID (`ConversationIdOwned` rendered to string).
+    /// libchat conversation ID.
     pub chat_id: String,
     /// User-set display label. `None` falls back to `module::short_label`.
     pub nickname: Option<String>,

@@ -2,18 +2,21 @@
 //!
 //! State is split across two independent locks so the fast read methods never
 //! wait on slow libchat work:
-//! * [`ModuleHandle`] (the [`module`] singleton) guards the `!Send` `ChatClient`
-//!   and the worker handle — held across libchat crypto (create/send on the
-//!   dispatch thread, receive on the worker). `unsafe impl Send` is sound
-//!   because every access is serialised through this mutex.
+//! * [`ModuleHandle`] (the [`module`] singleton) guards the [`Client`] and the
+//!   background worker handles. The outbound calls (create/send) take this lock
+//!   for the libchat crypto; they run on the dispatch thread and return without
+//!   blocking on the network (publish is async).
 //! * [`with_display`]/[`with_display_mut`] guard the display history
 //!   ([`Display`]): the conversation log, delivery state, and cached identity
 //!   name. The read methods (`get_messages`/`list_conversations`/`status`/
 //!   `get_installation_name`) lock only this, so they return promptly even while
-//!   the client lock is held for a long decrypt or send.
+//!   the client lock is held for a long send.
 //!
 //! A mutation locks the client (for the libchat call) then the display (to
 //! record the result) — never the reverse — so the two locks can't deadlock.
+//! Inbound decryption runs inside the client's own worker; the event consumer
+//! takes only the display lock to record the result, so it never waits on the
+//! client lock either.
 
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -21,11 +24,26 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::JoinHandle;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use client::ChatClient;
+use libchat::ChatStorage;
+use logos_chat::{ChatClient, HttpRegistry};
 use serde::Serialize;
 
 use crate::delivery::SdkDelivery;
 use crate::persistence::AppState;
+
+/// The chat client as this module configures it: a delegate identity associated
+/// with an ephemeral account, the delivery_module-backed [`SdkDelivery`]
+/// transport, the devnet HTTP registry, and an in-memory store. Chats are
+/// ephemeral (see [`PERSISTENCE_ENABLED`]).
+pub(crate) type Client = ChatClient<SdkDelivery, HttpRegistry, ChatStorage>;
+
+/// Whether chat state persists across restarts. Off: identity, MLS/crypto state,
+/// and the display history are all ephemeral. DirectV1 has no reload path in
+/// libchat yet (a DirectV1 conversation's MLS state is never reloaded), so
+/// persisting would strand crypto state a restart can't resume. The persistence
+/// code (SQLCipher store, `history.json`) is kept behind this switch; flip it on
+/// once libchat can reload DirectV1 state.
+pub(crate) const PERSISTENCE_ENABLED: bool = false;
 
 // ── Delivery state ──────────────────────────────────────────────────────────
 
@@ -83,21 +101,18 @@ impl DeliveryState {
 // ── ModuleState (client lock) ──────────────────────────────────────────────────
 
 pub(crate) struct ModuleState {
-    pub client: ChatClient<SdkDelivery>,
-    /// Signal flag for the inbound worker. The worker observes this between
+    pub client: Client,
+    /// Signal flag for the inbound bridge worker. The worker observes this between
     /// poll iterations so shutdown() bounds wait time at one poll period.
     pub inbound_stop: Arc<AtomicBool>,
-    /// Inbound worker handle. `Option` so `shutdown()` can `take()` it before
-    /// `join`-ing while still under the module mutex.
+    /// Inbound bridge worker handle (delivery_module events → client, connection
+    /// state, subscription forwarding). `Option` so `shutdown()` can `take()` it
+    /// before `join`-ing while still under the module mutex.
     pub inbound_thread: Option<JoinHandle<()>>,
+    /// Event consumer worker handle. Drains the client's `Receiver<Event>`; it
+    /// exits once the client is dropped and the event sender disconnects.
+    pub event_thread: Option<JoinHandle<()>>,
 }
-
-// `ChatClient` holds `Rc<…>` so `ModuleState` isn't `Send` by auto-derive.
-// Sound because every access goes through `ModuleHandle` under the mutex,
-// which both serialises Rc refcount updates and provides the happens-before
-// barrier the non-atomic refcount needs. `Mutex<T>: Sync` falls out from
-// `T: Send`, so we assert `Send` only.
-unsafe impl Send for ModuleState {}
 
 /// Unreachable under `panic = "abort"` — the process dies before a
 /// poisoning panic can return.
@@ -171,6 +186,10 @@ pub(crate) struct Display {
     /// libchat's intrinsic installation name, cached so `get_installation_name`
     /// needn't touch the client (which is behind the other lock).
     pub intrinsic_name: String,
+    /// The local installation address (libchat `ChatClient::addr`), cached so
+    /// `get_address` needn't touch the client. A peer needs this value to open a
+    /// DirectV1 conversation with this installation.
+    pub address: String,
 }
 
 impl Default for Display {
@@ -180,6 +199,7 @@ impl Default for Display {
             state_path: PathBuf::new(),
             delivery_state: DeliveryState::stopped(),
             intrinsic_name: String::new(),
+            address: String::new(),
         }
     }
 }
