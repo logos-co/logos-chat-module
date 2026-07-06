@@ -49,6 +49,19 @@ conversation id, an intro bundle, or null), `Err(message)` a human-readable
 reason. Collection getters (`list_conversations`, `get_messages`) return JSON
 arrays. See the `.lidl` for the full method list and record shapes.
 
+Two conversation shapes are exposed. `create_conversation(peer_address)` opens
+a 1:1 DirectV1 conversation. `create_group_conversation()` creates a GroupV2
+(de-mls) group with this installation as its only member, grown one peer at a
+time with `add_group_member(convo_id, peer_address)`; every member sees the
+same conversation id, and adds are committed by the group's steward
+asynchronously, so a peer joins some time after the call returns.
+`list_group_members(convo_id)` returns a group's roster from libchat's MLS
+state. The `Conversation` record and the `conversation_created` event carry a
+`kind` (`"direct"` or `"group"`) distinguishing the two shapes. Received
+messages carry a `sender` (on the `Message` record and the `message_received`
+event): the sender's directory-verified account address, or its device id
+when the sender claims no account.
+
 ## Events
 
 The module pushes six events over the lp_* IPC event channel (LIDL `event`
@@ -56,11 +69,11 @@ declarations); consumers subscribe via `on_<event>()` — no polling. Each carri
 positional arguments in `.lidl` order:
 
 - **`message_received`** — an inbound message was decrypted
-  - `convo_id` (`tstr`), `content` (`tstr`), `timestamp_ms` (`int`)
+  - `convo_id` (`tstr`), `content` (`tstr`), `timestamp_ms` (`int`), `sender` (`tstr`)
 - **`message_sent`** — an outbound message was recorded
   - `convo_id` (`tstr`), `content` (`tstr`), `timestamp_ms` (`int`)
 - **`conversation_created`** — a conversation was opened
-  - `convo_id` (`tstr`), `is_outgoing` (`bool`), `peer_label` (`tstr`)
+  - `convo_id` (`tstr`), `is_outgoing` (`bool`), `peer_label` (`tstr`), `kind` (`tstr`)
 - **`conversation_updated`** — a conversation's metadata changed
   - `convo_id` (`tstr`)
 - **`conversation_deleted`** — a conversation was removed
