@@ -21,7 +21,7 @@ pub(crate) fn content_topic_for(delivery_address: &str) -> String {
 /// and subscription forwarding to delivery_module, plus the inbound payload
 /// stream the client's worker drains.
 #[derive(Debug)]
-pub(crate) struct SdkDelivery {
+pub(crate) struct LogosDelivery {
     /// Handed to the client once via [`Transport::inbound`]. The module feeds the
     /// matching sender from delivery_module's `messageReceived` events.
     inbound_rx: Option<Receiver<Vec<u8>>>,
@@ -29,7 +29,7 @@ pub(crate) struct SdkDelivery {
     subscribe_tx: Sender<String>,
 }
 
-impl SdkDelivery {
+impl LogosDelivery {
     pub(crate) fn new(inbound_rx: Receiver<Vec<u8>>, subscribe_tx: Sender<String>) -> Self {
         Self {
             inbound_rx: Some(inbound_rx),
@@ -38,7 +38,7 @@ impl SdkDelivery {
     }
 }
 
-impl DeliveryService for SdkDelivery {
+impl DeliveryService for LogosDelivery {
     type Error = String;
 
     fn publish(&mut self, envelope: AddressedEnvelope) -> Result<(), String> {
@@ -69,10 +69,10 @@ impl DeliveryService for SdkDelivery {
     }
 }
 
-impl Transport for SdkDelivery {
+impl Transport for LogosDelivery {
     fn inbound(&mut self) -> Receiver<Vec<u8>> {
         self.inbound_rx
             .take()
-            .expect("SdkDelivery::inbound called more than once")
+            .expect("LogosDelivery::inbound called more than once")
     }
 }

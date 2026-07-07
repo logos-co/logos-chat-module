@@ -16,7 +16,7 @@ use logos_account::TestLogosAccount;
 use logos_chat::{ChatClientBuilder, DelegateSigner, HttpRegistry, StorageConfig};
 use serde::Serialize;
 
-use crate::delivery::SdkDelivery;
+use crate::delivery::LogosDelivery;
 
 /// The devnet KeyPackage registry DirectV1 uses to publish this installation's
 /// key package and fetch a peer's. Hardcoded for now; a configurable endpoint is
@@ -129,7 +129,7 @@ pub(crate) fn initialize(instance_path: &str) -> Result<ModuleState, InitError> 
     let device_key = delegate.public_key().clone();
     let (client, events) = ChatClientBuilder::new(account_addr.clone())
         .ident(delegate)
-        .transport(SdkDelivery::new(inbound_rx, subscribe_tx))
+        .transport(LogosDelivery::new(inbound_rx, subscribe_tx))
         .registration(HttpRegistry::new(DEFAULT_REGISTRY_URL))
         .storage(storage)
         .build()
@@ -348,7 +348,7 @@ pub(crate) fn get_address() -> String {
 /// first message is sent separately via `send_message` once the peer has joined.
 /// Returns the local conversation id.
 pub(crate) fn create_conversation(peer_address: &str) -> Result<String, CoreError> {
-    // libchat op under the client lock. Publish is async (see SdkDelivery), so
+    // libchat op under the client lock. Publish is async (see LogosDelivery), so
     // this returns without blocking on the network.
     let chat_id = with_client(|client| client.create_direct_conversation(peer_address))?
         .map_err(|e| CoreError::Internal(format!("create_conversation failed: {e:?}")))?;
