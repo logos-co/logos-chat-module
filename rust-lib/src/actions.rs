@@ -10,13 +10,14 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::thread::JoinHandle;
 
 use libchat::ChatStorage;
 use logos_account::TestLogosAccount;
 use logos_chat::{ChatClientBuilder, DelegateSigner, HttpRegistry, StorageConfig};
 use serde::Serialize;
 
-use crate::delivery::LogosDelivery;
+use crate::delivery::{LogosDelivery, ModuleTransport};
 
 /// The devnet KeyPackage registry DirectV1 uses to publish this installation's
 /// key package and fetch a peer's. Hardcoded for now; a configurable endpoint is
@@ -78,7 +79,10 @@ struct StatusView {
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
-pub(crate) fn initialize(instance_path: &str) -> Result<ModuleState, InitError> {
+pub(crate) fn initialize(
+    instance_path: &str,
+    transport_url: &str,
+) -> Result<ModuleState, InitError> {
     fs::create_dir_all(instance_path)
         .map_err(|e| InitError::Internal(format!("cannot create instance_path: {e}")))?;
 
@@ -98,38 +102,43 @@ pub(crate) fn initialize(instance_path: &str) -> Result<ModuleState, InitError> 
         ChatStorage::in_memory()
     };
 
-    // The transport's inbound channel: the bridge worker feeds `inbound_tx` from
-    // delivery_module's `messageReceived`, the client's worker drains the rx (via
-    // `Transport::inbound`). The subscribe channel carries the core's inbound-address
-    // subscriptions to the bridge, which forwards them to delivery_module once the
-    // node is started.
-    let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded();
-    let (subscribe_tx, subscribe_rx) = crossbeam_channel::unbounded();
+    // Report "initialising" before any worker can advance it; the chosen
+    // transport's worker (delivery bootstrap for SDK, poller for mailbox) flips it
+    // to online/error, so the seed below leaves delivery_state untouched.
+    with_display_mut(|d| d.delivery_state = DeliveryState::initialising());
 
-    // Do the fallible *local* setup (store open, client build) before touching
-    // delivery_module. The node's lifecycle is irreversible — createNode rejects
-    // duplicates and start is not idempotent (see the TODO in
-    // `start_delivery_bootstrap`) — so a build failure must abort init before any
-    // node exists; otherwise a partial init would strand a started, unowned node
-    // with no workers and no way to stop it. Building the client subscribes the
-    // core's inbound addresses, which queue on `subscribe_rx` until the node starts.
-    //
+    // Pick the transport before building the client: the delivery_module path
+    // (default) or the centralized relay (transport_url set). Each returns the
+    // transport plus a deferred spawn of its background workers; the client and
+    // everything above it (identity, MLS, GroupV2) are identical across both. The
+    // workers are spawned only after the fallible setup below succeeds, so a
+    // failure there strands no threads.
+    let TransportSetup {
+        transport,
+        spawn_workers,
+    } = if transport_url.is_empty() {
+        logos_delivery_transport()?
+    } else {
+        mailbox_transport(transport_url)?
+    };
+
     // Identity is ephemeral (see `PERSISTENCE_ENABLED`): a fresh account and
     // delegate are minted each launch. `TestLogosAccount` holds the account key;
-    // the `DelegateSigner` is a pure device keypair, and the client composes
-    // the account claim into its wire credential from the builder's account
-    // address. The account signs a bundle endorsing the delegate's device key,
-    // published to the registry's account directory below, so a peer given only
-    // the account address resolves this device's key package and opens a
-    // DirectV1 conversation. account != device: the client routes on the
-    // delegate's signer id; the account address is what we share.
+    // the `DelegateSigner` is a pure device keypair, and the client composes the
+    // account claim into its wire credential from the builder's account address.
+    // The account signs a bundle endorsing the delegate's device key, published to
+    // the registry's account directory below, so a peer given only the account
+    // address resolves this device's key package and opens a DirectV1 conversation.
+    // account != device: the client routes on the delegate's signer id; the account
+    // address is what we share. Building the client subscribes the core's inbound
+    // addresses through the transport.
     let account = TestLogosAccount::new();
     let account_addr = account.address();
     let delegate = DelegateSigner::random();
     let device_key = delegate.public_key().clone();
     let (client, events) = ChatClientBuilder::new(account_addr.clone())
         .ident(delegate)
-        .transport(LogosDelivery::new(inbound_rx, subscribe_tx))
+        .transport(transport)
         .registration(HttpRegistry::new(DEFAULT_REGISTRY_URL))
         .storage(storage)
         .build()
@@ -151,10 +160,73 @@ pub(crate) fn initialize(instance_path: &str) -> Result<ModuleState, InitError> 
     let state_path = PathBuf::from(format!("{instance_path}/history.json"));
     let state = load_display(&state_path);
 
-    // Register listeners before the node starts — `connectionStateChanged`
-    // fires during start and is not re-emitted, so a late subscribe misses it.
-    // The subscriptions are handed to the bridge worker, which polls them; nothing
-    // arrives until `start_delivery_bootstrap` starts the node.
+    // Client build and registry publish both succeeded, so it's now safe to start
+    // the transport's background workers: an earlier `?` would have dropped
+    // `spawn_workers` unused, leaving no thread (and, for the SDK path, no live
+    // delivery_module subscription) to leak.
+    let Workers {
+        inbound_stop,
+        inbound_thread,
+        mailbox_send_thread,
+    } = spawn_workers();
+
+    let event_thread = crate::inbound::spawn_events(events);
+
+    // Seed the display state read by the getters (the client owns its identity;
+    // its intrinsic name is cached here for get_installation_name). delivery_state
+    // was seeded above and may already have advanced, so it's left untouched.
+    with_display_mut(|d| {
+        d.state = state;
+        d.state_path = state_path;
+        d.intrinsic_name = intrinsic_name;
+        d.address = address;
+    });
+
+    Ok(ModuleState {
+        client,
+        inbound_stop,
+        inbound_thread: Some(inbound_thread),
+        mailbox_send_thread,
+        event_thread: Some(event_thread),
+    })
+}
+
+/// The chosen transport plus a deferred spawn of its background workers.
+/// `spawn_workers` is called by [`initialize`] only after the fallible client
+/// build and registry publish succeed, so those failure paths drop it un-called
+/// and start no threads.
+struct TransportSetup {
+    transport: ModuleTransport,
+    spawn_workers: Box<dyn FnOnce() -> Workers>,
+}
+
+/// The background workers `initialize` moves into [`ModuleState`].
+struct Workers {
+    inbound_stop: Arc<AtomicBool>,
+    /// Stop-driven inbound worker: the delivery_module bridge or the mailbox poller.
+    inbound_thread: JoinHandle<()>,
+    /// Mailbox sender; `None` on the delivery_module path.
+    mailbox_send_thread: Option<JoinHandle<()>>,
+}
+
+/// The delivery_module transport: an [`LogosDelivery`] plus a deferred spawn of the
+/// bridge worker that pumps delivery_module's events into the client and forwards
+/// the core's queued subscriptions once the node is online (see
+/// [`start_delivery_bootstrap`]).
+fn logos_delivery_transport() -> Result<TransportSetup, InitError> {
+    // inbound: the bridge feeds `inbound_tx` from delivery_module's `messageReceived`,
+    // the client drains the rx via `Transport::inbound`. subscribe: the core's
+    // inbound-address subscriptions queue on `subscribe_rx` until the node starts,
+    // when the bridge forwards them to delivery_module.
+    let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded();
+    let (subscribe_tx, subscribe_rx) = crossbeam_channel::unbounded();
+
+    // Register listeners before the node starts — `connectionStateChanged` fires
+    // during start and is not re-emitted, so a late subscribe misses it. Only the
+    // node lifecycle (createNode/start, in `start_delivery_bootstrap`) is
+    // irreversible; these subscriptions are reversible, and the bridge that
+    // consumes them is spawned only after the client build succeeds — so a build
+    // failure drops the still-owned subscriptions and strands nothing.
     let mut dm = crate::modules().delivery_module;
     let messages_sub = dm
         .on_message_received()
@@ -169,31 +241,43 @@ pub(crate) fn initialize(instance_path: &str) -> Result<ModuleState, InitError> 
         }
     };
 
-    let stop = Arc::new(AtomicBool::new(false));
-    let inbound_thread = crate::inbound::spawn_bridge(
-        stop.clone(),
-        messages_sub,
-        conn_sub,
-        inbound_tx,
-        subscribe_rx,
-    );
-    let event_thread = crate::inbound::spawn_events(events);
+    Ok(TransportSetup {
+        transport: ModuleTransport::Logos(LogosDelivery::new(inbound_rx, subscribe_tx)),
+        spawn_workers: Box::new(move || {
+            let stop = Arc::new(AtomicBool::new(false));
+            let inbound_thread = crate::inbound::spawn_bridge(
+                stop.clone(),
+                messages_sub,
+                conn_sub,
+                inbound_tx,
+                subscribe_rx,
+            );
+            Workers {
+                inbound_stop: stop,
+                inbound_thread,
+                mailbox_send_thread: None,
+            }
+        }),
+    })
+}
 
-    // Seed the display state read by the getters (the client owns its identity;
-    // its intrinsic name is cached here for get_installation_name).
-    with_display_mut(|d| {
-        d.state = state;
-        d.state_path = state_path;
-        d.delivery_state = DeliveryState::initialising();
-        d.intrinsic_name = intrinsic_name;
-        d.address = address;
-    });
-
-    Ok(ModuleState {
-        client,
-        inbound_stop: stop,
-        inbound_thread: Some(inbound_thread),
-        event_thread: Some(event_thread),
+/// The centralized-relay transport: a
+/// [`MailboxDelivery`](crate::mailbox::MailboxDelivery) plus a deferred spawn of
+/// its poller and sender. Reaches the network over HTTP, so it never touches
+/// delivery_module (no node is created; `delivery_preset`/`tcp_port` are ignored).
+fn mailbox_transport(transport_url: &str) -> Result<TransportSetup, InitError> {
+    let (transport, workers) =
+        crate::mailbox::prepare(transport_url).map_err(InitError::Delivery)?;
+    Ok(TransportSetup {
+        transport: ModuleTransport::Mailbox(transport),
+        spawn_workers: Box::new(move || {
+            let (stop, poll_thread, send_thread) = workers.spawn();
+            Workers {
+                inbound_stop: stop,
+                inbound_thread: poll_thread,
+                mailbox_send_thread: Some(send_thread),
+            }
+        }),
     })
 }
 
@@ -261,12 +345,17 @@ fn set_delivery_error(detail: String) {
 pub(crate) fn shutdown(mut ms: ModuleState) {
     ms.inbound_stop.store(true, Ordering::Relaxed);
     if let Some(handle) = ms.inbound_thread.take() {
-        // Bounded by inbound::POLL_INTERVAL; ~50 ms worst case.
+        // Bounded by the worker's poll wait: ~50 ms for the delivery_module
+        // bridge, one long-poll for the mailbox poller.
         let _ = handle.join();
     }
-    // Drop the client so its worker stops and its event sender disconnects; the
-    // event consumer then ends its loop and can be joined.
+    // Drop the client so its worker stops and its senders (the event channel, and
+    // the mailbox outbound channel) disconnect; those consumers then end their
+    // loops and can be joined.
     drop(ms.client);
+    if let Some(handle) = ms.mailbox_send_thread.take() {
+        let _ = handle.join();
+    }
     if let Some(handle) = ms.event_thread.take() {
         let _ = handle.join();
     }

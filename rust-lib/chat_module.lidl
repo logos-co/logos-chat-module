@@ -34,7 +34,11 @@ module chat_module {
   }
 
   ; --- lifecycle ---
-  method init(instance_path: tstr, delivery_preset: tstr, tcp_port: int) -> result
+  ; transport_url selects the wire: empty uses delivery_module (configured by
+  ; delivery_preset/tcp_port); a URL (e.g. https://user:token@relay.example.com)
+  ; routes through a centralized HTTP mailbox relay instead, ignoring
+  ; delivery_preset/tcp_port. See tools/mailbox-relay.
+  method init(instance_path: tstr, delivery_preset: tstr, tcp_port: int, transport_url: tstr) -> result
   method shutdown() -> result
 
   ; --- identity ---
