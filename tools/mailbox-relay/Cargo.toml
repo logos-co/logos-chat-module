@@ -1,0 +1,34 @@
+# Standalone crate: the module repo root has no workspace, but rust-lib declares
+# its own, so declare an empty one here too and never get adopted by a parent.
+# Zero chat dependencies, so this can be extracted to its own repo later.
+[workspace]
+
+[package]
+name = "mailbox-relay"
+version = "0.1.0"
+edition = "2021"
+description = "Centralized HTTP mailbox relay: a reliable, inspectable transport for logos-chat testing"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "mailbox_relay"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mailbox-relay"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "signal"] }
+tower-http = { version = "0.6", features = ["trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+anyhow = "1"
+
+[dev-dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

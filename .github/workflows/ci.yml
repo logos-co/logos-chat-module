@@ -118,3 +118,32 @@ jobs:
 
       - name: nix build .#chat_module
         run: nix build .#chat_module -L
+
+  relay:
+    name: mailbox-relay
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Standalone crate with no libchat/protobuf deps, so it runs bare cargo — no
+    # nix devShell and no `.#generate`, unlike the rust-lib jobs above.
+    defaults:
+      run:
+        working-directory: tools/mailbox-relay
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: rustup update stable && rustup default stable && rustup component add rustfmt clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          workspaces: tools/mailbox-relay
+
+      - name: cargo fmt --check
+        run: cargo fmt --check
+
+      - name: cargo clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --locked
