@@ -1,15 +1,16 @@
 name: Doc-Tests
 
-# Runs chat_module's usage doc-test via the shared doctest CLI, against the commit
-# under test. The spec is an executable tutorial that builds this module's `.lgx`,
-# loads it into two headless `logoscore` daemons, and drives a real two-party
-# message round-trip over the live delivery network. Because it exercises the
-# module end to end, the job also serves as an integration check and fails if the
-# round-trip does not complete.
+# Runs chat_module's usage doc-tests via the shared doctest CLI, against the
+# commit under test. Each spec is an executable tutorial that builds this
+# module's `.lgx`, loads it into headless `logoscore` daemons, and drives a real
+# exchange over the live delivery network: the two-instance 1:1 round-trip and
+# the three-instance GroupV2 conversation. Because they exercise the module end
+# to end, the job also serves as an integration check and fails if an exchange
+# does not complete.
 #
-# Linux-only: it runs two real delivery instances on one host (distinct data dirs
-# and delivery ports). The exchange needs outbound network to reach the logos.test
-# Waku fleet, which GitHub-hosted runners have.
+# Linux-only: it runs several real delivery instances on one host (distinct data
+# dirs and delivery ports). The exchanges need outbound network to reach the
+# logos.test Waku fleet, which GitHub-hosted runners have.
 
 on:
   pull_request:
@@ -84,10 +85,11 @@ jobs:
       # test, so `github:logos-co/logos-chat-module{release}#lgx` in the spec builds
       # this PR/push. --continue-on-fail so the run walks every step and the report
       # is complete; the job still exits non-zero if any step failed.
-      - name: Run doc-test
+      - name: Run doc-tests
         run: |
           nix run github:logos-co/logos-doctest -- run \
             doctests/chat-module-exchange.test.yaml \
+            doctests/chat-module-group.test.yaml \
             --verbose \
             --continue-on-fail \
             --release-for logos-chat-module=${{ steps.commit.outputs.sha }} \
@@ -114,12 +116,14 @@ jobs:
 
       - name: Verify markdown generation
         run: |
-          out="${{ runner.temp }}/chat-module-exchange.md"
-          nix run github:logos-co/logos-doctest -- generate \
-            doctests/chat-module-exchange.test.yaml \
-            --release-for logos-chat-module=${{ steps.commit.outputs.sha }} \
-            -o "$out"
-          test -s "$out"
+          for spec in chat-module-exchange chat-module-group; do
+            out="${{ runner.temp }}/${spec}.md"
+            nix run github:logos-co/logos-doctest -- generate \
+              "doctests/${spec}.test.yaml" \
+              --release-for logos-chat-module=${{ steps.commit.outputs.sha }} \
+              -o "$out"
+            test -s "$out"
+          done
           echo "Generated markdown successfully"
 
   publish-report:
@@ -190,9 +194,10 @@ jobs:
             const body =
               `${marker}\n` +
               `### Doc-test report\n\n` +
-              `Two headless \`chat_module\` instances built against this commit, ` +
-              `driven through the full message round-trip, rendered alongside the ` +
-              `commands actually run and their output ` +
+              `Headless \`chat_module\` instances built against this commit, ` +
+              `driven through the 1:1 round-trip and the three-instance group ` +
+              `conversation, rendered alongside the commands actually run and ` +
+              `their output ` +
               `(updated each run, commit \`${context.sha.slice(0,7)}\`):\n\n` +
               `- [Execution report](${url})\n\n` +
               `_Pages can take a minute to update after the run finishes._`;

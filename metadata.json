@@ -1,7 +1,7 @@
 {
   "name": "chat_module",
   "display_name": "Chat Module",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Chat module for Logos",
   "author": "Logos Core Team",
   "type": "core",

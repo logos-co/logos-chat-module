@@ -10,7 +10,7 @@
 ; (no generated C++ struct) — they document the shape and "light up" if the
 ; generators gain struct support.
 module chat_module {
-  version "0.1.1"
+  version "0.2.0"
   description "Chat module for Logos: e2e-encrypted conversations over delivery_module."
   category "chat"
   depends [delivery_module]
@@ -21,16 +21,26 @@ module chat_module {
     ? nickname: tstr
     message_count: int
     last_activity_ms: int
+    ; "direct" (1:1) or "group". PrivateV1 and DirectV1 are both "direct".
+    kind: tstr
   }
   type Message {
     from_self: bool
     content: tstr
     timestamp_ms: int
+    ; Sender's account address (device id if unassociated); unset on
+    ; messages this installation sent.
+    ? sender: tstr
   }
   type Status {
     convo_count: int
     delivery_state: tstr
     detail: tstr
+  }
+  type GroupMember {
+    ; The member's directory-verified account address, or empty when the member
+    ; claims no confirmed account (the UI renders these as an unknown account).
+    address: tstr
   }
 
   ; --- lifecycle ---
@@ -48,8 +58,18 @@ module chat_module {
   ; Open a 1:1 conversation with the peer at peer_address (their get_address).
   ; Sends the cryptographic invite; the first message follows via send_message.
   method create_conversation(peer_address: tstr) -> result
+  ; Create a group conversation with this installation as its only member;
+  ; grow it with add_group_member. Every member sees the returned convo_id.
+  method create_group_conversation() -> result
+  ; Invite the peer at peer_address into an existing group conversation. The
+  ; invite is committed and delivered asynchronously; the peer observes the
+  ; conversation once its instance has joined.
+  method add_group_member(convo_id: tstr, peer_address: tstr) -> result
   method list_conversations() -> [Conversation]
   method get_messages(convo_id: tstr) -> [Message]
+  ; The roster of a group conversation, one GroupMember per element. Errors when
+  ; convo_id names a direct (non-group) conversation.
+  method list_group_members(convo_id: tstr) -> [GroupMember]
   method send_message(convo_id: tstr, content: tstr) -> result
   method set_conversation_nickname(convo_id: tstr, nickname: tstr) -> result
   method delete_conversation(convo_id: tstr) -> result
@@ -58,9 +78,12 @@ module chat_module {
   method status() -> Status
 
   ; --- events ---
-  event message_received(convo_id: tstr, content: tstr, timestamp_ms: int)
+  ; sender: the sender's directory-verified account address, or its device id
+  ; when the sender claims no account.
+  event message_received(convo_id: tstr, content: tstr, timestamp_ms: int, sender: tstr)
   event message_sent(convo_id: tstr, content: tstr, timestamp_ms: int)
-  event conversation_created(convo_id: tstr, is_outgoing: bool, peer_label: tstr)
+  ; kind: "direct" (1:1) or "group", matching the Conversation record's field.
+  event conversation_created(convo_id: tstr, is_outgoing: bool, peer_label: tstr, kind: tstr)
   event conversation_updated(convo_id: tstr)
   event conversation_deleted(convo_id: tstr)
   event delivery_state_changed(delivery_state: tstr, detail: tstr)

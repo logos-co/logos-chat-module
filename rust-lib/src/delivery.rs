@@ -6,7 +6,7 @@
 //! feeds with received payloads.
 
 use crossbeam_channel::{Receiver, Sender};
-use logos_chat::{AddressedEnvelope, DeliveryService, Transport};
+use logos_generic_chat::{AddressedEnvelope, DeliveryService, Transport};
 
 /// The single home for chat's content-topic scheme. Both the outbound topic
 /// ([`content_topic_for`]) and the inbound prefix filter (`inbound.rs`) derive

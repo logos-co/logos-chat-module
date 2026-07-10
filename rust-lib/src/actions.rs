@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use libchat::ChatStorage;
 use logos_account::TestLogosAccount;
-use logos_chat::{ChatClientBuilder, DelegateSigner, HttpRegistry, StorageConfig};
+use logos_generic_chat::{ChatClientBuilder, DelegateSigner, HttpRegistry, StorageConfig};
 use serde::Serialize;
 
 use crate::delivery::SdkDelivery;
@@ -28,7 +28,9 @@ use crate::module::{
     module, now_ms, short_label, with_display, with_display_mut, Client, DeliveryState,
     DeliveryStateKind, Display, ModuleState, PERSISTENCE_ENABLED,
 };
-use crate::persistence::{load_state, save_state, AppState, ChatSession, DisplayMessage};
+use crate::persistence::{
+    load_state, save_state, AppState, ChatSession, ConversationKind, DisplayMessage,
+};
 
 /// Failure modes for the steady-state methods (post-`initialize`).
 #[derive(Debug, thiserror::Error)]
@@ -66,6 +68,7 @@ struct ConversationSummary {
     nickname: Option<String>,
     message_count: usize,
     last_activity_ms: u64,
+    kind: ConversationKind,
 }
 
 /// `status` payload — mirrors the `Status` record.
@@ -360,14 +363,107 @@ pub(crate) fn create_conversation(peer_address: &str) -> Result<String, CoreErro
             ChatSession {
                 chat_id: chat_id.clone(),
                 nickname: None,
+                kind: ConversationKind::Direct,
                 messages: Vec::new(),
             },
         );
         persist(d)
     })?;
-    crate::emit_conversation_created(&chat_id, true, &peer_label);
+    crate::emit_conversation_created(
+        &chat_id,
+        true,
+        &peer_label,
+        ConversationKind::Direct.as_str(),
+    );
 
     Ok(chat_id)
+}
+
+/// Create a GroupV2 conversation with this installation as its only member;
+/// peers are invited afterwards via [`add_group_member`]. Returns the
+/// conversation id, which every member observes once joined.
+pub(crate) fn create_group_conversation() -> Result<String, CoreError> {
+    let chat_id = with_client(|client| client.create_group_conversation(&[]))?
+        .map_err(|e| CoreError::Internal(format!("create_group_conversation failed: {e:?}")))?;
+
+    let label = short_label(&chat_id).to_owned();
+    with_display_mut(|d| {
+        d.state.chats.insert(
+            chat_id.clone(),
+            ChatSession {
+                chat_id: chat_id.clone(),
+                nickname: None,
+                kind: ConversationKind::Group,
+                messages: Vec::new(),
+            },
+        );
+        persist(d)
+    })?;
+    crate::emit_conversation_created(&chat_id, true, &label, ConversationKind::Group.as_str());
+
+    Ok(chat_id)
+}
+
+/// Invite the peer at `peer_address` (all its endorsed devices) into an
+/// existing group conversation. The group's steward commits the add and the
+/// welcome is delivered asynchronously, so the peer joins some time after
+/// this returns.
+pub(crate) fn add_group_member(convo_id: &str, peer_address: &str) -> Result<(), CoreError> {
+    if !with_display(|d| d.state.chats.contains_key(convo_id)) {
+        return Err(CoreError::NotFound);
+    }
+
+    with_client(|client| client.add_group_members(convo_id, &[peer_address]))?
+        .map_err(|e| CoreError::Internal(format!("add_group_member failed: {e:?}")))?;
+    crate::emit_conversation_updated(convo_id);
+    Ok(())
+}
+
+/// A group member's directory-verified account address, or an empty string when
+/// no account is confirmed (an unassociated or unconfirmable member). The empty
+/// string is the roster's "no account" signal, which the UI renders as an
+/// unknown-account placeholder.
+fn member_address(member: logos_generic_chat::GroupMember) -> String {
+    member
+        .account
+        .map(|account| account.as_str().to_string())
+        .unwrap_or_default()
+}
+
+/// One roster entry — mirrors the `GroupMember` record.
+#[derive(Serialize)]
+struct GroupMemberRow {
+    address: String,
+}
+
+/// The roster of the group conversation `convo_id`, one [`GroupMemberRow`] per
+/// element. This is a plain list with no error channel, mirroring `get_messages`:
+/// an unknown or non-group conversation, or a client error, yields an empty
+/// array (the client error is logged).
+pub(crate) fn list_group_members(convo_id: &str) -> serde_json::Value {
+    let empty = || serde_json::Value::Array(vec![]);
+    if !with_display(|d| d.state.chats.contains_key(convo_id)) {
+        return empty();
+    }
+    match with_client(|client| client.group_members(convo_id)) {
+        Ok(Ok(members)) => {
+            let rows: Vec<GroupMemberRow> = members
+                .into_iter()
+                .map(|m| GroupMemberRow {
+                    address: member_address(m),
+                })
+                .collect();
+            serde_json::to_value(rows).unwrap_or_else(|_| empty())
+        }
+        Ok(Err(e)) => {
+            eprintln!("chat_module: list_group_members failed: {e:?}");
+            empty()
+        }
+        Err(e) => {
+            eprintln!("chat_module: list_group_members: {e}");
+            empty()
+        }
+    }
 }
 
 pub(crate) fn list_conversations() -> serde_json::Value {
@@ -381,6 +477,7 @@ pub(crate) fn list_conversations() -> serde_json::Value {
                 nickname: s.nickname.clone(),
                 message_count: s.messages.len(),
                 last_activity_ms: s.messages.last().map(|m| m.timestamp_ms).unwrap_or(0),
+                kind: s.kind,
             })
             .collect();
         serde_json::to_value(items).unwrap_or_else(|_| serde_json::Value::Array(vec![]))
@@ -420,6 +517,7 @@ pub(crate) fn send_message(convo_id: &str, content: &str) -> Result<(), CoreErro
                 from_self: true,
                 content: content.to_string(),
                 timestamp_ms: ts,
+                sender: None,
             });
         }
         persist(d)
@@ -483,10 +581,10 @@ pub(crate) fn set_delivery_state(d: &mut Display, state: DeliveryStateKind, deta
 }
 
 /// Record a newly-observed conversation (the client's `ConversationStarted`
-/// event) and surface it. No-op for a locally-deleted or already-known
-/// conversation. Called from the event consumer thread; takes only the display
-/// lock, so it never waits on the client.
-pub(crate) fn record_conversation_started(convo_id: &str) {
+/// event) and surface it, classed by `kind`. No-op for a locally-deleted or
+/// already-known conversation. Called from the event consumer thread; takes only
+/// the display lock, so it never waits on the client.
+pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind) {
     with_display_mut(|d| {
         // libchat retains crypto state across local deletes, so we still observe
         // events for deleted convos.
@@ -498,10 +596,11 @@ pub(crate) fn record_conversation_started(convo_id: &str) {
             ChatSession {
                 chat_id: convo_id.to_owned(),
                 nickname: None,
+                kind,
                 messages: Vec::new(),
             },
         );
-        crate::emit_conversation_created(convo_id, false, short_label(convo_id));
+        crate::emit_conversation_created(convo_id, false, short_label(convo_id), kind.as_str());
 
         // Event consumer has no caller to return to; log a failed write.
         if let Err(e) = save_display(d) {
@@ -511,10 +610,11 @@ pub(crate) fn record_conversation_started(convo_id: &str) {
 }
 
 /// Record an inbound message (the client's `MessageReceived` event) and surface
-/// it. No-op for a locally-deleted conversation; an unknown conversation is
+/// it. `sender` is the sender's account address (device id if unassociated).
+/// No-op for a locally-deleted conversation; an unknown conversation is
 /// created defensively (the preceding `ConversationStarted` normally creates it
 /// first). Called from the event consumer thread; takes only the display lock.
-pub(crate) fn record_message_received(convo_id: &str, content: &[u8]) {
+pub(crate) fn record_message_received(convo_id: &str, content: &[u8], sender: &str) {
     with_display_mut(|d| {
         if d.state.deleted.contains(convo_id) {
             return;
@@ -528,17 +628,45 @@ pub(crate) fn record_message_received(convo_id: &str, content: &[u8]) {
             .or_insert_with(|| ChatSession {
                 chat_id: convo_id.to_owned(),
                 nickname: None,
+                // Defensive fallback: ConversationStarted normally creates the
+                // session with the real kind before any message lands here.
+                kind: ConversationKind::default(),
                 messages: Vec::new(),
             });
         session.messages.push(DisplayMessage {
             from_self: false,
             content: text.clone(),
             timestamp_ms: ts,
+            sender: Some(sender.to_owned()),
         });
-        crate::emit_message_received(convo_id, &text, ts as i64);
+        crate::emit_message_received(convo_id, &text, ts as i64, sender);
 
         if let Err(e) = save_display(d) {
             eprintln!("chat_module: save_state failed after inbound message: {e}");
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::member_address;
+    use libchat::IdentId;
+    use logos_generic_chat::GroupMember;
+
+    /// A verified account surfaces its address; a member with no confirmed
+    /// account surfaces the empty "no account" signal, not its device id.
+    #[test]
+    fn member_address_is_account_or_empty() {
+        let verified = GroupMember {
+            account: Some(IdentId::new("acct-addr")),
+            local_identity: IdentId::new("device-id"),
+        };
+        assert_eq!(member_address(verified), "acct-addr");
+
+        let no_account = GroupMember {
+            account: None,
+            local_identity: IdentId::new("device-id"),
+        };
+        assert_eq!(member_address(no_account), "");
+    }
 }
