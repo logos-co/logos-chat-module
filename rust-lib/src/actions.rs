@@ -647,6 +647,19 @@ pub(crate) fn record_message_received(convo_id: &str, content: &[u8], sender: &s
     });
 }
 
+/// Surface a group roster change (the client's `ConversationMembersChanged`
+/// event). No-op for a locally-deleted or unknown conversation. Called from the
+/// event consumer thread; takes only the display lock, so it never waits on the
+/// client.
+pub(crate) fn record_members_changed(convo_id: &str) {
+    with_display(|d| {
+        if d.state.deleted.contains(convo_id) || !d.state.chats.contains_key(convo_id) {
+            return;
+        }
+        crate::emit_members_changed(convo_id);
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::member_address;

@@ -23,7 +23,10 @@ use crossbeam_channel::{Receiver, Sender};
 use logos_generic_chat::{ConversationClass, Event};
 use logos_rust_sdk::{EventData, EventSubscription};
 
-use crate::actions::{record_conversation_started, record_message_received, set_delivery_state};
+use crate::actions::{
+    record_conversation_started, record_members_changed, record_message_received,
+    set_delivery_state,
+};
 use crate::module::{with_display, with_display_mut, DeliveryStateKind};
 use crate::persistence::ConversationKind;
 
@@ -146,6 +149,9 @@ fn run_events(events: Receiver<Event>) {
                 // that claims none surfaces as its device id.
                 let sender_addr = sender.account.as_ref().unwrap_or(&sender.local_identity);
                 record_message_received(&convo_id, &content, sender_addr.as_str());
+            }
+            Event::ConversationMembersChanged { convo_id } => {
+                record_members_changed(&convo_id);
             }
             Event::InboundError { message } => {
                 eprintln!("chat_module: inbound error: {message}");
