@@ -4,12 +4,16 @@
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder";
 
-    # Pinned to the v0.1.3 release tag, which includes the zerokit/RLN nix
-    # build fix (delivery-module #49). Kept in lockstep with logos-chat-ui's pin.
-    logos-delivery-module.url = "github:logos-co/logos-delivery-module/v0.1.3";
+    # The delivery module, pinned to the v0.1.3 release tag (includes the
+    # zerokit/RLN nix build fix, delivery-module #49). Named `delivery_module`
+    # (the builder's dependency key) so it can be swapped for an alternative
+    # implementation with `--override-input delivery_module <flake>` — e.g.
+    # github:osmaczko/mailbox-relay for the HTTP mailbox dev transport. Kept in
+    # lockstep with logos-chat-ui's pin.
+    delivery_module.url = "github:logos-co/logos-delivery-module/v0.1.3";
   };
 
-  outputs = inputs@{ self, logos-module-builder, logos-delivery-module, ... }:
+  outputs = inputs@{ self, logos-module-builder, delivery_module, ... }:
     let
       nixpkgs = logos-module-builder.inputs.nixpkgs;
       systems = [ "aarch64-darwin" "x86_64-darwin" "aarch64-linux" "x86_64-linux" ];
@@ -23,9 +27,9 @@
         logos-module-builder.lib.mkLogosModule {
           src = ./.;
           configFile = ./metadata.json;
-          flakeInputs = {
-            delivery_module = logos-delivery-module;
-          } // inputs;
+          # The input is now named `delivery_module`, so it resolves by key with
+          # no re-mapping; overriding that input swaps the delivery plugin.
+          flakeInputs = inputs;
         };
     in
     {
@@ -40,7 +44,7 @@
           # The matching delivery_module .lgx, re-exported from this flake's
           # locked delivery input, so the exact delivery_module rev chat_module is
           # built against can be installed alongside it.
-          "delivery_module-lgx" = logos-delivery-module.packages.${system}.lgx;
+          "delivery_module-lgx" = delivery_module.packages.${system}.lgx;
         });
 
       # `nix run .#generate` materialises the two gitignored inputs `rust-lib/`

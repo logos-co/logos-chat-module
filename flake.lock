@@ -1,5 +1,26 @@
 {
   "nodes": {
+    "delivery_module": {
+      "inputs": {
+        "logos-delivery": "logos-delivery",
+        "logos-module-builder": "logos-module-builder",
+        "nix-bundle-lgx": "nix-bundle-lgx_10"
+      },
+      "locked": {
+        "lastModified": 1782251051,
+        "narHash": "sha256-ggpO1f8ANSE2swemWtmbQeSpj7Nuq2Y51+GnlhsR25s=",
+        "owner": "logos-co",
+        "repo": "logos-delivery-module",
+        "rev": "794c21cbe177bdea16d4907468eaf52d4282dda7",
+        "type": "github"
+      },
+      "original": {
+        "owner": "logos-co",
+        "ref": "v0.1.3",
+        "repo": "logos-delivery-module",
+        "type": "github"
+      }
+    },
     "logos-capability-module": {
       "inputs": {
         "logos-module-builder": "logos-module-builder_2"
@@ -109,7 +130,7 @@
     "logos-capability-module_2": {
       "inputs": {
         "logos-cpp-sdk": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -120,7 +141,7 @@
         "logos-module": "logos-module_7",
         "logos-nix": "logos-nix_16",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -150,7 +171,7 @@
         "logos-module": "logos-module_8",
         "logos-nix": "logos-nix_21",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -197,7 +218,7 @@
     "logos-capability-module_5": {
       "inputs": {
         "logos-cpp-sdk": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -209,7 +230,7 @@
         "logos-module": "logos-module_13",
         "logos-nix": "logos-nix_60",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -240,7 +261,7 @@
         "logos-module": "logos-module_14",
         "logos-nix": "logos-nix_65",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -356,7 +377,7 @@
       "inputs": {
         "logos-nix": "logos-nix",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-cpp-sdk",
           "logos-nix",
@@ -381,7 +402,7 @@
       "inputs": {
         "logos-nix": "logos-nix_66",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -412,7 +433,7 @@
       "inputs": {
         "logos-nix": "logos-nix_94",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -438,14 +459,14 @@
     "logos-cpp-sdk_12": {
       "inputs": {
         "logos-nix": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-view-module-runtime",
           "logos-nix"
         ],
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-view-module-runtime",
@@ -668,7 +689,7 @@
       "inputs": {
         "logos-nix": "logos-nix_8",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -843,7 +864,7 @@
       "inputs": {
         "logos-nix": "logos-nix_17",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -872,7 +893,7 @@
       "inputs": {
         "logos-nix": "logos-nix_19",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -903,7 +924,7 @@
       "inputs": {
         "logos-nix": "logos-nix_22",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -933,7 +954,7 @@
       "inputs": {
         "logos-nix": "logos-nix_50",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-cpp-sdk",
@@ -959,7 +980,7 @@
       "inputs": {
         "logos-nix": "logos-nix_52",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -988,7 +1009,7 @@
       "inputs": {
         "logos-nix": "logos-nix_61",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -1018,7 +1039,7 @@
       "inputs": {
         "logos-nix": "logos-nix_63",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -1068,32 +1089,11 @@
         "url": "https://github.com/logos-messaging/logos-delivery"
       }
     },
-    "logos-delivery-module": {
-      "inputs": {
-        "logos-delivery": "logos-delivery",
-        "logos-module-builder": "logos-module-builder",
-        "nix-bundle-lgx": "nix-bundle-lgx_10"
-      },
-      "locked": {
-        "lastModified": 1782251051,
-        "narHash": "sha256-ggpO1f8ANSE2swemWtmbQeSpj7Nuq2Y51+GnlhsR25s=",
-        "owner": "logos-co",
-        "repo": "logos-delivery-module",
-        "rev": "794c21cbe177bdea16d4907468eaf52d4282dda7",
-        "type": "github"
-      },
-      "original": {
-        "owner": "logos-co",
-        "ref": "v0.1.3",
-        "repo": "logos-delivery-module",
-        "type": "github"
-      }
-    },
     "logos-design-system": {
       "inputs": {
         "logos-nix": "logos-nix_18",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -1122,7 +1122,7 @@
       "inputs": {
         "logos-nix": "logos-nix_51",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-design-system",
@@ -1148,7 +1148,7 @@
       "inputs": {
         "logos-nix": "logos-nix_62",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -1264,7 +1264,7 @@
         "logos-nix": "logos-nix_24",
         "logos-package-manager": "logos-package-manager",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -1297,7 +1297,7 @@
         "logos-nix": "logos-nix_96",
         "logos-package-manager": "logos-package-manager_5",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -1328,7 +1328,7 @@
         "logos-nix": "logos-nix_68",
         "logos-package-manager": "logos-package-manager_3",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -1540,7 +1540,7 @@
       "inputs": {
         "logos-nix": "logos-nix_2",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-module",
           "logos-nix",
@@ -1573,7 +1573,7 @@
         "nix-bundle-lgx": "nix-bundle-lgx_8",
         "nix-bundle-logos-module-install": "nix-bundle-logos-module-install_3",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-nix",
           "nixpkgs"
@@ -1605,7 +1605,7 @@
         "nix-bundle-lgx": "nix-bundle-lgx_2",
         "nix-bundle-logos-module-install": "nix-bundle-logos-module-install",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -1640,7 +1640,7 @@
         "nix-bundle-lgx": "nix-bundle-lgx_5",
         "nix-bundle-logos-module-install": "nix-bundle-logos-module-install_2",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -1772,7 +1772,7 @@
       "inputs": {
         "logos-nix": "logos-nix_53",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -1801,7 +1801,7 @@
       "inputs": {
         "logos-nix": "logos-nix_55",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -1831,7 +1831,7 @@
       "inputs": {
         "logos-nix": "logos-nix_57",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -1861,7 +1861,7 @@
       "inputs": {
         "logos-nix": "logos-nix_59",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -1892,7 +1892,7 @@
       "inputs": {
         "logos-nix": "logos-nix_64",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -1924,7 +1924,7 @@
       "inputs": {
         "logos-nix": "logos-nix_67",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -1955,7 +1955,7 @@
       "inputs": {
         "logos-nix": "logos-nix_95",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -2056,7 +2056,7 @@
       "inputs": {
         "logos-nix": "logos-nix_4",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-plugin-core",
           "logos-module",
@@ -2369,7 +2369,7 @@
       "inputs": {
         "logos-nix": "logos-nix_6",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-plugin-qt",
           "logos-module",
@@ -2482,7 +2482,7 @@
       "inputs": {
         "logos-nix": "logos-nix_9",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -2510,7 +2510,7 @@
       "inputs": {
         "logos-nix": "logos-nix_11",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -2539,7 +2539,7 @@
       "inputs": {
         "logos-nix": "logos-nix_13",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -2568,7 +2568,7 @@
       "inputs": {
         "logos-nix": "logos-nix_15",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -2598,7 +2598,7 @@
       "inputs": {
         "logos-nix": "logos-nix_20",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -2629,7 +2629,7 @@
       "inputs": {
         "logos-nix": "logos-nix_23",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -7105,7 +7105,7 @@
       "inputs": {
         "logos-nix": "logos-nix_26",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -7139,7 +7139,7 @@
         "nix-bundle-appimage": "nix-bundle-appimage",
         "nix-bundle-dir": "nix-bundle-dir_2",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -7261,7 +7261,7 @@
         "nix-bundle-appimage": "nix-bundle-appimage_2",
         "nix-bundle-dir": "nix-bundle-dir_6",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -7293,7 +7293,7 @@
         "nix-bundle-appimage": "nix-bundle-appimage_3",
         "nix-bundle-dir": "nix-bundle-dir_9",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -7327,7 +7327,7 @@
         "nix-bundle-appimage": "nix-bundle-appimage_4",
         "nix-bundle-dir": "nix-bundle-dir_13",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -7360,7 +7360,7 @@
         "nix-bundle-appimage": "nix-bundle-appimage_5",
         "nix-bundle-dir": "nix-bundle-dir_16",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -7390,7 +7390,7 @@
         "nix-bundle-appimage": "nix-bundle-appimage_6",
         "nix-bundle-dir": "nix-bundle-dir_20",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "nix-bundle-logos-module-install",
           "logos-package-manager",
@@ -7512,7 +7512,7 @@
       "inputs": {
         "logos-nix": "logos-nix_92",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -7543,7 +7543,7 @@
       "inputs": {
         "logos-nix": "logos-nix_98",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -7571,7 +7571,7 @@
       "inputs": {
         "logos-nix": "logos-nix_107",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "nix-bundle-lgx",
@@ -7598,7 +7598,7 @@
       "inputs": {
         "logos-nix": "logos-nix_111",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "nix-bundle-lgx",
           "logos-package",
@@ -7624,7 +7624,7 @@
       "inputs": {
         "logos-nix": "logos-nix_115",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "nix-bundle-logos-module-install",
           "logos-package-manager",
@@ -7651,7 +7651,7 @@
       "inputs": {
         "logos-nix": "logos-nix_120",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "nix-bundle-logos-module-install",
           "nix-bundle-lgx",
@@ -7678,7 +7678,7 @@
       "inputs": {
         "logos-nix": "logos-nix_123",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "nix-bundle-lgx",
           "logos-package",
           "logos-nix",
@@ -7790,7 +7790,7 @@
       "inputs": {
         "logos-nix": "logos-nix_35",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -8106,7 +8106,7 @@
       "inputs": {
         "logos-nix": "logos-nix_39",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -8187,7 +8187,7 @@
       "inputs": {
         "logos-nix": "logos-nix_43",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -8217,7 +8217,7 @@
       "inputs": {
         "logos-nix": "logos-nix_48",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -8247,7 +8247,7 @@
       "inputs": {
         "logos-nix": "logos-nix_70",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -8279,7 +8279,7 @@
       "inputs": {
         "logos-nix": "logos-nix_79",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -8310,7 +8310,7 @@
       "inputs": {
         "logos-nix": "logos-nix_83",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -8340,7 +8340,7 @@
       "inputs": {
         "logos-nix": "logos-nix_87",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -8372,7 +8372,7 @@
         "logos-module": "logos-module_2",
         "logos-nix": "logos-nix_5",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-plugin-core",
           "logos-nix",
@@ -8398,7 +8398,7 @@
         "logos-module": "logos-module_5",
         "logos-nix": "logos-nix_12",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -8427,7 +8427,7 @@
         "logos-module": "logos-module_11",
         "logos-nix": "logos-nix_56",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -8539,7 +8539,7 @@
         "logos-module": "logos-module_3",
         "logos-nix": "logos-nix_7",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-plugin-qt",
           "logos-nix",
@@ -8565,7 +8565,7 @@
         "logos-module": "logos-module_6",
         "logos-nix": "logos-nix_14",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -8594,7 +8594,7 @@
         "logos-module": "logos-module_12",
         "logos-nix": "logos-nix_58",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -8756,7 +8756,7 @@
       "inputs": {
         "logos-nix": "logos-nix_32",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -8784,7 +8784,7 @@
       "inputs": {
         "logos-nix": "logos-nix_76",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -8813,7 +8813,7 @@
       "inputs": {
         "logos-nix": "logos-nix_104",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-qt-mcp",
@@ -9037,7 +9037,7 @@
         "logos-view-module-runtime": "logos-view-module-runtime_3",
         "nix-bundle-lgx": "nix-bundle-lgx_7",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-nix",
@@ -9069,7 +9069,7 @@
         "logos-view-module-runtime": "logos-view-module-runtime",
         "nix-bundle-lgx": "nix-bundle-lgx",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -9104,7 +9104,7 @@
         "logos-view-module-runtime": "logos-view-module-runtime_2",
         "nix-bundle-lgx": "nix-bundle-lgx_4",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -9232,7 +9232,7 @@
     "logos-test-framework": {
       "inputs": {
         "logos-cpp-sdk": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -9241,7 +9241,7 @@
         ],
         "logos-nix": "logos-nix_37",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -9268,7 +9268,7 @@
     "logos-test-framework_2": {
       "inputs": {
         "logos-cpp-sdk": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -9278,7 +9278,7 @@
         ],
         "logos-nix": "logos-nix_81",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -9306,13 +9306,13 @@
     "logos-test-framework_3": {
       "inputs": {
         "logos-cpp-sdk": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-cpp-sdk"
         ],
         "logos-nix": "logos-nix_109",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-test-framework",
           "logos-nix",
@@ -9436,7 +9436,7 @@
     "logos-view-module-runtime": {
       "inputs": {
         "logos-cpp-sdk": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -9446,7 +9446,7 @@
         ],
         "logos-nix": "logos-nix_33",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -9473,7 +9473,7 @@
     "logos-view-module-runtime_2": {
       "inputs": {
         "logos-cpp-sdk": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -9484,7 +9484,7 @@
         ],
         "logos-nix": "logos-nix_77",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -9514,7 +9514,7 @@
         "logos-cpp-sdk": "logos-cpp-sdk_12",
         "logos-nix": "logos-nix_105",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-view-module-runtime",
@@ -9639,7 +9639,7 @@
         "logos-nix": "logos-nix_27",
         "nix-bundle-dir": "nix-bundle-dir",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -9757,7 +9757,7 @@
         "logos-nix": "logos-nix_44",
         "nix-bundle-dir": "nix-bundle-dir_5",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -9788,7 +9788,7 @@
         "logos-nix": "logos-nix_71",
         "nix-bundle-dir": "nix-bundle-dir_8",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -9821,7 +9821,7 @@
         "logos-nix": "logos-nix_88",
         "nix-bundle-dir": "nix-bundle-dir_12",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -9853,7 +9853,7 @@
         "logos-nix": "logos-nix_99",
         "nix-bundle-dir": "nix-bundle-dir_15",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -9882,7 +9882,7 @@
         "logos-nix": "logos-nix_116",
         "nix-bundle-dir": "nix-bundle-dir_19",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "nix-bundle-logos-module-install",
           "logos-package-manager",
@@ -10002,7 +10002,7 @@
       "inputs": {
         "logos-nix": "logos-nix_28",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -10032,7 +10032,7 @@
       "inputs": {
         "logos-nix": "logos-nix_80",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -10063,7 +10063,7 @@
       "inputs": {
         "logos-nix": "logos-nix_84",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -10093,7 +10093,7 @@
       "inputs": {
         "logos-nix": "logos-nix_89",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -10123,7 +10123,7 @@
       "inputs": {
         "logos-nix": "logos-nix_90",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -10154,7 +10154,7 @@
       "inputs": {
         "logos-nix": "logos-nix_93",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -10185,7 +10185,7 @@
       "inputs": {
         "logos-nix": "logos-nix_100",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -10212,7 +10212,7 @@
       "inputs": {
         "logos-nix": "logos-nix_101",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -10240,7 +10240,7 @@
       "inputs": {
         "logos-nix": "logos-nix_108",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "nix-bundle-lgx",
@@ -10267,7 +10267,7 @@
       "inputs": {
         "logos-nix": "logos-nix_112",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "nix-bundle-lgx",
           "nix-bundle-dir",
@@ -10293,7 +10293,7 @@
       "inputs": {
         "logos-nix": "logos-nix_117",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "nix-bundle-logos-module-install",
           "logos-package-manager",
@@ -10319,7 +10319,7 @@
       "inputs": {
         "logos-nix": "logos-nix_29",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -10350,7 +10350,7 @@
       "inputs": {
         "logos-nix": "logos-nix_118",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "nix-bundle-logos-module-install",
           "logos-package-manager",
@@ -10377,7 +10377,7 @@
       "inputs": {
         "logos-nix": "logos-nix_121",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "nix-bundle-logos-module-install",
           "nix-bundle-lgx",
@@ -10404,7 +10404,7 @@
       "inputs": {
         "logos-nix": "logos-nix_124",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "nix-bundle-lgx",
           "nix-bundle-dir",
           "logos-nix",
@@ -10631,7 +10631,7 @@
       "inputs": {
         "logos-nix": "logos-nix_36",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -10949,7 +10949,7 @@
       "inputs": {
         "logos-nix": "logos-nix_40",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -11080,7 +11080,7 @@
       "inputs": {
         "logos-nix": "logos-nix_45",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -11109,7 +11109,7 @@
       "inputs": {
         "logos-nix": "logos-nix_46",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -11139,7 +11139,7 @@
       "inputs": {
         "logos-nix": "logos-nix_49",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -11169,7 +11169,7 @@
       "inputs": {
         "logos-nix": "logos-nix_72",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -11200,7 +11200,7 @@
       "inputs": {
         "logos-nix": "logos-nix_73",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -11234,7 +11234,7 @@
         "logos-package": "logos-package_2",
         "nix-bundle-dir": "nix-bundle-dir_3",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -11264,7 +11264,7 @@
         "logos-package": "logos-package_16",
         "nix-bundle-dir": "nix-bundle-dir_22",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "nix-bundle-lgx",
           "logos-nix",
           "nixpkgs"
@@ -11549,7 +11549,7 @@
         "logos-package": "logos-package_3",
         "nix-bundle-dir": "nix-bundle-dir_4",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -11579,7 +11579,7 @@
         "logos-package": "logos-package_5",
         "nix-bundle-dir": "nix-bundle-dir_7",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -11610,7 +11610,7 @@
         "logos-package": "logos-package_7",
         "nix-bundle-dir": "nix-bundle-dir_10",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -11641,7 +11641,7 @@
         "logos-package": "logos-package_8",
         "nix-bundle-dir": "nix-bundle-dir_11",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -11672,7 +11672,7 @@
         "logos-package": "logos-package_10",
         "nix-bundle-dir": "nix-bundle-dir_14",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -11704,7 +11704,7 @@
         "logos-package": "logos-package_12",
         "nix-bundle-dir": "nix-bundle-dir_17",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "nix-bundle-lgx",
@@ -11732,7 +11732,7 @@
         "logos-package": "logos-package_13",
         "nix-bundle-dir": "nix-bundle-dir_18",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "nix-bundle-lgx",
           "logos-nix",
@@ -11759,7 +11759,7 @@
         "logos-package": "logos-package_15",
         "nix-bundle-dir": "nix-bundle-dir_21",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "nix-bundle-logos-module-install",
           "nix-bundle-lgx",
@@ -11787,7 +11787,7 @@
         "logos-package-manager": "logos-package-manager_2",
         "nix-bundle-lgx": "nix-bundle-lgx_3",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -11817,7 +11817,7 @@
         "logos-package-manager": "logos-package-manager_4",
         "nix-bundle-lgx": "nix-bundle-lgx_6",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -11848,7 +11848,7 @@
         "logos-package-manager": "logos-package-manager_6",
         "nix-bundle-lgx": "nix-bundle-lgx_9",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "nix-bundle-logos-module-install",
           "logos-nix",
@@ -15926,7 +15926,7 @@
       "inputs": {
         "logos-nix": "logos-nix_30",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-capability-module",
@@ -15956,7 +15956,7 @@
       "inputs": {
         "logos-nix": "logos-nix_74",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -15987,7 +15987,7 @@
       "inputs": {
         "logos-nix": "logos-nix_102",
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-module-builder",
           "logos-standalone-app",
           "logos-liblogos",
@@ -16097,14 +16097,14 @@
     },
     "root": {
       "inputs": {
-        "logos-delivery-module": "logos-delivery-module",
+        "delivery_module": "delivery_module",
         "logos-module-builder": "logos-module-builder_4"
       }
     },
     "rust-overlay": {
       "inputs": {
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-delivery",
           "nixpkgs"
         ]
@@ -16126,7 +16126,7 @@
     "rust-overlay_2": {
       "inputs": {
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-delivery",
           "zerokit",
           "nixpkgs"
@@ -16170,7 +16170,7 @@
     "zerokit": {
       "inputs": {
         "nixpkgs": [
-          "logos-delivery-module",
+          "delivery_module",
           "logos-delivery",
           "nixpkgs"
         ],
