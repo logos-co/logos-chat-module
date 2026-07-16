@@ -13,7 +13,9 @@ use std::sync::Arc;
 
 use libchat::ChatStorage;
 use logos_account::TestLogosAccount;
-use logos_generic_chat::{ChatClientBuilder, DelegateSigner, HttpRegistry, StorageConfig};
+use logos_generic_chat::{
+    ChatClientBuilder, DelegateSigner, GroupMetadata, HttpRegistry, StorageConfig,
+};
 use serde::Serialize;
 
 use crate::delivery::SdkDelivery;
@@ -69,6 +71,8 @@ struct ConversationSummary {
     message_count: usize,
     last_activity_ms: u64,
     kind: ConversationKind,
+    name: Option<String>,
+    description: Option<String>,
 }
 
 /// `status` payload — mirrors the `Status` record.
@@ -299,6 +303,16 @@ fn persist(d: &Display) -> Result<(), CoreError> {
     save_display(d).map_err(|e| CoreError::Internal(format!("save_state failed: {e}")))
 }
 
+/// `None` for an empty string, the empty-means-unset convention shared with
+/// nicknames and a group's optional name/description.
+fn non_empty(s: &str) -> Option<String> {
+    if s.is_empty() {
+        None
+    } else {
+        Some(s.to_string())
+    }
+}
+
 /// Persist the display state, unless persistence is disabled (ephemeral mode),
 /// in which case this is a no-op reporting success. See
 /// [`module::PERSISTENCE_ENABLED`](crate::module::PERSISTENCE_ENABLED).
@@ -364,6 +378,8 @@ pub(crate) fn create_conversation(peer_address: &str) -> Result<String, CoreErro
                 chat_id: chat_id.clone(),
                 nickname: None,
                 kind: ConversationKind::Direct,
+                name: None,
+                description: None,
                 messages: Vec::new(),
             },
         );
@@ -374,17 +390,22 @@ pub(crate) fn create_conversation(peer_address: &str) -> Result<String, CoreErro
         true,
         &peer_label,
         ConversationKind::Direct.as_str(),
+        "",
+        "",
     );
 
     Ok(chat_id)
 }
 
 /// Create a GroupV2 conversation with this installation as its only member;
-/// peers are invited afterwards via [`add_group_member`]. Returns the
-/// conversation id, which every member observes once joined.
-pub(crate) fn create_group_conversation() -> Result<String, CoreError> {
-    let chat_id = with_client(|client| client.create_group_conversation(&[]))?
-        .map_err(|e| CoreError::Internal(format!("create_group_conversation failed: {e:?}")))?;
+/// peers are invited afterwards via [`add_group_member`]. `name` and `desc` are
+/// the group's shared metadata, carried to every joiner; both may be empty.
+/// Returns the conversation id, which every member observes once joined.
+pub(crate) fn create_group_conversation(name: &str, desc: &str) -> Result<String, CoreError> {
+    let chat_id = with_client(|client| {
+        client.create_group_conversation(&[], GroupMetadata::new(name, desc))
+    })?
+    .map_err(|e| CoreError::Internal(format!("create_group_conversation failed: {e:?}")))?;
 
     let label = short_label(&chat_id).to_owned();
     with_display_mut(|d| {
@@ -394,12 +415,21 @@ pub(crate) fn create_group_conversation() -> Result<String, CoreError> {
                 chat_id: chat_id.clone(),
                 nickname: None,
                 kind: ConversationKind::Group,
+                name: non_empty(name),
+                description: non_empty(desc),
                 messages: Vec::new(),
             },
         );
         persist(d)
     })?;
-    crate::emit_conversation_created(&chat_id, true, &label, ConversationKind::Group.as_str());
+    crate::emit_conversation_created(
+        &chat_id,
+        true,
+        &label,
+        ConversationKind::Group.as_str(),
+        name,
+        desc,
+    );
 
     Ok(chat_id)
 }
@@ -478,6 +508,8 @@ pub(crate) fn list_conversations() -> serde_json::Value {
                 message_count: s.messages.len(),
                 last_activity_ms: s.messages.last().map(|m| m.timestamp_ms).unwrap_or(0),
                 kind: s.kind,
+                name: s.name.clone(),
+                description: s.description.clone(),
             })
             .collect();
         serde_json::to_value(items).unwrap_or_else(|_| serde_json::Value::Array(vec![]))
@@ -582,9 +614,28 @@ pub(crate) fn set_delivery_state(d: &mut Display, state: DeliveryStateKind, deta
 
 /// Record a newly-observed conversation (the client's `ConversationStarted`
 /// event) and surface it, classed by `kind`. No-op for a locally-deleted or
-/// already-known conversation. Called from the event consumer thread; takes only
-/// the display lock, so it never waits on the client.
+/// already-known conversation. Called from the event consumer thread; a group
+/// first reads its shared metadata under the client lock, then records under the
+/// display lock (the two are never held at once).
 pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind) {
+    // A joiner learns a group's name and description from the client, not from a
+    // local argument; a direct conversation carries none. Read it before taking
+    // the display lock so the client and display locks are never nested.
+    let (name, description) = if kind == ConversationKind::Group {
+        match with_client(|client| client.group_metadata(convo_id)) {
+            Ok(Ok(meta)) => (non_empty(&meta.name), non_empty(&meta.desc)),
+            Ok(Err(e)) => {
+                eprintln!("chat_module: group_metadata failed: {e:?}");
+                (None, None)
+            }
+            Err(e) => {
+                eprintln!("chat_module: group_metadata: {e}");
+                (None, None)
+            }
+        }
+    } else {
+        (None, None)
+    };
     with_display_mut(|d| {
         // libchat retains crypto state across local deletes, so we still observe
         // events for deleted convos.
@@ -597,10 +648,19 @@ pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind
                 chat_id: convo_id.to_owned(),
                 nickname: None,
                 kind,
+                name: name.clone(),
+                description: description.clone(),
                 messages: Vec::new(),
             },
         );
-        crate::emit_conversation_created(convo_id, false, short_label(convo_id), kind.as_str());
+        crate::emit_conversation_created(
+            convo_id,
+            false,
+            short_label(convo_id),
+            kind.as_str(),
+            name.as_deref().unwrap_or(""),
+            description.as_deref().unwrap_or(""),
+        );
 
         // Event consumer has no caller to return to; log a failed write.
         if let Err(e) = save_display(d) {
@@ -629,8 +689,11 @@ pub(crate) fn record_message_received(convo_id: &str, content: &[u8], sender: &s
                 chat_id: convo_id.to_owned(),
                 nickname: None,
                 // Defensive fallback: ConversationStarted normally creates the
-                // session with the real kind before any message lands here.
+                // session with the real kind and metadata before any message
+                // lands here.
                 kind: ConversationKind::default(),
+                name: None,
+                description: None,
                 messages: Vec::new(),
             });
         session.messages.push(DisplayMessage {

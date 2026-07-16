@@ -89,6 +89,12 @@ pub(crate) struct ChatSession {
     /// Pairwise vs group. `#[serde(default)]` reads pre-kind history as direct.
     #[serde(default)]
     pub kind: ConversationKind,
+    /// Group's shared name, `None` for a direct conversation or unnamed group.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Group's shared description, `None` when unset.
+    #[serde(default)]
+    pub description: Option<String>,
     /// Append-only render log of messages exchanged in this conversation.
     pub messages: Vec<DisplayMessage>,
 }
@@ -207,6 +213,9 @@ mod tests {
         assert!(s.chats.contains_key("abc"));
         // A pre-kind record defaults to direct rather than failing the parse.
         assert_eq!(s.chats["abc"].kind, ConversationKind::Direct);
+        // A pre-metadata record defaults its name and description to unset.
+        assert_eq!(s.chats["abc"].name, None);
+        assert_eq!(s.chats["abc"].description, None);
         assert_eq!(s.installation_name, None);
         assert!(s.deleted.is_empty());
         let _ = fs::remove_dir_all(&dir);
@@ -270,6 +279,8 @@ mod tests {
                 chat_id: "convo".into(),
                 nickname: Some("bob".into()),
                 kind: ConversationKind::Group,
+                name: Some("Book Club".into()),
+                description: Some("Weekly reads".into()),
                 messages: vec![DisplayMessage {
                     from_self: true,
                     content: "hi".into(),
@@ -286,6 +297,8 @@ mod tests {
         let convo = &loaded.chats["convo"];
         assert_eq!(convo.nickname.as_deref(), Some("bob"));
         assert_eq!(convo.kind, ConversationKind::Group);
+        assert_eq!(convo.name.as_deref(), Some("Book Club"));
+        assert_eq!(convo.description.as_deref(), Some("Weekly reads"));
         assert_eq!(convo.messages.len(), 1);
         assert_eq!(convo.messages[0].content, "hi");
         let _ = fs::remove_dir_all(&dir);

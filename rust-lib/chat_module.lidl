@@ -23,6 +23,11 @@ module chat_module {
     last_activity_ms: int
     ; "direct" (1:1) or "group". PrivateV1 and DirectV1 are both "direct".
     kind: tstr
+    ; A group's shared name and description (set at creation, identical for
+    ; every member). Absent for direct conversations and unnamed groups;
+    ; distinct from the local-only `nickname`.
+    ? name: tstr
+    ? description: tstr
   }
   type Message {
     from_self: bool
@@ -60,7 +65,9 @@ module chat_module {
   method create_conversation(peer_address: tstr) -> result
   ; Create a group conversation with this installation as its only member;
   ; grow it with add_group_member. Every member sees the returned convo_id.
-  method create_group_conversation() -> result
+  ; name and desc are the group's shared metadata, visible to every member;
+  ; both may be empty for an unnamed group.
+  method create_group_conversation(name: tstr, desc: tstr) -> result
   ; Invite the peer at peer_address into an existing group conversation. The
   ; invite is committed and delivered asynchronously; the peer observes the
   ; conversation once its instance has joined.
@@ -83,7 +90,9 @@ module chat_module {
   event message_received(convo_id: tstr, content: tstr, timestamp_ms: int, sender: tstr)
   event message_sent(convo_id: tstr, content: tstr, timestamp_ms: int)
   ; kind: "direct" (1:1) or "group", matching the Conversation record's field.
-  event conversation_created(convo_id: tstr, is_outgoing: bool, peer_label: tstr, kind: tstr)
+  ; name, desc: the group's shared metadata, empty for direct conversations and
+  ; unnamed groups.
+  event conversation_created(convo_id: tstr, is_outgoing: bool, peer_label: tstr, kind: tstr, name: tstr, desc: tstr)
   event conversation_updated(convo_id: tstr)
   event members_changed(convo_id: tstr)
   event conversation_deleted(convo_id: tstr)
