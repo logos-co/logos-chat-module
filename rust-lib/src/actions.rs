@@ -63,6 +63,10 @@ pub(crate) enum InitError {
 // messages list reuses `persistence::DisplayMessage`, which already matches the
 // `Message` record.
 
+/// Character cap for a conversation-list preview. Mirrored on the UI so live and
+/// rehydrated previews agree.
+const PREVIEW_MAX_CHARS: usize = 160;
+
 /// One element of `list_conversations` — mirrors the `Conversation` record.
 #[derive(Serialize)]
 struct ConversationSummary {
@@ -73,6 +77,7 @@ struct ConversationSummary {
     kind: ConversationKind,
     name: Option<String>,
     description: Option<String>,
+    preview: Option<String>,
 }
 
 /// `status` payload — mirrors the `Status` record.
@@ -510,6 +515,10 @@ pub(crate) fn list_conversations() -> serde_json::Value {
                 kind: s.kind,
                 name: s.name.clone(),
                 description: s.description.clone(),
+                preview: s
+                    .messages
+                    .last()
+                    .map(|m| m.content.chars().take(PREVIEW_MAX_CHARS).collect()),
             })
             .collect();
         serde_json::to_value(items).unwrap_or_else(|_| serde_json::Value::Array(vec![]))
