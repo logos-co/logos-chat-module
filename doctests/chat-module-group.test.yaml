@@ -30,7 +30,7 @@ what_you_build: "A verified three-member, end-to-end-encrypted group conversatio
 
 what_you_learn:
   - "Run three isolated `logoscore` daemons on one host, selected by `--config-dir`"
-  - "Create a group with `create_group_conversation()` and grow it with `add_group_member` — including an add proposed by a non-creator member"
+  - "Create a named group with `create_group_conversation` and grow it with `add_group_member` — including an add proposed by a non-creator member"
   - "Why a group join lands asynchronously (consensus + steward commit + welcome), and how to observe it by polling `list_conversations`"
   - "How every member shares one conversation id, and how `get_messages` attributes each inbound message to its sender's account address"
 
@@ -230,19 +230,21 @@ sections:
           key material behind it was published to the registry during `init`.
       - title: "Alice creates the group"
         run: |
-          out=$(./logos/bin/logoscore --config-dir alice call chat_module create_group_conversation)
+          out=$(./logos/bin/logoscore --config-dir alice call chat_module create_group_conversation "Book Club" "Weekly sci-fi picks")
           echo "$out"
           echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "create_group_conversation failed: $out" >&2; exit 1; }
           echo "$out" | jq -j '.result.value' > group-id.txt
           echo "group id: $(cat group-id.txt)"
         code_block: |
-          logoscore --config-dir alice call chat_module create_group_conversation
+          logoscore --config-dir alice call chat_module create_group_conversation "Book Club" "Weekly sci-fi picks"
         expect_contains:
           - '"status":"ok"'
           - "group id:"
         post_text: |
           The group starts with Alice as its only member; `result.value` is the
-          conversation id **every** member will see once they join.
+          conversation id **every** member will see once they join. The name and
+          description Alice passed are the group's shared metadata, stored in its
+          MLS context and delivered to every joiner in the welcome.
       - title: "Alice invites Bob"
         run: |
           gid=$(cat group-id.txt)
@@ -257,23 +259,24 @@ sections:
         post_text: |
           The call returns as soon as the add is proposed; the commit and the
           welcome happen asynchronously in the group.
-      - title: "Bob joins"
+      - title: "Bob joins and sees the shared name"
         run: |
           gid=$(cat group-id.txt)
           for i in $(seq 1 150); do
-            got=$(./logos/bin/logoscore --config-dir bob call chat_module list_conversations 2>/dev/null | jq -r --arg id "$gid" '.result[]? | select(.convo_id == $id) | .convo_id' || true)
-            if [ -n "$got" ]; then echo "BOB_IN_GROUP $got"; break; fi
+            row=$(./logos/bin/logoscore --config-dir bob call chat_module list_conversations 2>/dev/null | jq -c --arg id "$gid" '.result[]? | select(.convo_id == $id)' || true)
+            if [ -n "$row" ]; then echo "BOB_IN_GROUP name=$(echo "$row" | jq -r '.name // ""')"; break; fi
             sleep 4
           done
-          [ -n "$got" ] || { echo "bob never joined the group" >&2; tail -n 40 bob-daemon.log >&2; exit 1; }
+          [ -n "$row" ] || { echo "bob never joined the group" >&2; tail -n 40 bob-daemon.log >&2; exit 1; }
         code_block: |
-          # poll until the group id appears in Bob's conversations
+          # poll until the group appears in Bob's conversations, carrying its name
           logoscore --config-dir bob call chat_module list_conversations
         expect_contains:
-          - "BOB_IN_GROUP"
+          - "BOB_IN_GROUP name=Book Club"
         post_text: |
           Bob's instance observes the group under the **same** conversation id
-          Alice created — one id per group, shared by all members.
+          Alice created, and its shared name reached him in the welcome: no local
+          argument set it. One id and one name per group, shared by all members.
       - title: "Bob invites Carol (a non-creator add)"
         run: |
           gid=$(cat group-id.txt)
