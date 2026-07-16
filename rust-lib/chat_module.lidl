@@ -85,6 +85,7 @@ module chat_module {
   ; kind: "direct" (1:1) or "group", matching the Conversation record's field.
   event conversation_created(convo_id: tstr, is_outgoing: bool, peer_label: tstr, kind: tstr)
   event conversation_updated(convo_id: tstr)
+  event members_changed(convo_id: tstr)
   event conversation_deleted(convo_id: tstr)
   event delivery_state_changed(delivery_state: tstr, detail: tstr)
 }
