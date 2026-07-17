@@ -28,6 +28,9 @@ module chat_module {
     ; distinct from the local-only `nickname`.
     ? name: tstr
     ? description: tstr
+    ; The last message's content, truncated to 160 characters, for a
+    ; conversation-list preview. Absent when the conversation has no messages.
+    ? preview: tstr
   }
   type Message {
     from_self: bool
