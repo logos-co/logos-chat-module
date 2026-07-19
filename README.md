@@ -90,9 +90,13 @@ End-to-end chat needs a `delivery_module` available to the host at runtime; the
 flake pins [`logos-delivery-module`](https://github.com/logos-co/logos-delivery-module)
 at `v0.1.2`. Load `chat_module` via `logoscore` or Basecamp.
 
-Bring-up is `init(instance_path, delivery_preset, tcp_port)` (empty preset →
-`logos.dev`). `init` starts delivery asynchronously and returns immediately;
-readiness arrives later as a `delivery_state_changed` event reaching `online`.
+Bring-up is `init(instance_path, delivery_preset, tcp_port, transport_url)`
+(empty preset → `logos.dev`). An empty `transport_url` uses the delivery_module
+wire; a URL (e.g. `https://user:token@relay.example.com`) routes through a
+centralized HTTP mailbox relay instead (see `tools/mailbox-relay`), ignoring
+`delivery_preset`/`tcp_port`. `init` starts delivery asynchronously and returns
+immediately; readiness arrives later as a `delivery_state_changed` event
+reaching `online`.
 
 ## Doc-tests
 

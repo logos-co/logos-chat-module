@@ -150,8 +150,10 @@ sections:
   - title: "Bring both instances online"
     step: true
     text: |
-      `init(instance_path, delivery_preset, tcp_port)` returns immediately and
-      kicks off the delivery bootstrap asynchronously; readiness arrives later when
+      `init(instance_path, delivery_preset, tcp_port, transport_url)` returns
+      immediately and kicks off the delivery bootstrap asynchronously (an empty
+      `transport_url` selects the delivery_module wire, configured by
+      `delivery_preset`/`tcp_port`); readiness arrives later when
       the subscribe handshake completes and `status().delivery_state` flips to
       `online`. Both instances are initialised **first** so their two cold Waku
       bootstraps overlap, then each is polled; the wait is ~the slower of the two,
@@ -159,11 +161,11 @@ sections:
     steps:
       - title: "Initialise Alice (delivery port 60010) and Bob (60011)"
         run: |
-          ./logos/bin/logoscore --config-dir alice call chat_module init "$PWD/alice-data" logos.test 60010
-          ./logos/bin/logoscore --config-dir bob   call chat_module init "$PWD/bob-data"   logos.test 60011
+          ./logos/bin/logoscore --config-dir alice call chat_module init "$PWD/alice-data" logos.test 60010 ""
+          ./logos/bin/logoscore --config-dir bob   call chat_module init "$PWD/bob-data"   logos.test 60011 ""
         code_block: |
-          logoscore --config-dir alice call chat_module init "$PWD/alice-data" logos.test 60010
-          logoscore --config-dir bob   call chat_module init "$PWD/bob-data"   logos.test 60011
+          logoscore --config-dir alice call chat_module init "$PWD/alice-data" logos.test 60010 ""
+          logoscore --config-dir bob   call chat_module init "$PWD/bob-data"   logos.test 60011 ""
         expect_contains:
           - '"status":"ok"'
         post_text: |

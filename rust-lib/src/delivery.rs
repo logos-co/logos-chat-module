@@ -8,6 +8,8 @@
 use crossbeam_channel::{Receiver, Sender};
 use logos_generic_chat::{AddressedEnvelope, DeliveryService, Transport};
 
+use crate::mailbox::MailboxDelivery;
+
 /// The single home for chat's content-topic scheme. Both the outbound topic
 /// ([`content_topic_for`]) and the inbound prefix filter (`inbound.rs`) derive
 /// from it, so the wire scheme lives in exactly one place.
@@ -21,7 +23,7 @@ pub(crate) fn content_topic_for(delivery_address: &str) -> String {
 /// and subscription forwarding to delivery_module, plus the inbound payload
 /// stream the client's worker drains.
 #[derive(Debug)]
-pub(crate) struct SdkDelivery {
+pub(crate) struct LogosDelivery {
     /// Handed to the client once via [`Transport::inbound`]. The module feeds the
     /// matching sender from delivery_module's `messageReceived` events.
     inbound_rx: Option<Receiver<Vec<u8>>>,
@@ -29,7 +31,7 @@ pub(crate) struct SdkDelivery {
     subscribe_tx: Sender<String>,
 }
 
-impl SdkDelivery {
+impl LogosDelivery {
     pub(crate) fn new(inbound_rx: Receiver<Vec<u8>>, subscribe_tx: Sender<String>) -> Self {
         Self {
             inbound_rx: Some(inbound_rx),
@@ -38,7 +40,7 @@ impl SdkDelivery {
     }
 }
 
-impl DeliveryService for SdkDelivery {
+impl DeliveryService for LogosDelivery {
     type Error = String;
 
     fn publish(&mut self, envelope: AddressedEnvelope) -> Result<(), String> {
@@ -69,10 +71,49 @@ impl DeliveryService for SdkDelivery {
     }
 }
 
-impl Transport for SdkDelivery {
+impl Transport for LogosDelivery {
     fn inbound(&mut self) -> Receiver<Vec<u8>> {
         self.inbound_rx
             .take()
-            .expect("SdkDelivery::inbound called more than once")
+            .expect("LogosDelivery::inbound called more than once")
+    }
+}
+
+/// The transport the client is generic over. `initialize` picks one at bring-up:
+/// [`LogosDelivery`] over delivery_module (default), or [`MailboxDelivery`] over a
+/// centralized relay when a `transport_url` is given. An enum rather than
+/// `dyn Transport` because [`DeliveryService`]'s associated `Error` type makes the
+/// trait non-object-safe and [`ChatClient`](logos_chat::ChatClient) takes a single
+/// concrete transport; both variants delegate their `Error = String`.
+#[derive(Debug)]
+pub(crate) enum ModuleTransport {
+    Logos(LogosDelivery),
+    Mailbox(MailboxDelivery),
+}
+
+impl DeliveryService for ModuleTransport {
+    type Error = String;
+
+    fn publish(&mut self, envelope: AddressedEnvelope) -> Result<(), String> {
+        match self {
+            ModuleTransport::Logos(d) => d.publish(envelope),
+            ModuleTransport::Mailbox(d) => d.publish(envelope),
+        }
+    }
+
+    fn subscribe(&mut self, delivery_address: &str) -> Result<(), String> {
+        match self {
+            ModuleTransport::Logos(d) => d.subscribe(delivery_address),
+            ModuleTransport::Mailbox(d) => d.subscribe(delivery_address),
+        }
+    }
+}
+
+impl Transport for ModuleTransport {
+    fn inbound(&mut self) -> Receiver<Vec<u8>> {
+        match self {
+            ModuleTransport::Logos(d) => d.inbound(),
+            ModuleTransport::Mailbox(d) => d.inbound(),
+        }
     }
 }

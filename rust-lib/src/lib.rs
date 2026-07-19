@@ -34,6 +34,7 @@
 mod actions;
 mod delivery;
 mod inbound;
+mod mailbox;
 mod module;
 mod panic_hook;
 mod persistence;
@@ -75,6 +76,7 @@ impl ChatModule for ChatModuleImpl {
         instance_path: String,
         delivery_preset: String,
         tcp_port: i64,
+        transport_url: String,
     ) -> Result<Value, String> {
         panic_hook::install_once();
 
@@ -83,14 +85,20 @@ impl ChatModule for ChatModuleImpl {
         } else {
             delivery_preset.as_str()
         };
+        // Empty selects the delivery_module path; a URL selects the centralized
+        // relay (see `mailbox`), which ignores `delivery_preset`/`tcp_port`.
+        let transport_url = transport_url.trim();
 
-        match module().install_with(|| actions::initialize(&instance_path)) {
+        match module().install_with(|| actions::initialize(&instance_path, transport_url)) {
             Err(_) => Err(ERR_LOCK_POISONED.to_string()),
             Ok(Ok(InstallOutcome::Installed)) => {
                 // State is installed and the module lock is released; only now
                 // bootstrap delivery, so its async completion callbacks acquire
-                // a free lock instead of re-entering the one init holds.
-                actions::start_delivery_bootstrap(preset, tcp_port as i32);
+                // a free lock instead of re-entering the one init holds. The
+                // mailbox path needs no node bootstrap.
+                if transport_url.is_empty() {
+                    actions::start_delivery_bootstrap(preset, tcp_port as i32);
+                }
                 Ok(Value::Null)
             }
             Ok(Ok(InstallOutcome::AlreadyInstalled)) => {

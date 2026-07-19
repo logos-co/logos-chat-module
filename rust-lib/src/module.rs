@@ -28,14 +28,14 @@ use libchat::ChatStorage;
 use logos_generic_chat::{ChatClient, HttpRegistry};
 use serde::Serialize;
 
-use crate::delivery::SdkDelivery;
+use crate::delivery::ModuleTransport;
 use crate::persistence::AppState;
 
 /// The chat client as this module configures it: a delegate identity associated
-/// with an ephemeral account, the delivery_module-backed [`SdkDelivery`]
-/// transport, the devnet HTTP registry, and an in-memory store. Chats are
-/// ephemeral (see [`PERSISTENCE_ENABLED`]).
-pub(crate) type Client = ChatClient<SdkDelivery, HttpRegistry, ChatStorage>;
+/// with an ephemeral account, the [`ModuleTransport`] chosen at init (delivery_module
+/// or the centralized relay), the devnet HTTP registry, and an in-memory store.
+/// Chats are ephemeral (see [`PERSISTENCE_ENABLED`]).
+pub(crate) type Client = ChatClient<ModuleTransport, HttpRegistry, ChatStorage>;
 
 /// Whether chat state persists across restarts. Off: identity, MLS/crypto state,
 /// and the display history are all ephemeral. DirectV1 has no reload path in
@@ -102,13 +102,19 @@ impl DeliveryState {
 
 pub(crate) struct ModuleState {
     pub client: Client,
-    /// Signal flag for the inbound bridge worker. The worker observes this between
-    /// poll iterations so shutdown() bounds wait time at one poll period.
+    /// Signal flag for the stop-driven inbound worker. It observes this between
+    /// iterations so shutdown() bounds the wait: one poll period for the
+    /// delivery_module bridge, one long-poll for the mailbox poller.
     pub inbound_stop: Arc<AtomicBool>,
-    /// Inbound bridge worker handle (delivery_module events → client, connection
-    /// state, subscription forwarding). `Option` so `shutdown()` can `take()` it
-    /// before `join`-ing while still under the module mutex.
+    /// The stop-driven inbound worker handle: the delivery_module bridge
+    /// (events → client, connection state, subscription forwarding), or the
+    /// mailbox poller (relay long-poll → client). `Option` so `shutdown()` can
+    /// `take()` it before `join`-ing while still under the module mutex.
     pub inbound_thread: Option<JoinHandle<()>>,
+    /// Mailbox sender worker handle (outbound queue → relay); `None` on the
+    /// delivery_module path. Joined after the client drops, since it ends when its
+    /// outbound sender disconnects.
+    pub mailbox_send_thread: Option<JoinHandle<()>>,
     /// Event consumer worker handle. Drains the client's `Receiver<Event>`; it
     /// exits once the client is dropped and the event sender disconnects.
     pub event_thread: Option<JoinHandle<()>>,

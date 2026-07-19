@@ -51,6 +51,13 @@ crossbeam-channel = "0.5"
 logos-rust-sdk = { path = "../logos-rust-sdk-src" }
 serde          = { version = "1", features = ["derive"] }
 serde_json     = "1"
+# The mailbox transport's HTTP client + payload encoding. reqwest 0.12 (blocking,
+# rustls) matches HttpRegistry's config exactly, so cargo unifies to the single
+# reqwest already in the tree instead of pulling a second TLS stack; base64 0.22
+# matches the components crate. `default-features = false` is load-bearing — the
+# default `native-tls` feature would add a redundant openssl TLS backend.
+reqwest        = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+base64         = "0.22"
 thiserror      = "2"
 # Hex-encodes the account verifying key as this installation's shared address,
 # and the delegate device key into the account's signed device bundle.
