@@ -100,6 +100,14 @@ is a matter of giving each host its own session directory (`--config-dir` under
 `logoscore`); `init` fails when the host assigned no such directory. The delivery
 node listens on ports it picks itself, so instances need no port coordination.
 
+`init` also installs a `tracing` subscriber, so libchat's log events go to the
+module's stderr and the host forwards them into its own log. The default level
+is `warn`; `RUST_LOG`, read from the environment the module process inherits
+from its host, selects more. libchat logs under two targets: `libchat` (the
+conversation core, MLS groups, inbox) and `logos_generic_chat` (the threaded
+client and its inbound worker), so a verbose run is
+`RUST_LOG=warn,libchat=debug,logos_generic_chat=debug`.
+
 ## Doc-tests
 
 The specs under [`doctests/`](doctests/) are executable usage tutorials: each

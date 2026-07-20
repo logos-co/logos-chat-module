@@ -35,6 +35,7 @@
 mod actions;
 mod delivery;
 mod inbound;
+mod logging;
 mod module;
 mod panic_hook;
 mod persistence;
@@ -73,6 +74,7 @@ struct ChatModuleImpl;
 impl ChatModule for ChatModuleImpl {
     fn init(&mut self, delivery_preset: String) -> Result<Value, String> {
         panic_hook::install_once();
+        logging::install_once();
 
         let preset = if delivery_preset.is_empty() {
             "logos.dev"
