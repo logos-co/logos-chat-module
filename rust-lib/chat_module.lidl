@@ -52,7 +52,9 @@ module chat_module {
   }
 
   ; --- lifecycle ---
-  method init(instance_path: tstr, delivery_preset: tstr, tcp_port: int) -> result
+  ; Storage lives under the instance directory the host assigns; init fails when
+  ; the host assigned none.
+  method init(delivery_preset: tstr, tcp_port: int) -> result
   method shutdown() -> result
 
   ; --- identity ---

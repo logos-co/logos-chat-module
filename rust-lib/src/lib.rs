@@ -28,8 +28,9 @@
 //! the generated `emit_*` functions (see the included scaffold), which the host
 //! marshals onto the Qt thread and republishes as IPC events.
 //!
-//! Security. The identity store opened by `init` is keyed from
-//! `instance_path` — obfuscated, not protected. Passphrase UX is planned.
+//! Security. The identity store opened by `init` is keyed from the
+//! host-assigned instance persistence path: obfuscated, not protected.
+//! Passphrase UX is planned.
 
 mod actions;
 mod delivery;
@@ -70,12 +71,7 @@ const ERR_LOCK_POISONED: &str = "internal error: module lock poisoned";
 struct ChatModuleImpl;
 
 impl ChatModule for ChatModuleImpl {
-    fn init(
-        &mut self,
-        instance_path: String,
-        delivery_preset: String,
-        tcp_port: i64,
-    ) -> Result<Value, String> {
+    fn init(&mut self, delivery_preset: String, tcp_port: i64) -> Result<Value, String> {
         panic_hook::install_once();
 
         let preset = if delivery_preset.is_empty() {
@@ -84,7 +80,7 @@ impl ChatModule for ChatModuleImpl {
             delivery_preset.as_str()
         };
 
-        match module().install_with(|| actions::initialize(&instance_path)) {
+        match module().install_with(actions::initialize) {
             Err(_) => Err(ERR_LOCK_POISONED.to_string()),
             Ok(Ok(InstallOutcome::Installed)) => {
                 // State is installed and the module lock is released; only now

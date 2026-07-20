@@ -50,6 +50,8 @@ pub(crate) enum CoreError {
 /// Failure modes for [`initialize`].
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum InitError {
+    #[error("host did not assign an instance persistence path; start the host with a session or config dir")]
+    NoPersistencePath,
     #[error("{0}")]
     Internal(String),
     #[error("{0}")]
@@ -90,20 +92,27 @@ struct StatusView {
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
-pub(crate) fn initialize(instance_path: &str) -> Result<ModuleState, InitError> {
-    fs::create_dir_all(instance_path)
-        .map_err(|e| InitError::Internal(format!("cannot create instance_path: {e}")))?;
+pub(crate) fn initialize() -> Result<ModuleState, InitError> {
+    // A host that never set a persistence base path still stamps a context, with
+    // the path left empty, so emptiness is the "host not configured" signal.
+    let persistence_path = crate::context()
+        .map(|ctx| ctx.instance_persistence_path)
+        .filter(|path| !path.is_empty())
+        .ok_or(InitError::NoPersistencePath)?;
+    fs::create_dir_all(&persistence_path).map_err(|e| {
+        InitError::Internal(format!("cannot create instance persistence path: {e}"))
+    })?;
 
     // Storage backs libchat's identity and MLS/crypto state. Ephemeral by
     // default (see `PERSISTENCE_ENABLED`): DirectV1 has no reload path yet, so an
     // in-memory store is honest about chats not surviving a restart. The
     // SQLCipher path stays here, behind the switch, for when reload lands.
     let storage = if PERSISTENCE_ENABLED {
-        let db_path = format!("{instance_path}/identity.db");
-        // Static key derived from the instance path. Not secret; satisfies
+        let db_path = format!("{persistence_path}/identity.db");
+        // Static key derived from the persistence path. Not secret; satisfies
         // SQLCipher's keying requirement. A user-provided passphrase is a
         // future enhancement.
-        let key = format!("rust-chat-{}", instance_path.replace('/', "_"));
+        let key = format!("rust-chat-{}", persistence_path.replace('/', "_"));
         ChatStorage::new(StorageConfig::Encrypted { path: db_path, key })
             .map_err(|e| InitError::Internal(format!("open store failed: {e:?}")))?
     } else {
@@ -160,7 +169,7 @@ pub(crate) fn initialize(instance_path: &str) -> Result<ModuleState, InitError> 
     // so `get_address` needn't take the client lock.
     let address = account_addr;
 
-    let state_path = PathBuf::from(format!("{instance_path}/history.json"));
+    let state_path = PathBuf::from(format!("{persistence_path}/history.json"));
     let state = load_display(&state_path);
 
     // Register listeners before the node starts — `connectionStateChanged`
