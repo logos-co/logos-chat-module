@@ -55,6 +55,8 @@ thiserror      = "2"
 # Hex-encodes the account verifying key as this installation's shared address,
 # and the delegate device key into the account's signed device bundle.
 hex            = "0.4"
+# The process's `tracing` subscriber (see `logging`); `env-filter` reads `RUST_LOG`.
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # libchat's `crypto` crate is written for the xeddsa 1.0 API. Cargo's
 # default SemVer resolution would pick 1.1.0 (released since), whose

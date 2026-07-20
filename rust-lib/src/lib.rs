@@ -34,6 +34,7 @@
 mod actions;
 mod delivery;
 mod inbound;
+mod logging;
 mod module;
 mod panic_hook;
 mod persistence;
@@ -77,6 +78,7 @@ impl ChatModule for ChatModuleImpl {
         tcp_port: i64,
     ) -> Result<Value, String> {
         panic_hook::install_once();
+        logging::install_once();
 
         let preset = if delivery_preset.is_empty() {
             "logos.dev"
