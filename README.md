@@ -94,6 +94,14 @@ Bring-up is `init(instance_path, delivery_preset, tcp_port)` (empty preset →
 `logos.dev`). `init` starts delivery asynchronously and returns immediately;
 readiness arrives later as a `delivery_state_changed` event reaching `online`.
 
+`init` also installs a `tracing` subscriber, so libchat's log events go to the
+module's stderr and the host forwards them into its own log. The default level
+is `warn`; `RUST_LOG`, read from the environment the module process inherits
+from its host, selects more. libchat logs under two targets: `libchat` (the
+conversation core, MLS groups, inbox) and `logos_generic_chat` (the threaded
+client and its inbound worker), so a verbose run is
+`RUST_LOG=warn,libchat=debug,logos_generic_chat=debug`.
+
 ## Doc-tests
 
 The specs under [`doctests/`](doctests/) are executable usage tutorials: each
