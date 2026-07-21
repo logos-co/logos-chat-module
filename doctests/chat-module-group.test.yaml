@@ -99,10 +99,10 @@ sections:
     text: |
       One module is a per-host singleton inside a daemon, so Alice, Bob, and
       Carol are **separate daemons**, kept apart by `--config-dir` (control
-      socket, client token, persistence) and, in the next step, by distinct
+      socket, client token, persistence, and the per-instance directory each daemon
+      assigns its `chat_module`) and, in the next step, by distinct
       `tcp_port`s for their delivery nodes.
     steps:
-      - run: "mkdir -p alice-data bob-data carol-data"
       - title: "Start the three daemons"
         run: |
           sh -c './logos/bin/logoscore --config-dir alice -D -m ./modules > alice-daemon.log 2>&1 &'
@@ -148,9 +148,9 @@ sections:
   - title: "Bring the three instances online"
     step: true
     text: |
-      `init(instance_path, delivery_preset, tcp_port)` returns immediately and
-      kicks off the delivery bootstrap asynchronously; readiness arrives later
-      when `status().delivery_state` flips to `online`. All three are
+      `init(delivery_preset, tcp_port)` returns immediately and kicks off the
+      delivery bootstrap asynchronously; readiness arrives later when
+      `status().delivery_state` flips to `online`. All three are
       initialised **first** so their cold Waku bootstraps overlap, then each is
       polled; the wait is ~the slowest of the three, not their sum.
     steps:
@@ -158,23 +158,24 @@ sections:
         run: |
           for who in alice bob carol; do
             case "$who" in alice) port=60020;; bob) port=60021;; carol) port=60022;; esac
-            out=$(./logos/bin/logoscore --config-dir "$who" call chat_module init "$PWD/${who}-data" logos.test "$port")
+            out=$(./logos/bin/logoscore --config-dir "$who" call chat_module init logos.test "$port")
             echo "$out"
             echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "$who init failed: $out" >&2; exit 1; }
             echo "${who}_INIT_OK"
           done
         code_block: |
-          logoscore --config-dir alice call chat_module init "$PWD/alice-data" logos.test 60020
-          logoscore --config-dir bob   call chat_module init "$PWD/bob-data"   logos.test 60021
-          logoscore --config-dir carol call chat_module init "$PWD/carol-data" logos.test 60022
+          logoscore --config-dir alice call chat_module init logos.test 60020
+          logoscore --config-dir bob   call chat_module init logos.test 60021
+          logoscore --config-dir carol call chat_module init logos.test 60022
         expect_contains:
           - "alice_INIT_OK"
           - "bob_INIT_OK"
           - "carol_INIT_OK"
         post_text: |
-          Distinct `instance_path` and `tcp_port` per instance: `tcp_port` is
-          bound for both the Waku TCP listener and the discv5 UDP port, so no
-          two nodes may share one.
+          A distinct `tcp_port` per instance: it is bound for both the Waku TCP
+          listener and the discv5 UDP port, so no two nodes may share one.
+          Storage needs no argument: each instance uses the directory its daemon
+          assigned it.
       - title: "Wait for all three to reach Online"
         run: |
           for who in alice bob carol; do

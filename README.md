@@ -90,9 +90,12 @@ End-to-end chat needs a `delivery_module` available to the host at runtime; the
 flake pins [`logos-delivery-module`](https://github.com/logos-co/logos-delivery-module)
 at `v0.1.2`. Load `chat_module` via `logoscore` or Basecamp.
 
-Bring-up is `init(instance_path, delivery_preset, tcp_port)` (empty preset →
-`logos.dev`). `init` starts delivery asynchronously and returns immediately;
-readiness arrives later as a `delivery_state_changed` event reaching `online`.
+Bring-up is `init(delivery_preset, tcp_port)` (empty preset → `logos.dev`).
+`init` starts delivery asynchronously and returns immediately; readiness arrives
+later as a `delivery_state_changed` event reaching `online`. State is written to
+the instance directory the host assigns, so running two instances side by side
+is a matter of giving each host its own session directory (`--config-dir` under
+`logoscore`); `init` fails when the host assigned no such directory.
 
 ## Doc-tests
 

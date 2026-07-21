@@ -2,9 +2,9 @@
 //!
 //! ## File
 //!
-//! Lives at `<instance_path>/history.json`, where `instance_path` is the
-//! same value passed to `init`. Format is the pretty-printed
-//! JSON serialisation of [`AppState`].
+//! Lives at `history.json` inside the instance persistence path the host
+//! assigns (`RustModuleContext::instance_persistence_path`). Format is the
+//! pretty-printed JSON serialisation of [`AppState`].
 //!
 //! ## Write triggers
 //!

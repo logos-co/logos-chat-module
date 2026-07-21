@@ -107,10 +107,11 @@ sections:
       **separate daemons**. The only thing that keeps them apart is `--config-dir`:
       it scopes each daemon's control socket, client token, and persistence to its
       own tree, so a `logoscore call --config-dir alice ...` always reaches Alice's
-      daemon. (Their delivery nodes are kept apart separately, by the distinct
-      `tcp_port` passed to `init` in the next step.)
+      daemon. That is also what isolates the two `chat_module` instances on disk:
+      the daemon assigns each module instance a directory under its config dir,
+      and the module stores everything there. (Their delivery nodes are kept apart
+      separately, by the distinct `tcp_port` passed to `init` in the next step.)
     steps:
-      - run: "mkdir -p alice-data bob-data"
       - title: "Start Alice's daemon"
         run: "sh -c './logos/bin/logoscore --config-dir alice -D -m ./modules > alice-daemon.log 2>&1 &'"
         code_block: "logoscore --config-dir alice -D -m ./modules > alice-daemon.log &"
@@ -150,26 +151,27 @@ sections:
   - title: "Bring both instances online"
     step: true
     text: |
-      `init(instance_path, delivery_preset, tcp_port)` returns immediately and
-      kicks off the delivery bootstrap asynchronously; readiness arrives later when
-      the subscribe handshake completes and `status().delivery_state` flips to
+      `init(delivery_preset, tcp_port)` returns immediately and kicks off the
+      delivery bootstrap asynchronously; readiness arrives later when the
+      subscribe handshake completes and `status().delivery_state` flips to
       `online`. Both instances are initialised **first** so their two cold Waku
       bootstraps overlap, then each is polled; the wait is ~the slower of the two,
       not their sum.
     steps:
       - title: "Initialise Alice (delivery port 60010) and Bob (60011)"
         run: |
-          ./logos/bin/logoscore --config-dir alice call chat_module init "$PWD/alice-data" logos.test 60010
-          ./logos/bin/logoscore --config-dir bob   call chat_module init "$PWD/bob-data"   logos.test 60011
+          ./logos/bin/logoscore --config-dir alice call chat_module init logos.test 60010
+          ./logos/bin/logoscore --config-dir bob   call chat_module init logos.test 60011
         code_block: |
-          logoscore --config-dir alice call chat_module init "$PWD/alice-data" logos.test 60010
-          logoscore --config-dir bob   call chat_module init "$PWD/bob-data"   logos.test 60011
+          logoscore --config-dir alice call chat_module init logos.test 60010
+          logoscore --config-dir bob   call chat_module init logos.test 60011
         expect_contains:
           - '"status":"ok"'
         post_text: |
-          Distinct `instance_path` and `tcp_port` per instance: `tcp_port` is bound
-          for both the Waku TCP listener and the discv5 UDP port, so the two nodes
-          must not share it.
+          A distinct `tcp_port` per instance: it is bound for both the Waku TCP
+          listener and the discv5 UDP port, so the two nodes must not share it.
+          Storage needs no argument: each instance uses the directory its daemon
+          assigned it.
       - title: "Wait for both to reach Online"
         run: |
           for who in alice bob; do
