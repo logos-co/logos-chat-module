@@ -9,8 +9,8 @@ name: Doc-Tests
 # does not complete.
 #
 # Linux-only: it runs several real delivery instances on one host (distinct data
-# dirs and delivery ports). The exchanges need outbound network to reach the
-# logos.test Waku fleet, which GitHub-hosted runners have.
+# dirs). The exchanges need outbound network to reach the logos.test Waku fleet,
+# which GitHub-hosted runners have.
 
 on:
   pull_request:

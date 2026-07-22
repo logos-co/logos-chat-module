@@ -88,14 +88,15 @@ positional arguments in `.lidl` order:
 
 End-to-end chat needs a `delivery_module` available to the host at runtime; the
 flake pins [`logos-delivery-module`](https://github.com/logos-co/logos-delivery-module)
-at `v0.1.2`. Load `chat_module` via `logoscore` or Basecamp.
+at `v0.1.3`. Load `chat_module` via `logoscore` or Basecamp.
 
-Bring-up is `init(delivery_preset, tcp_port)` (empty preset → `logos.dev`).
+Bring-up is `init(delivery_preset)` (empty preset → `logos.dev`).
 `init` starts delivery asynchronously and returns immediately; readiness arrives
 later as a `delivery_state_changed` event reaching `online`. State is written to
 the instance directory the host assigns, so running two instances side by side
 is a matter of giving each host its own session directory (`--config-dir` under
-`logoscore`); `init` fails when the host assigned no such directory.
+`logoscore`); `init` fails when the host assigned no such directory. The delivery
+node listens on ports it picks itself, so instances need no port coordination.
 
 ## Doc-tests
 
