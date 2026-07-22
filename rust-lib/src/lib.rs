@@ -71,7 +71,7 @@ const ERR_LOCK_POISONED: &str = "internal error: module lock poisoned";
 struct ChatModuleImpl;
 
 impl ChatModule for ChatModuleImpl {
-    fn init(&mut self, delivery_preset: String, tcp_port: i64) -> Result<Value, String> {
+    fn init(&mut self, delivery_preset: String) -> Result<Value, String> {
         panic_hook::install_once();
 
         let preset = if delivery_preset.is_empty() {
@@ -86,7 +86,7 @@ impl ChatModule for ChatModuleImpl {
                 // State is installed and the module lock is released; only now
                 // bootstrap delivery, so its async completion callbacks acquire
                 // a free lock instead of re-entering the one init holds.
-                actions::start_delivery_bootstrap(preset, tcp_port as i32);
+                actions::start_delivery_bootstrap(preset);
                 Ok(Value::Null)
             }
             Ok(Ok(InstallOutcome::AlreadyInstalled)) => {
