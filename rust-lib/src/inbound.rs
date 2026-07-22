@@ -32,13 +32,25 @@ use crate::persistence::ConversationKind;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 
+/// The subscriptions the bridge polls, handed back when it stops.
+///
+/// The bridge must never DROP these itself. Each one holds a share of the
+/// delivery_module client, and dropping the last share destroys that client's
+/// Qt transport — legal only on the thread that created it (the dispatch
+/// thread, where `init` ran), never on this worker. Off-thread teardown makes
+/// Qt disable a socket notifier cross-thread and closes the fd under the
+/// dispatch thread's event loop, which crashed the module on shutdown.
+/// Returning them means `join()` moves them back to the dispatch thread, where
+/// [`crate::actions::shutdown`] releases them at the right moment.
+pub(crate) type BridgeSubscriptions = (EventSubscription, Option<EventSubscription>);
+
 pub(crate) fn spawn_bridge(
     stop: Arc<AtomicBool>,
     messages: EventSubscription,
     conn: Option<EventSubscription>,
     inbound_tx: Sender<Vec<u8>>,
     subscribe_rx: Receiver<String>,
-) -> JoinHandle<()> {
+) -> JoinHandle<BridgeSubscriptions> {
     thread::Builder::new()
         .name("rust-chat-bridge".into())
         .spawn(move || run_bridge(stop, messages, conn, inbound_tx, subscribe_rx))
@@ -55,20 +67,23 @@ pub(crate) fn spawn_events(events: Receiver<Event>) -> JoinHandle<()> {
 fn run_bridge(
     stop: Arc<AtomicBool>,
     messages: EventSubscription,
-    mut conn: Option<EventSubscription>,
+    conn: Option<EventSubscription>,
     inbound_tx: Sender<Vec<u8>>,
     subscribe_rx: Receiver<String>,
-) {
+) -> BridgeSubscriptions {
+    // Set once the connection subscription's sender hangs up. It only stops us
+    // re-polling a dead subscription — the subscription itself stays alive and
+    // goes back with the return value, because this thread must not drop it
+    // (see `BridgeSubscriptions`).
+    let mut conn_dead = false;
     while !stop.load(Ordering::Relaxed) {
         match messages.receiver().recv_timeout(POLL_INTERVAL) {
             Ok(evt) => forward_message(&evt, &inbound_tx),
             Err(RecvTimeoutError::Timeout) => {}
-            Err(RecvTimeoutError::Disconnected) => return,
+            Err(RecvTimeoutError::Disconnected) => break,
         }
 
-        // On Disconnected, drop the subscription so we stop re-polling a dead one.
-        let mut disconnected = false;
-        if let Some(events) = conn.as_ref() {
+        if let Some(events) = conn.as_ref().filter(|_| !conn_dead) {
             loop {
                 match events.receiver().try_recv() {
                     Ok(evt) => {
@@ -80,18 +95,16 @@ fn run_bridge(
                     }
                     Err(TryRecvError::Empty) => break,
                     Err(TryRecvError::Disconnected) => {
-                        disconnected = true;
+                        conn_dead = true;
                         break;
                     }
                 }
             }
         }
-        if disconnected {
-            conn = None;
-        }
 
         forward_subscriptions(&subscribe_rx);
     }
+    (messages, conn)
 }
 
 /// Decode a `messageReceived` event and push its payload to the client's inbound
