@@ -281,16 +281,22 @@ fn set_delivery_error(detail: String) {
 /// deadlock on its own next acquire.
 pub(crate) fn shutdown(mut ms: ModuleState) {
     ms.inbound_stop.store(true, Ordering::Relaxed);
-    if let Some(handle) = ms.inbound_thread.take() {
-        // Bounded by inbound::POLL_INTERVAL; ~50 ms worst case.
-        let _ = handle.join();
-    }
+    // Bounded by inbound::POLL_INTERVAL; ~50 ms worst case. The join hands the
+    // bridge's subscriptions back to this thread rather than letting the worker
+    // drop them (see inbound::BridgeSubscriptions) — but hold them until the
+    // client's own workers are gone: while any remain, a `publish` racing this
+    // teardown must find the cached delivery_module client still alive, or it
+    // would build a fresh one owned by a thread with no Qt event loop.
+    let bridge_subs = ms.inbound_thread.take().map(|handle| handle.join());
     // Drop the client so its worker stops and its event sender disconnects; the
     // event consumer then ends its loop and can be joined.
     drop(ms.client);
     if let Some(handle) = ms.event_thread.take() {
         let _ = handle.join();
     }
+    // Nothing can publish now: release the delivery_module client here, on the
+    // dispatch thread that created it and owns its Qt transport.
+    drop(bridge_subs);
     with_display_mut(|d| {
         // Final write; nothing left to propagate to, so log a failure.
         if let Err(e) = save_display(d) {

@@ -29,6 +29,7 @@ use logos_generic_chat::{ChatClient, HttpRegistry};
 use serde::Serialize;
 
 use crate::delivery::SdkDelivery;
+use crate::inbound::BridgeSubscriptions;
 use crate::persistence::AppState;
 
 /// The chat client as this module configures it: a delegate identity associated
@@ -107,8 +108,10 @@ pub(crate) struct ModuleState {
     pub inbound_stop: Arc<AtomicBool>,
     /// Inbound bridge worker handle (delivery_module events → client, connection
     /// state, subscription forwarding). `Option` so `shutdown()` can `take()` it
-    /// before `join`-ing while still under the module mutex.
-    pub inbound_thread: Option<JoinHandle<()>>,
+    /// before `join`-ing while still under the module mutex. The join yields the
+    /// worker's subscriptions back to the dispatch thread, which is the only
+    /// thread allowed to release them (see [`crate::inbound::BridgeSubscriptions`]).
+    pub inbound_thread: Option<JoinHandle<BridgeSubscriptions>>,
     /// Event consumer worker handle. Drains the client's `Receiver<Event>`; it
     /// exits once the client is dropped and the event sender disconnects.
     pub event_thread: Option<JoinHandle<()>>,
