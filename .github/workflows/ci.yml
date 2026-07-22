@@ -11,10 +11,12 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  ATTIC_CACHE: ${{ github.ref == 'refs/heads/master' && 'public' || 'ci' }}
 
 jobs:
   lint:
     name: Lint
+    environment: ${{ github.ref == 'refs/heads/master' && 'public-cache' || '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -25,14 +27,29 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
+            extra-substituters = https://cache.nix.logos.co/public https://cache.nix.logos.co/ci
+            extra-trusted-public-keys = public:l4HrXgL4nw246+LBh2SOJyhz64BoGegOYLheT/iIAPU= ci:aVJqjS4NWX5WfqHO0AEhIScjGu/JyK5FoydPrnEbMvc=
+            fallback = true
 
+      # Read-only, and the sole source for a large part of the Rust crate
+      # closure. Drop it once a run shows Attic serving those paths.
+      - uses: cachix/cachix-action@v15
+        with:
+          name: logos-co
+          skipPush: true
+
+      # Publishing only; both caches are public to read, which the substituter
+      # above already covers. ATTIC_TOKEN_PUBLIC lives in the public-cache
+      # environment, so only the master jobs that opt into it reach the public
+      # cache; every other ref pushes to ci with the repo-wide token. Fork PRs
+      # get no secrets, and an empty endpoint fails `attic use`.
       - name: Setup Attic cache
-        uses: ryanccn/attic-action@v0
+        if: github.event.pull_request.head.repo.fork != true
+        uses: ryanccn/attic-action@v0.4.1
         with:
           endpoint: ${{ secrets.ATTIC_ENDPOINT }}
-          cache: public
-          token: ${{ secrets.ATTIC_TOKEN_PUBLIC }}
-          skip-push: ${{ github.event_name == 'pull_request' }}
+          cache: ${{ env.ATTIC_CACHE }}
+          token: ${{ github.ref == 'refs/heads/master' && secrets.ATTIC_TOKEN_PUBLIC || secrets.ATTIC_TOKEN_CI }}
 
       - name: Install Rust toolchain
         run: rustup update stable && rustup default stable && rustup component add rustfmt clippy
@@ -60,6 +77,7 @@ jobs:
 
   cargo:
     name: cargo (${{ matrix.os }})
+    environment: ${{ github.ref == 'refs/heads/master' && 'public-cache' || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -74,14 +92,29 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
+            extra-substituters = https://cache.nix.logos.co/public https://cache.nix.logos.co/ci
+            extra-trusted-public-keys = public:l4HrXgL4nw246+LBh2SOJyhz64BoGegOYLheT/iIAPU= ci:aVJqjS4NWX5WfqHO0AEhIScjGu/JyK5FoydPrnEbMvc=
+            fallback = true
 
+      # Read-only, and the sole source for a large part of the Rust crate
+      # closure. Drop it once a run shows Attic serving those paths.
+      - uses: cachix/cachix-action@v15
+        with:
+          name: logos-co
+          skipPush: true
+
+      # Publishing only; both caches are public to read, which the substituter
+      # above already covers. ATTIC_TOKEN_PUBLIC lives in the public-cache
+      # environment, so only the master jobs that opt into it reach the public
+      # cache; every other ref pushes to ci with the repo-wide token. Fork PRs
+      # get no secrets, and an empty endpoint fails `attic use`.
       - name: Setup Attic cache
-        uses: ryanccn/attic-action@v0
+        if: github.event.pull_request.head.repo.fork != true
+        uses: ryanccn/attic-action@v0.4.1
         with:
           endpoint: ${{ secrets.ATTIC_ENDPOINT }}
-          cache: public
-          token: ${{ secrets.ATTIC_TOKEN_PUBLIC }}
-          skip-push: ${{ github.event_name == 'pull_request' }}
+          cache: ${{ env.ATTIC_CACHE }}
+          token: ${{ github.ref == 'refs/heads/master' && secrets.ATTIC_TOKEN_PUBLIC || secrets.ATTIC_TOKEN_CI }}
 
       - name: Install Rust toolchain
         run: rustup update stable && rustup default stable
@@ -102,6 +135,7 @@ jobs:
 
   nix:
     name: nix (${{ matrix.os }})
+    environment: ${{ github.ref == 'refs/heads/master' && 'public-cache' || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -116,14 +150,29 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
+            extra-substituters = https://cache.nix.logos.co/public https://cache.nix.logos.co/ci
+            extra-trusted-public-keys = public:l4HrXgL4nw246+LBh2SOJyhz64BoGegOYLheT/iIAPU= ci:aVJqjS4NWX5WfqHO0AEhIScjGu/JyK5FoydPrnEbMvc=
+            fallback = true
 
+      # Read-only, and the sole source for a large part of the Rust crate
+      # closure. Drop it once a run shows Attic serving those paths.
+      - uses: cachix/cachix-action@v15
+        with:
+          name: logos-co
+          skipPush: true
+
+      # Publishing only; both caches are public to read, which the substituter
+      # above already covers. ATTIC_TOKEN_PUBLIC lives in the public-cache
+      # environment, so only the master jobs that opt into it reach the public
+      # cache; every other ref pushes to ci with the repo-wide token. Fork PRs
+      # get no secrets, and an empty endpoint fails `attic use`.
       - name: Setup Attic cache
-        uses: ryanccn/attic-action@v0
+        if: github.event.pull_request.head.repo.fork != true
+        uses: ryanccn/attic-action@v0.4.1
         with:
           endpoint: ${{ secrets.ATTIC_ENDPOINT }}
-          cache: public
-          token: ${{ secrets.ATTIC_TOKEN_PUBLIC }}
-          skip-push: ${{ github.event_name == 'pull_request' }}
+          cache: ${{ env.ATTIC_CACHE }}
+          token: ${{ github.ref == 'refs/heads/master' && secrets.ATTIC_TOKEN_PUBLIC || secrets.ATTIC_TOKEN_CI }}
 
       - name: nix build .#chat_module
         run: nix build .#chat_module -L
