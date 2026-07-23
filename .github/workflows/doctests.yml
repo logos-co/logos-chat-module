@@ -47,13 +47,6 @@ jobs:
             extra-trusted-public-keys = public:l4HrXgL4nw246+LBh2SOJyhz64BoGegOYLheT/iIAPU= ci:aVJqjS4NWX5WfqHO0AEhIScjGu/JyK5FoydPrnEbMvc=
             fallback = true
 
-      # Read-only, and the sole source for a large part of the Rust crate
-      # closure. Drop it once a run shows Attic serving those paths.
-      - uses: cachix/cachix-action@v15
-        with:
-          name: logos-co
-          skipPush: true
-
       # Publishing only; both caches are public to read, which the substituter
       # above already covers. ATTIC_TOKEN_PUBLIC lives in the public-cache
       # environment, so only the master jobs that opt into it reach the public
