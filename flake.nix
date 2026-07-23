@@ -4,9 +4,10 @@
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder";
 
-    # Pinned to the v0.1.3 release tag, which includes the zerokit/RLN nix
-    # build fix (delivery-module #49). Kept in lockstep with logos-chat-ui's pin.
-    logos-delivery-module.url = "github:logos-co/logos-delivery-module/v0.1.3";
+    # Pinned to the first rev whose flake publishes the .lidl contract output
+    # (packages.<sys>.lidl, via the builder bump in delivery-module #60); no
+    # release tag carries it yet, so this is a master rev, not a tag.
+    logos-delivery-module.url = "github:logos-co/logos-delivery-module/c21ffb83b2b891843de9a940dd60e5e56c8803de";
   };
 
   outputs = inputs@{ self, logos-module-builder, logos-delivery-module, ... }:
@@ -54,6 +55,7 @@
           pkgs = import nixpkgs { inherit system; };
           lidlGen = logos-module-builder.inputs.logos-rust-sdk.packages.${system}.lidl-gen;
           sdkSrc = logos-module-builder.packages.${system}.rust-sdk-src;
+          deliveryLidl = logos-delivery-module.packages.${system}.lidl;
           generate = pkgs.writeShellApplication {
             name = "chat-module-generate";
             runtimeInputs = [ lidlGen pkgs.git ];
@@ -62,7 +64,7 @@
               echo "generating rust-lib/generated/provider_gen.rs ..."
               mkdir -p "$root/rust-lib/generated"
               logos-lidl-gen "$root/rust-lib/chat_module.lidl" --provider \
-                --dep delivery_module="$root/rust-lib/deps/delivery_module.lidl" \
+                --dep delivery_module="${deliveryLidl}/delivery_module.lidl" \
                 -o "$root/rust-lib/generated/provider_gen.rs"
               echo "staging the SDK source at logos-rust-sdk-src/ ..."
               rm -rf "''${root:?}/logos-rust-sdk-src"

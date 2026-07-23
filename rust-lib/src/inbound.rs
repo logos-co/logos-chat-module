@@ -75,7 +75,7 @@ fn run_bridge(
                         if let Some(state) =
                             crate::delivery_module::DeliveryModuleClient::decode_connection_state_changed(&evt)
                         {
-                            handle_connection_state(&state.status);
+                            handle_connection_state(&state.connection_status);
                         }
                     }
                     Err(TryRecvError::Empty) => break,
