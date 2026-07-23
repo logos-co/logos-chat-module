@@ -25,17 +25,17 @@ use std::thread::JoinHandle;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use libchat::ChatStorage;
-use logos_generic_chat::{ChatClient, HttpRegistry};
+use logos_generic_chat::{ChatClient, ContactRegistry};
 use serde::Serialize;
 
-use crate::delivery::SdkDelivery;
+use crate::delivery::{SdkDelivery, SdkPublisher};
 use crate::persistence::AppState;
 
 /// The chat client as this module configures it: a delegate identity associated
 /// with an ephemeral account, the delivery_module-backed [`SdkDelivery`]
-/// transport, the devnet HTTP registry, and an in-memory store. Chats are
+/// transport, the devnet contact registry, and an in-memory store. Chats are
 /// ephemeral (see [`PERSISTENCE_ENABLED`]).
-pub(crate) type Client = ChatClient<SdkDelivery, HttpRegistry, ChatStorage>;
+pub(crate) type Client = ChatClient<SdkDelivery, ContactRegistry<SdkPublisher>, ChatStorage>;
 
 /// Whether chat state persists across restarts. Off: identity, MLS/crypto state,
 /// and the display history are all ephemeral. DirectV1 has no reload path in

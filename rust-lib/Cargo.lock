@@ -1228,7 +1228,7 @@ dependencies = [
 [[package]]
 name = "chat-proto"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/chat_proto?rev=37ec98a151f6d50aab2905802ac0a896477e62ea#37ec98a151f6d50aab2905802ac0a896477e62ea"
+source = "git+https://github.com/logos-messaging/chat_proto?rev=948f4ad6dedb01b44e279204d8eb30a1eda5a330#948f4ad6dedb01b44e279204d8eb30a1eda5a330"
 dependencies = [
  "prost",
 ]
@@ -1236,7 +1236,7 @@ dependencies = [
 [[package]]
 name = "chat-sqlite"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/libchat.git?rev=0c51d4d0b8d83223a133a157e186f0b9a18527ca#0c51d4d0b8d83223a133a157e186f0b9a18527ca"
+source = "git+https://github.com/logos-messaging/libchat.git?rev=5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14#5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14"
 dependencies = [
  "crypto",
  "hex",
@@ -1306,17 +1306,18 @@ dependencies = [
 [[package]]
 name = "components"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/libchat.git?rev=0c51d4d0b8d83223a133a157e186f0b9a18527ca#0c51d4d0b8d83223a133a157e186f0b9a18527ca"
+source = "git+https://github.com/logos-messaging/libchat.git?rev=5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14#5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14"
 dependencies = [
  "base64",
+ "chat-proto",
  "crossbeam-channel",
  "crypto",
  "hex",
  "libchat",
  "logos-account",
+ "prost",
  "reqwest 0.12.28",
  "serde",
- "serde_json",
  "storage",
  "thiserror",
  "tracing",
@@ -1479,7 +1480,7 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 [[package]]
 name = "crypto"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/libchat.git?rev=0c51d4d0b8d83223a133a157e186f0b9a18527ca#0c51d4d0b8d83223a133a157e186f0b9a18527ca"
+source = "git+https://github.com/logos-messaging/libchat.git?rev=5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14#5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14"
 dependencies = [
  "ed25519-dalek",
  "generic-array 1.4.1",
@@ -1737,7 +1738,7 @@ dependencies = [
 [[package]]
 name = "double-ratchets"
 version = "0.0.1"
-source = "git+https://github.com/logos-messaging/libchat.git?rev=0c51d4d0b8d83223a133a157e186f0b9a18527ca#0c51d4d0b8d83223a133a157e186f0b9a18527ca"
+source = "git+https://github.com/logos-messaging/libchat.git?rev=5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14#5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14"
 dependencies = [
  "blake2",
  "chacha20poly1305",
@@ -2891,7 +2892,7 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 [[package]]
 name = "libchat"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/libchat.git?rev=0c51d4d0b8d83223a133a157e186f0b9a18527ca#0c51d4d0b8d83223a133a157e186f0b9a18527ca"
+source = "git+https://github.com/logos-messaging/libchat.git?rev=5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14#5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14"
 dependencies = [
  "alloy",
  "base64",
@@ -3228,7 +3229,7 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 [[package]]
 name = "logos-account"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/libchat.git?rev=0c51d4d0b8d83223a133a157e186f0b9a18527ca#0c51d4d0b8d83223a133a157e186f0b9a18527ca"
+source = "git+https://github.com/logos-messaging/libchat.git?rev=5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14#5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14"
 dependencies = [
  "crypto",
  "hex",
@@ -3239,7 +3240,7 @@ dependencies = [
 [[package]]
 name = "logos-generic-chat"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/libchat.git?rev=0c51d4d0b8d83223a133a157e186f0b9a18527ca#0c51d4d0b8d83223a133a157e186f0b9a18527ca"
+source = "git+https://github.com/logos-messaging/libchat.git?rev=5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14#5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14"
 dependencies = [
  "chat-sqlite",
  "components",
@@ -4863,7 +4864,7 @@ dependencies = [
 [[package]]
 name = "shared-traits"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/libchat.git?rev=0c51d4d0b8d83223a133a157e186f0b9a18527ca#0c51d4d0b8d83223a133a157e186f0b9a18527ca"
+source = "git+https://github.com/logos-messaging/libchat.git?rev=5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14#5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14"
 dependencies = [
  "crypto",
 ]
@@ -4950,7 +4951,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "storage"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/libchat.git?rev=0c51d4d0b8d83223a133a157e186f0b9a18527ca#0c51d4d0b8d83223a133a157e186f0b9a18527ca"
+source = "git+https://github.com/logos-messaging/libchat.git?rev=5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14#5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14"
 dependencies = [
  "crypto",
  "thiserror",
