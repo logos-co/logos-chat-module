@@ -49,6 +49,12 @@ module chat_module {
     ; The member's directory-verified account address, or empty when the member
     ; claims no confirmed account (the UI renders these as an unknown account).
     address: tstr
+    ; True while the group has not committed this member's add, so it cannot
+    ; read the conversation yet. Only invites this instance sent are reported, so
+    ; a member another instance invited appears once the group commits it. The
+    ; flag clears when that commit lands; an invite the group never commits stays
+    ; pending for the life of the conversation.
+    pending: bool
   }
 
   ; --- lifecycle ---
@@ -79,7 +85,8 @@ module chat_module {
   method add_group_member(convo_id: tstr, peer_address: tstr) -> result
   method list_conversations() -> [Conversation]
   method get_messages(convo_id: tstr) -> [Message]
-  ; The roster of a group conversation, one GroupMember per element. Errors when
+  ; The roster of a group conversation, one GroupMember per element: committed
+  ; members first, then invites still awaiting the group's commit. Errors when
   ; convo_id names a direct (non-group) conversation.
   method list_group_members(convo_id: tstr) -> [GroupMember]
   method send_message(convo_id: tstr, content: tstr) -> result
