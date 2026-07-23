@@ -478,6 +478,7 @@ fn member_address(member: logos_generic_chat::GroupMember) -> String {
 #[derive(Serialize)]
 struct GroupMemberRow {
     address: String,
+    pending: bool,
 }
 
 /// The roster of the group conversation `convo_id`, one [`GroupMemberRow`] per
@@ -494,6 +495,7 @@ pub(crate) fn list_group_members(convo_id: &str) -> serde_json::Value {
             let rows: Vec<GroupMemberRow> = members
                 .into_iter()
                 .map(|m| GroupMemberRow {
+                    pending: m.pending,
                     address: member_address(m),
                 })
                 .collect();
@@ -754,12 +756,14 @@ mod tests {
         let verified = GroupMember {
             account: Some(IdentId::new("acct-addr")),
             local_identity: IdentId::new("device-id"),
+            pending: false,
         };
         assert_eq!(member_address(verified), "acct-addr");
 
         let no_account = GroupMember {
             account: None,
             local_identity: IdentId::new("device-id"),
+            pending: false,
         };
         assert_eq!(member_address(no_account), "");
     }
