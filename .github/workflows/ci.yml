@@ -15,21 +15,17 @@ env:
 jobs:
   lint:
     name: Lint
+    environment: ${{ github.ref == 'refs/heads/master' && 'public-cache' || '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
+      - name: Setup Nix and Logos cache
+        uses: logos-co/setup-nix-cache-action@v1
         with:
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-
-      - uses: cachix/cachix-action@v15
-        with:
-          name: logos-co
-          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+          attic-token-ci: ${{ secrets.ATTIC_TOKEN_CI }}
+          attic-token-public: ${{ secrets.ATTIC_TOKEN_PUBLIC }}
 
       - name: Install Rust toolchain
         run: rustup update stable && rustup default stable && rustup component add rustfmt clippy
@@ -57,6 +53,7 @@ jobs:
 
   cargo:
     name: cargo (${{ matrix.os }})
+    environment: ${{ github.ref == 'refs/heads/master' && 'public-cache' || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -66,16 +63,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
+      - name: Setup Nix and Logos cache
+        uses: logos-co/setup-nix-cache-action@v1
         with:
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-
-      - uses: cachix/cachix-action@v15
-        with:
-          name: logos-co
-          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+          attic-token-ci: ${{ secrets.ATTIC_TOKEN_CI }}
+          attic-token-public: ${{ secrets.ATTIC_TOKEN_PUBLIC }}
 
       - name: Install Rust toolchain
         run: rustup update stable && rustup default stable
@@ -96,6 +88,7 @@ jobs:
 
   nix:
     name: nix (${{ matrix.os }})
+    environment: ${{ github.ref == 'refs/heads/master' && 'public-cache' || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -105,16 +98,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
+      - name: Setup Nix and Logos cache
+        uses: logos-co/setup-nix-cache-action@v1
         with:
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-
-      - uses: cachix/cachix-action@v15
-        with:
-          name: logos-co
-          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+          attic-token-ci: ${{ secrets.ATTIC_TOKEN_CI }}
+          attic-token-public: ${{ secrets.ATTIC_TOKEN_PUBLIC }}
 
       - name: nix build .#chat_module
         run: nix build .#chat_module -L
