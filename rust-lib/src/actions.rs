@@ -14,7 +14,8 @@ use std::sync::Arc;
 use libchat::ChatStorage;
 use logos_account::TestLogosAccount;
 use logos_generic_chat::{
-    ChatClientBuilder, DelegateSigner, GroupMetadata, HttpRegistry, StorageConfig,
+    ChatClientBuilder, ContactRegistry, DelegateSigner, GroupMetadata, RegistryPublishMode,
+    StorageConfig,
 };
 use serde::Serialize;
 
@@ -148,10 +149,19 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     let account_addr = account.address();
     let delegate = DelegateSigner::random();
     let device_key = delegate.public_key().clone();
+    let transport = SdkDelivery::new(inbound_rx, subscribe_tx);
+    // Submit over the registry's HTTP API, which acknowledges each bundle. The
+    // delivery wire it offers instead is fire-and-forget, so a rejected bundle
+    // would surface only as a peer failing to resolve us much later.
+    let registry = ContactRegistry::new(
+        transport.publisher(),
+        DEFAULT_REGISTRY_URL,
+        RegistryPublishMode::Http,
+    );
     let (client, events) = ChatClientBuilder::new(account_addr.clone())
         .ident(delegate)
-        .transport(SdkDelivery::new(inbound_rx, subscribe_tx))
-        .registration(HttpRegistry::new(DEFAULT_REGISTRY_URL))
+        .transport(transport)
+        .registration(registry.clone())
         .storage(storage)
         .build()
         .map_err(|e| InitError::Internal(format!("client build failed: {e:?}")))?;
@@ -159,7 +169,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     // Endorse the delegate's device key in the registry's account directory so
     // a peer holding only the account address resolves this device's key package.
     // (The client registers its own key package during build.)
-    let mut directory = HttpRegistry::new(DEFAULT_REGISTRY_URL);
+    let mut directory = registry;
     account
         .add_delegate_signer(&mut directory, &device_key)
         .map_err(|e| InitError::Internal(format!("publish device bundle failed: {e:?}")))?;
@@ -478,12 +488,14 @@ fn member_address(member: logos_generic_chat::GroupMember) -> String {
 #[derive(Serialize)]
 struct GroupMemberRow {
     address: String,
+    pending: bool,
 }
 
-/// The roster of the group conversation `convo_id`, one [`GroupMemberRow`] per
-/// element. This is a plain list with no error channel, mirroring `get_messages`:
-/// an unknown or non-group conversation, or a client error, yields an empty
-/// array (the client error is logged).
+/// The roster of the conversation `convo_id`, one [`GroupMemberRow`] per
+/// element; a direct conversation reports both participants. This is a plain
+/// list with no error channel, mirroring `get_messages`: an unknown
+/// conversation, or a client error, yields an empty array (the client error is
+/// logged).
 pub(crate) fn list_group_members(convo_id: &str) -> serde_json::Value {
     let empty = || serde_json::Value::Array(vec![]);
     if !with_display(|d| d.state.chats.contains_key(convo_id)) {
@@ -494,6 +506,7 @@ pub(crate) fn list_group_members(convo_id: &str) -> serde_json::Value {
             let rows: Vec<GroupMemberRow> = members
                 .into_iter()
                 .map(|m| GroupMemberRow {
+                    pending: m.pending,
                     address: member_address(m),
                 })
                 .collect();
@@ -754,12 +767,14 @@ mod tests {
         let verified = GroupMember {
             account: Some(IdentId::new("acct-addr")),
             local_identity: IdentId::new("device-id"),
+            pending: false,
         };
         assert_eq!(member_address(verified), "acct-addr");
 
         let no_account = GroupMember {
             account: None,
             local_identity: IdentId::new("device-id"),
+            pending: false,
         };
         assert_eq!(member_address(no_account), "");
     }

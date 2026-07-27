@@ -56,11 +56,13 @@ peer at a time with `add_group_member(convo_id, peer_address)`; every member
 sees the same conversation id, and adds are committed by the group's steward
 asynchronously, so a peer joins some time after the call returns. A group's
 `name` and `desc` are shared metadata carried to every joiner, both optional.
-`list_group_members(convo_id)` returns a group's roster from libchat's MLS
-state. The `Conversation` record and the `conversation_created` event carry a
-`kind` (`"direct"` or `"group"`) distinguishing the two shapes, plus a group's
-shared `name` and `description` (unset for direct conversations and unnamed
-groups). Received
+`list_group_members(convo_id)` returns a conversation's roster from libchat's
+MLS state, including invites this instance has sent that the group has not
+committed yet, flagged `pending`; a direct conversation reports both
+participants and never a pending one. The `Conversation` record and the
+`conversation_created` event carry a `kind` (`"direct"` or `"group"`)
+distinguishing the two shapes, plus a group's shared `name` and `description`
+(unset for direct conversations and unnamed groups). Received
 messages carry a `sender` (on the `Message` record and the `message_received`
 event): the sender's directory-verified account address, or its device id
 when the sender claims no account.
