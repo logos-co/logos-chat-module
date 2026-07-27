@@ -1,6 +1,15 @@
 {
   description = "Logos Chat Module";
 
+  # Pull pre-built artifacts (delivery module, liblogosdelivery, …) from the
+  # self-hosted Logos Attic cache, for local builds too — CI configures its
+  # substituters itself. Read-only and public; see infra-ci#263. Only the
+  # public (master-built) cache belongs here; ci is CI-only by design.
+  nixConfig = {
+    extra-substituters = [ "https://cache.nix.logos.co/public" ];
+    extra-trusted-public-keys = [ "public:l4HrXgL4nw246+LBh2SOJyhz64BoGegOYLheT/iIAPU=" ];
+  };
+
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder";
 
