@@ -60,6 +60,8 @@ hex            = "0.4"
 tracing            = "0.1"
 # The process's `tracing` subscriber (see `logging`); `env-filter` reads `RUST_LOG`.
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# The event and level types the subscriber's line format is written against.
+tracing-core       = "0.1"
 
 # libchat's `crypto` crate is written for the xeddsa 1.0 API. Cargo's
 # default SemVer resolution would pick 1.1.0 (released since), whose
@@ -67,3 +69,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # `crypto` crate. Pin to 1.0.2 (libchat's own declared version) to keep
 # the transitive build working.
 xeddsa         = "=1.0.2"
+
+[dev-dependencies]

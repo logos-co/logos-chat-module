@@ -116,6 +116,11 @@ from its host, replaces that default outright, so a verbose run names every
 target it wants:
 `RUST_LOG=warn,chat_module=debug,libchat=debug,logos_generic_chat=debug`.
 
+Each line is `<SEVERITY>: <target>: <message>`, with `WARNING` for a warning
+because that is the token a host ranks the line by, and with no timestamp
+because the host stamps what it re-emits. A reader downstream gets the level
+from the host's own column and the domain from the target.
+
 ## Doc-tests
 
 The specs under [`doctests/`](doctests/) are executable usage tutorials: each
