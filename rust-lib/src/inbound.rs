@@ -101,7 +101,7 @@ fn run_bridge(
 fn forward_message(evt: &EventData, inbound_tx: &Sender<Vec<u8>>) {
     let Some(msg) = crate::delivery_module::DeliveryModuleClient::decode_message_received(evt)
     else {
-        eprintln!("chat_module inbound: messageReceived payload missing or malformed");
+        tracing::warn!("inbound: messageReceived payload missing or malformed");
         return;
     };
     if !msg.content_topic.starts_with(crate::delivery::TOPIC_PREFIX) {
@@ -125,7 +125,7 @@ fn forward_subscriptions(subscribe_rx: &Receiver<String>) {
             .delivery_module
             .subscribe_async(&topic, move |res| {
                 if let Err(e) = res {
-                    eprintln!("chat_module: delivery_module.subscribe failed: {e}");
+                    tracing::error!("delivery_module.subscribe failed: {e}");
                 }
             });
     }
@@ -154,7 +154,7 @@ fn run_events(events: Receiver<Event>) {
                 record_members_changed(&convo_id);
             }
             Event::InboundError { message } => {
-                eprintln!("chat_module: inbound error: {message}");
+                tracing::warn!("inbound error: {message}");
             }
             // `Event` is `#[non_exhaustive]`; ignore variants added upstream.
             _ => {}

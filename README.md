@@ -100,13 +100,21 @@ is a matter of giving each host its own session directory (`--config-dir` under
 `logoscore`); `init` fails when the host assigned no such directory. The delivery
 node listens on ports it picks itself, so instances need no port coordination.
 
-`init` also installs a `tracing` subscriber, so libchat's log events go to the
-module's stderr and the host forwards them into its own log. The default level
-is `warn`; `RUST_LOG`, read from the environment the module process inherits
-from its host, selects more. libchat logs under two targets: `libchat` (the
-conversation core, MLS groups, inbox) and `logos_generic_chat` (the threaded
-client and its inbound worker), so a verbose run is
-`RUST_LOG=warn,libchat=debug,logos_generic_chat=debug`.
+`init` also installs a `tracing` subscriber, so the chat core's log events go to
+the module's stderr and the host forwards them into its own log. Three targets
+carry that account of a run: `libchat` (the conversation core, MLS groups,
+inbox), `logos_generic_chat` (the threaded client and its inbound worker), and
+`chat_module` itself. The module is one of them because the other two are nearly
+silent: between them they raise eleven events, almost all on paths that are
+already failing, so a run that merely behaves oddly would write nothing. This
+module reports its own lifecycle instead, and logs a message as a byte count and
+a conversation id, never as content. The default is
+`warn,chat_module=info,libchat=info,logos_generic_chat=info`, which surfaces the
+chat core's lifecycle without the far larger `info` output of the crates
+underneath it. `RUST_LOG`, read from the environment the module process inherits
+from its host, replaces that default outright, so a verbose run names every
+target it wants:
+`RUST_LOG=warn,chat_module=debug,libchat=debug,logos_generic_chat=debug`.
 
 ## Doc-tests
 
