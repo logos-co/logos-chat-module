@@ -17,12 +17,6 @@
     "rust": { "crate": "rust-lib" }
   },
 
-  "dependency_overrides": {
-    "delivery_module": {
-      "file": "rust-lib/deps/delivery_module.lidl"
-    }
-  },
-
   "nix": {
     "external_libraries": [],
     "packages": {
