@@ -35,15 +35,31 @@ pub(crate) fn install_once() {
     INSTALL.call_once(|| {
         let filter =
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(DEFAULT_FILTER));
+        let selected = filter.to_string();
         // Field formatting still consults the ANSI setting, and the output lands
         // in pipes and log files where escapes are noise. `try_init` leaves an
         // already-installed subscriber alone.
-        let _ = tracing_subscriber::fmt()
+        let installed = tracing_subscriber::fmt()
             .with_env_filter(filter)
             .with_writer(std::io::stderr)
             .with_ansi(false)
             .event_format(HostLine)
             .try_init();
+        // Said in the module's own voice rather than through `tracing`, because
+        // what it reports is whether `tracing` reaches anything at all. The
+        // failure is silent otherwise: the chat core's events go on being raised
+        // and dropped, and a reader has no way to tell that from a quiet stack.
+        // No `Debug:`/`Trace:` prefix on the success line: the host classifies a
+        // module's stderr by exactly those keywords and its own logger sits at
+        // info, so a line that names itself debug is dropped before it reaches
+        // the log. An unprefixed line lands at info.
+        match installed {
+            Ok(()) => eprintln!("chat_module: logging {selected}"),
+            Err(error) => eprintln!(
+                "Warning: chat_module: another subscriber is already installed, \
+                 the chat core's events will not be logged: {error}"
+            ),
+        }
     });
 }
 
