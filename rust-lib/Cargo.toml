@@ -62,6 +62,10 @@ tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # The event and level types the subscriber's line format is written against.
 tracing-core       = "0.1"
+# Stamps this run's log file name in local time, which is the naming a consumer
+# groups a log directory into runs by. Already in the graph, so declaring it
+# builds nothing new.
+chrono         = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 # libchat's `crypto` crate is written for the xeddsa 1.0 API. Cargo's
 # default SemVer resolution would pick 1.1.0 (released since), whose
@@ -71,3 +75,5 @@ tracing-core       = "0.1"
 xeddsa         = "=1.0.2"
 
 [dev-dependencies]
+# A directory the run-log tests can rotate and prune in.
+tempfile = "3"

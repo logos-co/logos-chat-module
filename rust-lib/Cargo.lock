@@ -1249,6 +1249,7 @@ dependencies = [
 name = "chat_module"
 version = "0.2.0"
 dependencies = [
+ "chrono",
  "crossbeam-channel",
  "hex",
  "libchat",
@@ -1257,6 +1258,7 @@ dependencies = [
  "logos-rust-sdk",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
  "tracing",
  "tracing-core",

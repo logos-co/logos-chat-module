@@ -58,10 +58,21 @@ module chat_module {
   }
 
   ; --- lifecycle ---
+  type ChatConfig {
+    ; The delivery network to join. Empty or absent means "logos.dev".
+    ? delivery_preset: tstr
+    ; How much of the chat core's own account of a run to log:
+    ; "error" | "warn" | "info" | "debug" | "trace". Absent or unrecognised
+    ; means "info". Read once, at init: a later init leaves it as it was.
+    ? log_level: tstr
+  }
   ; Storage lives under the instance directory the host assigns; init fails when
   ; the host assigned none.
-  method init(delivery_preset: tstr) -> result
+  method init(config: ChatConfig) -> result
   method shutdown() -> result
+  ; The file this module is writing its log to, in the instance directory the
+  ; host assigned. Empty before init, and on a host that assigned none.
+  method get_log_path() -> tstr
 
   ; --- identity ---
   method get_installation_name() -> tstr
