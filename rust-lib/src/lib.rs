@@ -155,6 +155,13 @@ impl ChatModule for ChatModuleImpl {
         logging::log_path()
     }
 
+    /// Touches no state and takes no lock: a probe that could block would report
+    /// a busy module as a dead one, and the process answering is the whole
+    /// answer. Deliberately silent, since a caller polls this.
+    fn health(&mut self) -> bool {
+        true
+    }
+
     fn get_installation_name(&mut self) -> String {
         actions::installation_name()
     }

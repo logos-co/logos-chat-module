@@ -73,6 +73,10 @@ module chat_module {
   ; The file this module is writing its log to, in the instance directory the
   ; host assigned. Empty before init, and on a host that assigned none.
   method get_log_path() -> tstr
+  ; Liveness. Always true, and reachable without init or any lock held, so what
+  ; a caller learns is whether this module answered at all: a host that lost the
+  ; process fails the call instead, and a false is that failure surfacing.
+  method health() -> bool
 
   ; --- identity ---
   method get_installation_name() -> tstr

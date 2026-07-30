@@ -49,6 +49,13 @@ conversation id, an intro bundle, or null), `Err(message)` a human-readable
 reason. Collection getters (`list_conversations`, `get_messages`) return JSON
 arrays. See the `.lidl` for the full method list and record shapes.
 
+`health()` is the exception: it returns `true` and nothing else, needs no `init`,
+and holds no lock, so what a caller learns is whether the call arrived at all. It
+exists because a module that dies takes no part in noticing. Nothing is pushed
+when the process goes, and a consumer otherwise finds out only when the next
+thing it does runs out its own timeout, having looked connected until then.
+Polling this turns that into a bounded delay, and a failed call is the answer.
+
 Two conversation shapes are exposed. `create_conversation(peer_address)` opens
 a 1:1 DirectV1 conversation. `create_group_conversation(name, desc)` creates a
 GroupV2 (de-mls) group with this installation as its only member, grown one
