@@ -195,7 +195,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         Err(e) => {
             // Non-fatal: messaging still works; we just won't surface
             // delivery_state changes pushed by the node.
-            eprintln!("chat_module init: subscribe(connectionStateChanged) failed: {e}");
+            tracing::error!("init: subscribe(connectionStateChanged) failed: {e}");
             None
         }
     };
@@ -279,9 +279,8 @@ fn start_node() {
         });
 }
 
-/// Record an async-bootstrap failure: log it and reflect it in delivery_state.
+/// Record an async-bootstrap failure in delivery_state, which is what logs it.
 fn set_delivery_error(detail: String) {
-    eprintln!("chat_module: {detail}");
     with_display_mut(|d| set_delivery_state(d, DeliveryStateKind::Error, &detail));
 }
 
@@ -304,7 +303,7 @@ pub(crate) fn shutdown(mut ms: ModuleState) {
     with_display_mut(|d| {
         // Final write; nothing left to propagate to, so log a failure.
         if let Err(e) = save_display(d) {
-            eprintln!("chat_module: save_state failed on shutdown: {e}");
+            tracing::error!("save_state failed on shutdown: {e}");
         }
         *d = Display::default();
     });
@@ -394,6 +393,7 @@ pub(crate) fn create_conversation(peer_address: &str) -> Result<String, CoreErro
     let chat_id = with_client(|client| client.create_direct_conversation(peer_address))?
         .map_err(|e| CoreError::Internal(format!("create_conversation failed: {e:?}")))?;
 
+    tracing::info!("created direct conversation {chat_id}");
     let peer_label = short_label(&chat_id).to_owned();
     with_display_mut(|d| {
         d.state.chats.insert(
@@ -430,6 +430,8 @@ pub(crate) fn create_group_conversation(name: &str, desc: &str) -> Result<String
         client.create_group_conversation(&[], GroupMetadata::new(name, desc))
     })?
     .map_err(|e| CoreError::Internal(format!("create_group_conversation failed: {e:?}")))?;
+
+    tracing::info!("created group conversation {chat_id}");
 
     let label = short_label(&chat_id).to_owned();
     with_display_mut(|d| {
@@ -513,11 +515,11 @@ pub(crate) fn list_group_members(convo_id: &str) -> serde_json::Value {
             serde_json::to_value(rows).unwrap_or_else(|_| empty())
         }
         Ok(Err(e)) => {
-            eprintln!("chat_module: list_group_members failed: {e:?}");
+            tracing::warn!("list_group_members failed: {e:?}");
             empty()
         }
         Err(e) => {
-            eprintln!("chat_module: list_group_members: {e}");
+            tracing::warn!("list_group_members: {e}");
             empty()
         }
     }
@@ -569,6 +571,10 @@ pub(crate) fn send_message(convo_id: &str, content: &str) -> Result<(), CoreErro
 
     with_client(|client| client.send_message(convo_id, content.as_bytes()))?
         .map_err(|e| CoreError::Delivery(format!("send_message failed: {e:?}")))?;
+
+    // Size, never the text: this file is handed to whoever is diagnosing a run,
+    // and the one thing a chat log must not leak is what was said.
+    tracing::info!("sent {} bytes to {convo_id}", content.len());
 
     let ts = now_ms();
     // Persist before emitting: the message is already on the wire, but if the
@@ -640,6 +646,13 @@ pub(crate) fn set_delivery_state(d: &mut Display, state: DeliveryStateKind, deta
         state,
         detail: detail.to_owned(),
     };
+    // The transitions, not the polling: this returns early while the state
+    // stands, so a line here is one thing actually changing.
+    match (state, detail) {
+        (DeliveryStateKind::Error, _) => tracing::error!("delivery failed: {detail}"),
+        (_, "") => tracing::info!("delivery is {}", state.as_str()),
+        _ => tracing::info!("delivery is {}: {detail}", state.as_str()),
+    }
     crate::emit_delivery_state_changed(state.as_str(), detail);
 }
 
@@ -656,11 +669,11 @@ pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind
         match with_client(|client| client.group_metadata(convo_id)) {
             Ok(Ok(meta)) => (non_empty(&meta.name), non_empty(&meta.desc)),
             Ok(Err(e)) => {
-                eprintln!("chat_module: group_metadata failed: {e:?}");
+                tracing::warn!("group_metadata failed: {e:?}");
                 (None, None)
             }
             Err(e) => {
-                eprintln!("chat_module: group_metadata: {e}");
+                tracing::warn!("group_metadata: {e}");
                 (None, None)
             }
         }
@@ -695,7 +708,7 @@ pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind
 
         // Event consumer has no caller to return to; log a failed write.
         if let Err(e) = save_display(d) {
-            eprintln!("chat_module: save_state failed after conversation started: {e}");
+            tracing::error!("save_state failed after conversation started: {e}");
         }
     });
 }
@@ -710,6 +723,11 @@ pub(crate) fn record_message_received(convo_id: &str, content: &[u8], sender: &s
         if d.state.deleted.contains(convo_id) {
             return;
         }
+        tracing::info!(
+            "received {} bytes in {convo_id} from {}",
+            content.len(),
+            short_label(sender)
+        );
         let text = String::from_utf8_lossy(content).to_string();
         let ts = now_ms();
         let session = d
@@ -736,7 +754,7 @@ pub(crate) fn record_message_received(convo_id: &str, content: &[u8], sender: &s
         crate::emit_message_received(convo_id, &text, ts as i64, sender);
 
         if let Err(e) = save_display(d) {
-            eprintln!("chat_module: save_state failed after inbound message: {e}");
+            tracing::error!("save_state failed after inbound message: {e}");
         }
     });
 }

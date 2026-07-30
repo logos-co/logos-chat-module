@@ -148,7 +148,7 @@ sections:
   - title: "Bring the three instances online"
     step: true
     text: |
-      `init(delivery_preset)` returns immediately and kicks off the
+      `init(config)` returns immediately and kicks off the
       delivery bootstrap asynchronously; readiness arrives later when
       `status().delivery_state` flips to `online`. All three are
       initialised **first** so their cold Waku bootstraps overlap, then each is
@@ -157,20 +157,25 @@ sections:
       - title: "Initialise Alice, Bob, and Carol"
         run: |
           for who in alice bob carol; do
-            out=$(./logos/bin/logoscore --config-dir "$who" call chat_module init logos.test)
+            out=$(./logos/bin/logoscore --config-dir "$who" call chat_module init '{"delivery_preset":"logos.test"}')
             echo "$out"
             echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "$who init failed: $out" >&2; exit 1; }
             echo "${who}_INIT_OK"
           done
         code_block: |
-          logoscore --config-dir alice call chat_module init logos.test
-          logoscore --config-dir bob   call chat_module init logos.test
-          logoscore --config-dir carol call chat_module init logos.test
+          logoscore --config-dir alice call chat_module init '{"delivery_preset":"logos.test"}'
+          logoscore --config-dir bob   call chat_module init '{"delivery_preset":"logos.test"}'
+          logoscore --config-dir carol call chat_module init '{"delivery_preset":"logos.test"}'
         expect_contains:
           - "alice_INIT_OK"
           - "bob_INIT_OK"
           - "carol_INIT_OK"
         post_text: |
+          `init` takes a `ChatConfig` record, and every field of it is optional:
+          `log_level` is left out here, so the chat core logs at its default. The
+          record arrives as its JSON text because `logoscore call` coerces an
+          argument to a bool, a number or a string, never to an object.
+
           Neither storage nor ports need an argument: each instance uses the
           directory its daemon assigned it, and its delivery node listens on
           ports it picks itself.

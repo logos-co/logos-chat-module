@@ -122,8 +122,8 @@ pub(crate) fn load_state(path: &Path) -> AppState {
     let contents = match fs::read_to_string(path) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!(
-                "chat_module: load_state: cannot read {}: {e}; starting with default state",
+            tracing::warn!(
+                "load_state: cannot read {}: {e}; starting with default state",
                 path.display()
             );
             return AppState::default();
@@ -141,15 +141,15 @@ pub(crate) fn load_state(path: &Path) -> AppState {
                 .unwrap_or(0);
             let bad = path.with_extension(format!("json.bad.{suffix}"));
             if let Err(rename_err) = fs::rename(path, &bad) {
-                eprintln!(
-                    "chat_module: load_state: parse failure on {}: {e}; \
+                tracing::error!(
+                    "load_state: parse failure on {}: {e}; \
                      ALSO failed to move corrupt file aside ({rename_err}); \
-                     starting with default state — next save will overwrite",
+                     starting with default state, and the next save overwrites it",
                     path.display()
                 );
             } else {
-                eprintln!(
-                    "chat_module: load_state: parse failure on {}: {e}; \
+                tracing::warn!(
+                    "load_state: parse failure on {}: {e}; \
                      corrupt file moved to {}; starting with default state",
                     path.display(),
                     bad.display()

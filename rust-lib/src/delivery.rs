@@ -85,7 +85,7 @@ impl DeliveryService for SdkPublisher {
             .delivery_module
             .send_async(&topic, &envelope.data, move |res| {
                 if let Err(e) = res {
-                    eprintln!("chat_module: delivery_module.send failed: {e}");
+                    tracing::error!("delivery_module.send failed: {e}");
                 }
             });
         Ok(())

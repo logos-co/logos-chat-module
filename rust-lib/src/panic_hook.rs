@@ -7,9 +7,16 @@
 //! code. What *does* run before abort is the panic hook: install one that
 //! prints location + payload to stderr so libchat crashes inside the
 //! `logos_host_qt` subprocess are locatable instead of an opaque SIGABRT.
+//!
+//! The same goes to this run's log file, with a backtrace. A crash is the
+//! failure a reader most needs the file for, and it is the one thing that cannot
+//! arrive as a `tracing` event: the process is already on its way down.
 
+use std::backtrace::Backtrace;
 use std::panic;
 use std::sync::Once;
+
+use crate::logging;
 
 static INSTALL: Once = Once::new();
 
@@ -23,15 +30,18 @@ pub(crate) fn install_once() {
                 .copied()
                 .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
                 .unwrap_or("<non-string panic payload>");
-            match info.location() {
-                Some(loc) => eprintln!(
-                    "chat_module: panic at {}:{}:{}: {msg}",
-                    loc.file(),
-                    loc.line(),
-                    loc.column()
-                ),
-                None => eprintln!("chat_module: panic at <unknown location>: {msg}"),
-            }
+            let origin = match info.location() {
+                Some(loc) => format!("{}:{}:{}", loc.file(), loc.line(), loc.column()),
+                None => "<unknown location>".to_string(),
+            };
+            eprintln!("chat_module: panic at {origin}: {msg}");
+            // Forced, not `capture`: this is the one line that has to carry a
+            // trace, and leaving it to `RUST_BACKTRACE` means the run that
+            // crashed is the run that did not record why.
+            logging::write_line(&format!(
+                "CRITICAL: chat_module: panic at {origin}: {msg}\n{}",
+                Backtrace::force_capture()
+            ));
             previous(info);
         }));
     });
