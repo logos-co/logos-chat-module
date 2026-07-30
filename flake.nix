@@ -11,7 +11,11 @@
   };
 
   inputs = {
-    logos-module-builder.url = "github:logos-co/logos-module-builder";
+    # Pinned to the 0.2.6 release, whose host reads a dependency entry written
+    # in object form (logos-module 9fb81c5, reached through logos-standalone-app
+    # and liblogos). An older host drops such an entry and never loads what it
+    # names.
+    logos-module-builder.url = "github:logos-co/logos-module-builder/0.2.6";
 
     # Pinned to the v0.1.3 release tag, which includes the zerokit/RLN nix
     # build fix (delivery-module #49). Kept in lockstep with logos-chat-ui's pin.

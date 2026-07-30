@@ -8,7 +8,7 @@
   "interface": "cdylib",
   "category": "chat",
   "main": "chat_module_plugin",
-  "dependencies": ["delivery_module"],
+  "dependencies": [{ "name": "delivery_module", "version": "=0.1.3" }],
   "include": [],
   "capabilities": [],
 
