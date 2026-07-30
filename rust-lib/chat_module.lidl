@@ -10,7 +10,7 @@
 ; (no generated C++ struct) — they document the shape and "light up" if the
 ; generators gain struct support.
 module chat_module {
-  version "0.2.0"
+  version "0.2.1"
   description "Chat module for Logos: e2e-encrypted conversations over delivery_module."
   category "chat"
   depends [delivery_module]
