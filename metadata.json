@@ -1,14 +1,14 @@
 {
   "name": "chat_module",
   "display_name": "Chat Module",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Chat module for Logos",
   "author": "Logos Core Team",
   "type": "core",
   "interface": "cdylib",
   "category": "chat",
   "main": "chat_module_plugin",
-  "dependencies": ["delivery_module"],
+  "dependencies": [{ "name": "delivery_module", "version": "=0.1.3" }],
   "include": [],
   "capabilities": [],
 
