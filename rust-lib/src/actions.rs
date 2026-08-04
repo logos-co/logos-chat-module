@@ -250,12 +250,15 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
 /// these calls once the host bootstraps delivery_module and exposes it
 /// ready-to-use.
 pub(crate) fn start_delivery_bootstrap(preset: &str) {
-    // No listening ports: delivery_module assigns a free one to every socket the
-    // config leaves unpinned, which is what keeps instances sharing a host apart.
+    // The layered app-developer shape from delivery_module's docs. Only wrapper
+    // keys may sit at the top level: any bare key (a top-level logLevel included)
+    // reroutes the config to the legacy flat parser, whose port defaults are
+    // fixed values — the layered path defaults every unpinned listening port to
+    // 0 (OS-assigned), which is what keeps instances sharing a host apart.
     let config_json = serde_json::json!({
         "mode": "Core",
         "preset": preset,
-        "logLevel": "ERROR",
+        "messagingOverrides": { "logLevel": "ERROR" },
     })
     .to_string();
 
