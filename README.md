@@ -100,7 +100,7 @@ flake pins [`logos-delivery-module`](https://github.com/logos-co/logos-delivery-
 at `v0.1.3`. Load `chat_module` via `logoscore` or Basecamp.
 
 Bring-up is `init(config)`, taking a `ChatConfig` record whose every field is
-optional: `delivery_preset` (empty or absent → `logos.dev`) and `log_level`.
+optional: `delivery_preset` (empty or absent → `logos.test`) and `log_level`.
 `init` starts delivery asynchronously and returns immediately; readiness arrives
 later as a `delivery_state_changed` event reaching `online`. State is written to
 the instance directory the host assigns, so running two instances side by side

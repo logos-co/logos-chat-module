@@ -59,7 +59,7 @@ module chat_module {
 
   ; --- lifecycle ---
   type ChatConfig {
-    ; The delivery network to join. Empty or absent means "logos.dev".
+    ; The delivery network to join. Empty or absent means "logos.test".
     ? delivery_preset: tstr
     ; How much of the chat core's own account of a run to log:
     ; "error" | "warn" | "info" | "debug" | "trace". Absent or unrecognised

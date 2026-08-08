@@ -112,7 +112,7 @@ impl ChatModule for ChatModuleImpl {
         logging::install_once(config_field(&config, "log_level"));
 
         let preset = match config_field(&config, "delivery_preset") {
-            "" => "logos.dev",
+            "" => "logos.test",
             named => named,
         };
 
