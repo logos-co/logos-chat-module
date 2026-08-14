@@ -15,7 +15,7 @@
     # `serde_json::Value` in place of the contract's records. Pinned to a rev
     # rather than a tag only because no release carries the typed-record codegen
     # yet — re-pin to the tag once one is cut.
-    logos-module-builder.url = "github:logos-co/logos-module-builder/9d3b7cc1f5a283d056e21c077bafb49f1b00e24f";
+    logos-module-builder.url = "github:logos-co/logos-module-builder/e45caf147bdb938a2e2025ef52f1a25070841711";
 
     # Pinned to the v0.2.0 release tag (Reliable Channels API, storeQuery,
     # layered createNode config; the flat config shape this module sends still
