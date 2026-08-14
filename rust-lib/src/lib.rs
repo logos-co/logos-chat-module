@@ -65,38 +65,20 @@ pub(crate) use generated::*;
 /// exists only to satisfy the `result` return type.
 const ERR_LOCK_POISONED: &str = "internal error: module lock poisoned";
 
-/// The `ChatConfig` record `init` received, as the object its fields are read
-/// out of.
-///
-/// Two shapes arrive. A caller with a generated client sends an object. A caller
-/// using `logoscore call` sends the object's JSON *text*, because the CLI coerces
-/// an argument to a bool, a number or a string and never to an object — so a
-/// record parameter reaches a module as a string or not at all.
-fn chat_config(argument: Value) -> Value {
-    let Value::String(text) = &argument else {
-        return argument;
-    };
-    serde_json::from_str(text).unwrap_or_else(|_| {
-        // Said out loud: the argument before the record existed was the preset
-        // itself, so the alternative is joining the wrong delivery network in
-        // silence.
-        eprintln!(
-            "chat_module init: {text:?} is not a ChatConfig record; pass the \
-             record, or its JSON text. Every setting takes its default."
-        );
-        Value::Null
-    })
-}
+/// The delivery network joined when `init`'s config names none.
+const DEFAULT_DELIVERY_PRESET: &str = "logos.test";
 
-/// One field of a [`chat_config`] record.
+/// The delivery preset `config` selects, or [`DEFAULT_DELIVERY_PRESET`].
 ///
-/// The record materialises untyped — today's codegen has no generated struct for
-/// a record in parameter position — so every field is read out by hand and every
-/// one is optional. An empty string is what an absent field, a field of the wrong
-/// type, and a caller who sent no record at all all look like; each field's own
-/// default covers it.
-fn config_field<'a>(config: &'a Value, name: &str) -> &'a str {
-    config.get(name).and_then(Value::as_str).unwrap_or_default()
+/// An absent field and an empty one are the same "unset": every `ChatConfig`
+/// field is optional, and a caller sending `""` means no more than one omitting
+/// the key. Decoding the record itself is the SDK's job now that the parameter
+/// is typed — this is only the defaulting.
+fn delivery_preset(config: &ChatConfig) -> &str {
+    match config.delivery_preset.as_deref() {
+        None | Some("") => DEFAULT_DELIVERY_PRESET,
+        Some(named) => named,
+    }
 }
 
 /// The `ChatModule` contract implementation. Stateless: all module state lives
@@ -106,15 +88,11 @@ fn config_field<'a>(config: &'a Value, name: &str) -> &'a str {
 struct ChatModuleImpl;
 
 impl ChatModule for ChatModuleImpl {
-    fn init(&mut self, config: Value) -> Result<Value, String> {
+    fn init(&mut self, config: ChatConfig) -> Result<Value, String> {
         panic_hook::install_once();
-        let config = chat_config(config);
-        logging::install_once(config_field(&config, "log_level"));
+        logging::install_once(config.log_level.as_deref().unwrap_or_default());
 
-        let preset = match config_field(&config, "delivery_preset") {
-            "" => "logos.test",
-            named => named,
-        };
+        let preset = delivery_preset(&config);
 
         match module().install_with(actions::initialize) {
             Err(_) => Err(ERR_LOCK_POISONED.to_string()),
@@ -198,15 +176,15 @@ impl ChatModule for ChatModuleImpl {
             .map_err(|e| e.to_string())
     }
 
-    fn list_conversations(&mut self) -> Value {
+    fn list_conversations(&mut self) -> Vec<Conversation> {
         actions::list_conversations()
     }
 
-    fn get_messages(&mut self, convo_id: String) -> Value {
+    fn get_messages(&mut self, convo_id: String) -> Vec<Message> {
         actions::get_messages(&convo_id)
     }
 
-    fn list_group_members(&mut self, convo_id: String) -> Value {
+    fn list_group_members(&mut self, convo_id: String) -> Vec<GroupMember> {
         actions::list_group_members(&convo_id)
     }
 
@@ -232,7 +210,7 @@ impl ChatModule for ChatModuleImpl {
             .map_err(|e| e.to_string())
     }
 
-    fn status(&mut self) -> Value {
+    fn status(&mut self) -> Status {
         actions::status()
     }
 }
@@ -248,54 +226,45 @@ pub extern "Rust" fn logos_module_install() {
 mod tests {
     use super::*;
 
-    /// A generated client sends the record as an object.
-    #[test]
-    fn a_record_is_read_field_by_field() {
-        let config = chat_config(serde_json::json!({
-            "delivery_preset": "logos.test",
-            "log_level": "debug",
-        }));
+    // The suite that stood here covered `chat_config`/`config_field`: reading a
+    // `ChatConfig` out of an untyped `Value`, whether it arrived as an object,
+    // as its JSON *text* (all `logoscore call` could send), or as something that
+    // was no record at all. `init` takes a typed `ChatConfig` now, so decoding —
+    // and every one of those cases — belongs to the SDK, and those tests went
+    // with the code they covered. The defaulting below is what is still ours.
 
-        assert_eq!(config_field(&config, "delivery_preset"), "logos.test");
-        assert_eq!(config_field(&config, "log_level"), "debug");
+    /// A named preset is what the caller asked for.
+    #[test]
+    fn a_named_preset_is_used() {
+        let config = ChatConfig {
+            delivery_preset: Some("logos.staging".to_string()),
+            log_level: None,
+        };
+
+        assert_eq!(delivery_preset(&config), "logos.staging");
     }
 
-    /// `logoscore call` can only send the record as text, so the text is the
-    /// record.
+    /// Every `ChatConfig` field is optional, so a caller may set only the log
+    /// level and still join the default network.
     #[test]
-    fn the_records_json_text_is_the_record() {
-        let config = chat_config(Value::String(
-            r#"{"delivery_preset":"logos.test"}"#.to_string(),
-        ));
+    fn an_absent_preset_takes_the_default() {
+        let config = ChatConfig {
+            delivery_preset: None,
+            log_level: Some("trace".to_string()),
+        };
 
-        assert_eq!(config_field(&config, "delivery_preset"), "logos.test");
+        assert_eq!(delivery_preset(&config), DEFAULT_DELIVERY_PRESET);
     }
 
-    /// Every field is optional, so a caller may configure one setting and leave
-    /// the rest alone.
+    /// An empty preset is "unset", not a network named "". The alternative is
+    /// joining nothing in silence.
     #[test]
-    fn an_absent_field_reads_empty() {
-        let config = chat_config(serde_json::json!({ "log_level": "trace" }));
+    fn an_empty_preset_takes_the_default() {
+        let config = ChatConfig {
+            delivery_preset: Some(String::new()),
+            log_level: None,
+        };
 
-        assert_eq!(config_field(&config, "delivery_preset"), "");
-        assert_eq!(config_field(&config, "log_level"), "trace");
-    }
-
-    /// What a caller from before the record sends: the preset on its own. It is
-    /// not a record, so it configures nothing — but it must not take the module
-    /// down on the way to finding that out.
-    #[test]
-    fn an_argument_that_is_no_record_configures_nothing() {
-        for argument in [
-            Value::String("logos.test".to_string()),
-            Value::Null,
-            serde_json::json!(3),
-            serde_json::json!(["logos.test"]),
-        ] {
-            let config = chat_config(argument);
-
-            assert_eq!(config_field(&config, "delivery_preset"), "");
-            assert_eq!(config_field(&config, "log_level"), "");
-        }
+        assert_eq!(delivery_preset(&config), DEFAULT_DELIVERY_PRESET);
     }
 }

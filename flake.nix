@@ -11,10 +11,11 @@
   };
 
   inputs = {
-    # Held at the 0.2.6 release rather than master: master carries a
-    # logos-rust-sdk whose lidl-gen emits declared records as typed Rust
-    # structs, which this module's providers are not written against.
-    logos-module-builder.url = "github:logos-co/logos-module-builder/0.2.6";
+    # Past 0.2.6, whose logos-rust-sdk still generated the provider trait with
+    # `serde_json::Value` in place of the contract's records. Pinned to a rev
+    # rather than a tag only because no release carries the typed-record codegen
+    # yet — re-pin to the tag once one is cut.
+    logos-module-builder.url = "github:logos-co/logos-module-builder/9d3b7cc1f5a283d056e21c077bafb49f1b00e24f";
 
     # Pinned to the v0.2.0 release tag (Reliable Channels API, storeQuery,
     # layered createNode config; the flat config shape this module sends still
