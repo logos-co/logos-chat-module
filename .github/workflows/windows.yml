@@ -1,0 +1,54 @@
+name: Windows
+
+# Cross-builds this module's `x86_64-windows` target on an ordinary Linux
+# runner and gates the result on a real windows-latest runner. Everything
+# except the `with:` block below -- the Nix install and cache, the
+# target-existence guard, the cold-cache refusal, the PE-format and
+# import-closure gates, the .lgx payload gate, the artifact hand-off and its
+# round-trip check -- lives once in logos-co/logos-windows-ci.
+#
+# WHAT THIS BUYS, AND WHAT IT DOES NOT
+#   chat_module is a plugin: its Windows artifacts are a DLL and a `.lgx`, and
+#   neither can be executed. So this run is COMPILE-ONLY on the smoke axis, and
+#   the harness reports that as a coverage gap rather than dressing it up as a
+#   pass. What it does cover is the three things that have actually broken here:
+#
+#     * the Rust static library cross-compiling to mingw at all (it needs
+#       ws2_32/bcrypt/ntdll/userenv/synchronization, which the module-builder
+#       CMake now supplies on the WIN32 branch);
+#     * the import closure of the built plugin -- `bcryptprimitives.dll` was
+#       missing from the bundler's system-DLL allowlist and the failure was a
+#       module that loaded nowhere;
+#     * the `.lgx` actually carrying a `variants/windows-x86_64` payload whose
+#       own imports ship with it, which is what an installed module resolves
+#       against.
+#
+#   Running chat_module needs a host, which lives in another repo and is not a
+#   target here. That coverage belongs downstream, alongside a runtime.
+
+on:
+  pull_request:
+    branches: [master, main]
+  push:
+    branches: [master, main]
+
+jobs:
+  windows:
+    uses: logos-co/logos-windows-ci/.github/workflows/windows-ci.yml@v1
+    secrets: inherit
+    with:
+      # `default` is the plugin DLL plus the libraries bundled beside it -- the
+      # loose PEs the import-closure gate reads. `lgx-portable` is the packaged
+      # form that is actually distributed and installed; `lgx` links against the
+      # Nix store and cannot be shipped off this machine.
+      targets: default lgx-portable
+
+      # Refuses a tree with no .lgx, a .lgx with no Windows variant, and a
+      # payload whose imports are not bundled with it.
+      lgx-variant: true
+
+      # The mingw Qt closure is primed in cache.nix.logos.co/ci but this module
+      # also drags a Rust staticlib and the SDK's generated sources through, so
+      # the incremental is larger than the 30-derivation default assumes.
+      cold-derivation-budget: 120
+      timeout-minutes: 90
