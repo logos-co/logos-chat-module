@@ -150,15 +150,15 @@ impl ChatModule for ChatModuleImpl {
             .map_err(|e| e.to_string())
     }
 
-    fn list_conversations(&mut self) -> Value {
+    fn list_conversations(&mut self) -> Vec<Conversation> {
         actions::list_conversations()
     }
 
-    fn get_messages(&mut self, convo_id: String) -> Value {
+    fn get_messages(&mut self, convo_id: String) -> Vec<Message> {
         actions::get_messages(&convo_id)
     }
 
-    fn list_group_members(&mut self, convo_id: String) -> Value {
+    fn list_group_members(&mut self, convo_id: String) -> Vec<GroupMember> {
         actions::list_group_members(&convo_id)
     }
 
@@ -184,7 +184,7 @@ impl ChatModule for ChatModuleImpl {
             .map_err(|e| e.to_string())
     }
 
-    fn status(&mut self) -> Value {
+    fn status(&mut self) -> Status {
         actions::status()
     }
 }

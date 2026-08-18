@@ -6,9 +6,16 @@
 ; `result` (success + value + error string).
 ;
 ; The record types below are the contract's source of truth for wire shapes.
-; Today's codegen materializes them as QVariant/QVariantList on the Qt side
-; (no generated C++ struct) — they document the shape and "light up" if the
-; generators gain struct support.
+; The Rust generator materializes them as real structs, and the module's impl
+; returns THOSE — so a field that drifts from a record is a compile error rather
+; than a silently empty payload. The Qt side still receives QVariantMap /
+; QVariantList (no generated C++ struct), so consumers there read by key.
+;
+; One consequence worth knowing when reading payloads by hand: an absent
+; optional is spelled by OMITTING its key, not by a null. Both decode to the
+; same empty state, and QVariant/QJsonValue lookups of a missing key and of a
+; null yield the same empty value, so this is invisible to a `value(k).toString()`
+; reader — but it is visible to anything testing for null explicitly.
 module chat_module {
   version "0.2.0"
   description "Chat module for Logos: e2e-encrypted conversations over delivery_module."
