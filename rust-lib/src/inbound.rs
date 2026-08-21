@@ -163,10 +163,10 @@ fn run_events(events: Receiver<Event>) {
 }
 
 /// Map libchat's display class to the module's contract kind: the pairwise
-/// shape (PrivateV1 / DirectV1) is `direct`, GroupV2 is `group`.
+/// shape (DirectV1) is `direct`, GroupV2 is `group`.
 fn kind_for_class(class: ConversationClass) -> ConversationKind {
     match class {
-        ConversationClass::Private => ConversationKind::Direct,
+        ConversationClass::Dm => ConversationKind::Direct,
         ConversationClass::Group => ConversationKind::Group,
     }
 }
@@ -265,7 +265,7 @@ mod tests {
     #[test]
     fn class_maps_to_contract_kind() {
         assert_eq!(
-            kind_for_class(ConversationClass::Private),
+            kind_for_class(ConversationClass::Dm),
             ConversationKind::Direct
         );
         assert_eq!(
