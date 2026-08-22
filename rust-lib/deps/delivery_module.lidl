@@ -1,10 +1,10 @@
 ; delivery_module contract — the subset chat_module uses. Supplied as a
 ; dependency_override (see metadata.json). logos-lidl-gen turns this file into
 ; the typed `DeliveryModuleClient` that actions.rs/delivery.rs/inbound.rs call
-; (createNode/start/subscribe/send + the messageReceived/connectionStateChanged
-; decoders). Hand-maintained, so keep it in sync with the pinned rev (v0.2.0,
-; which ships a published `lidl` flake output — switching to it is #58's scope,
-; so the manual copy stays for now).
+; (createNode/start/subscribe/send + the messageReceived/connectionStateChanged/
+; messageError decoders). Hand-maintained, so keep it in sync with the pinned
+; rev (v0.2.0, which ships a published `lidl` flake output — switching to it is
+; #58's scope, so the manual copy stays for now).
 module delivery_module {
   version "0.2.0"
 
@@ -15,4 +15,8 @@ module delivery_module {
 
   event messageReceived(messageHash: tstr, contentTopic: tstr, payload: bstr, timestamp: int)
   event connectionStateChanged(status: tstr, timestamp: int)
+  ; `send` returns a requestId and reports its outcome asynchronously; this is
+  ; the failure half. `error` is the node's own text, and `requestId` ties it
+  ; back to the send that produced it.
+  event messageError(requestId: tstr, messageHash: tstr, error: tstr, timestamp: int)
 }
