@@ -121,21 +121,27 @@ logoscore call chat_module init '{"delivery_preset":"logos.test","log_level":"de
 `init` installs a `tracing` subscriber writing to two places: the module's
 stderr, which the host forwards into its own log, and a file in the instance
 directory, which `get_log_path()` names so a consumer can hand the run over
-afterwards. Three targets carry the chat core's account of a run: `libchat` (the
+afterwards. Four targets carry the chat stack's account of a run: `libchat` (the
 conversation core, MLS groups, inbox), `logos_generic_chat` (the threaded client
-and its inbound worker), and `chat_module` itself. The module is one of them
-because the other two are nearly silent: between them they raise eleven events,
-almost all on paths that are already failing, so a run that merely behaves oddly
-would write nothing. This module reports its own lifecycle instead, and logs a
-message as a byte count and a conversation id, never as content.
+and its inbound worker), `de_mls` (the GroupV2 protocol), and `chat_module`
+itself. The module is one of them because the first two are nearly silent:
+between them they raise a handful of events, almost all on paths that are
+already failing, so a run that merely behaves oddly would write nothing. This
+module reports its own lifecycle instead, and logs a message as a byte count and
+a conversation id, never as content. `de_mls` is one of them because it is the
+only account of a GroupV2 group there is: the phase transitions, commit-round
+counts and steward elections that say why a group stopped growing are all its
+lines.
 
-`log_level` sets those three targets and nothing else (`error`, `warn`, `info`,
-`debug` or `trace`, defaulting to `info`), leaving everything around them at
-`warn`, because the crates underneath the chat core have an order of magnitude
-more `info` sites than it does. `RUST_LOG`, read from the environment the module
-process inherits from its host, outranks the client's choice and replaces the
-composition outright, so a verbose run names every target it wants:
-`RUST_LOG=warn,chat_module=debug,libchat=debug,logos_generic_chat=debug`. The
+`log_level` sets those four targets and nothing else (`error`, `warn`, `info`,
+`debug` or `trace`, defaulting to `debug` while GroupV2 is being stabilised),
+leaving everything around them at `warn`, because the crates underneath log per
+network frame and per crypto operation. Expect a debug run to fill and rotate
+its file quickly, and to keep less wall-clock history than the ten retained runs
+suggest. `RUST_LOG`, read from the environment the module process inherits from
+its host, outranks the client's choice and replaces the composition outright, so
+a quieter run names every target it wants:
+`RUST_LOG=warn,chat_module=info,libchat=info,logos_generic_chat=info`. The
 level is read once, at the first `init`, and a later `init` leaves it as it was.
 
 A panic goes into that file too, with a backtrace. It cannot arrive as a
