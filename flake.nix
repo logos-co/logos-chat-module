@@ -29,6 +29,22 @@
       systems = [ "aarch64-darwin" "x86_64-darwin" "aarch64-linux" "x86_64-linux" ];
       forAllSystems = fn: nixpkgs.lib.genAttrs systems fn;
 
+      # x86_64-windows is a cross PSEUDO-SYSTEM the builder already understands
+      # (logos-module-builder lib/common.nix routes it to
+      # logos-nix.lib.mkWindowsPkgs, and picks the build platform separately).
+      #
+      # `packages` ONLY. `apps` and `devShells` below both do
+      # `import nixpkgs { inherit system; }`, which for this key is a NATIVE
+      # Windows instantiation and dies in cc-wrapper — and neither a dev shell
+      # nor the codegen runner means anything on a cross target anyway.
+      #
+      # chat_ui needs this: a consumer resolves a dependency's headers through
+      # `packages.<system>`, so without a Windows entry here chat_ui's own cross
+      # build has nothing to read (logos-module-builder#199 turns that into a
+      # named error rather than a silent fallback to this source tree).
+      targets = systems ++ [ "x86_64-windows" ];
+      forAllTargets = fn: nixpkgs.lib.genAttrs targets fn;
+
       # The builder runs logos-lidl-gen to emit the module-impl C ABI scaffold
       # (the `ChatModule` trait + logos_module_* exports) at rust-lib/generated/,
       # compiles the staticlib, and stages it — all driven by
@@ -43,17 +59,26 @@
         };
     in
     {
-      packages = forAllSystems (system:
+      packages = forAllTargets (system:
         let m = (module system).packages.${system};
         in m // {
           # CI builds `.#chat_module`; alias it to the plugin package. The full
           # set `m` (default, install, lidl, …) is exposed too, so the UI module
           # can consume chat_module's published .lidl contract.
           chat_module = m.default;
-
-          # The matching delivery_module .lgx, re-exported from this flake's
-          # locked delivery input, so the exact delivery_module rev chat_module is
-          # built against can be installed alongside it.
+        }
+        # The matching delivery_module .lgx, re-exported from this flake's locked
+        # delivery input, so the exact delivery_module rev chat_module is built
+        # against can be installed alongside it.
+        #
+        # Guarded because the pinned delivery_module publishes only the native
+        # systems; asking it for a target it does not build would fail this whole
+        # attrset over an extra convenience output. chat_module ITSELF still
+        # cross-builds — its delivery dependency resolves through the local
+        # `.lidl` in dependency_overrides, never through the dep's packages — so
+        # only the re-export is conditional. Drop the guard once delivery_module
+        # publishes the target too.
+        // nixpkgs.lib.optionalAttrs (logos-delivery-module.packages ? ${system}) {
           "delivery_module-lgx" = logos-delivery-module.packages.${system}.lgx;
         });
 
