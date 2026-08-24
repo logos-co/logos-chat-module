@@ -32,8 +32,13 @@ static LOG_PATH: Mutex<String> = Mutex::new(String::new());
 /// The same file the subscriber writes, for [`write_line`] to reach without it.
 static RUN_LOG: OnceLock<RunLog> = OnceLock::new();
 
-/// The level the chat core's own targets log at when the client named none.
-const DEFAULT_LEVEL: &str = "info";
+/// The level the chat stack's own targets log at when the client named none.
+///
+/// `debug` while GroupV2 is being stabilised. A group that splits or stops
+/// growing explains itself only in the round-by-round account de-mls keeps
+/// there, and that account cannot be asked for after the fact: it is gone with
+/// the run that would have carried it.
+const DEFAULT_LEVEL: &str = "debug";
 
 /// The name every log in an instance directory follows: `<stem>_<stamp>.log` is
 /// the file being written, `<stem>_<stamp>.NNN.log` a rotation of it. A consumer
@@ -54,19 +59,21 @@ const ROTATE_AFTER_LINES: u64 = 10_000;
 /// nothing else sweeps it and the module prunes its own.
 const KEEP_RUNS: usize = 10;
 
-/// Everything at `warn`, and the chat core's own targets at `level`.
+/// Everything at `warn`, and the chat stack's own targets at `level`.
 ///
-/// A flat level is the wrong shape here: the dependency graph carries crates far
-/// chattier than the chat core (de-mls alone has an order of magnitude more
-/// `info` sites than libchat, most of them per-consensus-round), and they would
-/// bury the handful of lifecycle events this exists to surface.
+/// A flat level is the wrong shape here: the dependency graph reaches crates
+/// that log per network frame and per crypto operation, and they would bury the
+/// stack's own account of a run.
 ///
-/// `chat_module` is one of the targets because most of a run's story is this
-/// module's own: libchat and the generic client together raise eleven events,
-/// nearly all on failure paths, so a healthy run through them alone says
-/// nothing.
+/// `de_mls` is one of the targets despite being by far the loudest of them,
+/// because it is the only one that narrates a GroupV2 group: the phase
+/// transitions, the commit-round counts and the steward elections that say why
+/// a group stopped growing are all its lines. `chat_module` is another because
+/// most of a run's story is this module's own: libchat and the generic client
+/// together raise a handful of events, nearly all on failure paths, so a
+/// healthy run through them alone says nothing.
 fn filter_for(level: &str) -> String {
-    format!("warn,chat_module={level},libchat={level},logos_generic_chat={level}")
+    format!("warn,chat_module={level},libchat={level},logos_generic_chat={level},de_mls={level}")
 }
 
 /// The level a client may ask the chat core to log at. Anything else — absent,
@@ -550,9 +557,10 @@ mod tests {
         assert_eq!(
             directives(EnvFilter::new(filter_for(DEFAULT_LEVEL))),
             [
-                "chat_module=info",
-                "libchat=info",
-                "logos_generic_chat=info",
+                "chat_module=debug",
+                "de_mls=debug",
+                "libchat=debug",
+                "logos_generic_chat=debug",
                 "warn"
             ]
         );
@@ -567,6 +575,7 @@ mod tests {
                 directives(filter_from(None, level_or_default(level))),
                 [
                     format!("chat_module={level}"),
+                    format!("de_mls={level}"),
                     format!("libchat={level}"),
                     format!("logos_generic_chat={level}"),
                     "warn".to_string()

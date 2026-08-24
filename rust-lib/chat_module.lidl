@@ -61,9 +61,9 @@ module chat_module {
   type ChatConfig {
     ; The delivery network to join. Empty or absent means "logos.test".
     ? delivery_preset: tstr
-    ; How much of the chat core's own account of a run to log:
+    ; How much of the chat stack's own account of a run to log:
     ; "error" | "warn" | "info" | "debug" | "trace". Absent or unrecognised
-    ; means "info". Read once, at init: a later init leaves it as it was.
+    ; means "debug". Read once, at init: a later init leaves it as it was.
     ? log_level: tstr
   }
   ; Storage lives under the instance directory the host assigns; init fails when

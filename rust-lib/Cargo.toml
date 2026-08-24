@@ -25,22 +25,26 @@ panic = "abort"
 # observations as `Event`s on a channel the module drains. The module brings its own
 # delivery (logoscore's delivery_module), so it depends on this transport-generic
 # crate, not the `logos-chat` facade that bundles an embedded logos delivery.
-# rev-pinned to libchat's unreleased group name/description client surface: it
-# adds a name and description to create_group_conversation and a group_metadata
-# getter, which this module stores and surfaces as each conversation's name and
-# description, on top of the GroupV2 group ops it already needs (add_group_members,
-# the `group_members` roster, the Event::ConversationMembersChanged behind the
-# `members_changed` contract event, injectable GroupV2 timing, the honest DirectV1
-# display class). Not yet in a released libchat version.
-logos-generic-chat = { git = "https://github.com/logos-messaging/libchat.git", package = "logos-generic-chat", rev = "5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14" }
+# rev-pinned ahead of any released libchat version, for two things. The GroupV2
+# join-time fork fix: a member joining after a voted steward election kept
+# serving the pre-election steward list and rejected the elected steward's next
+# commit, so a growing group split into branches that never converge again. And
+# the conversation-status events (`ConversationPhaseChanged`,
+# `CommitRoundProgress`, `ConversationError`), which carry de-mls's own account
+# of a group that has stopped moving. Also carries the group surface this module
+# already uses (create_group_conversation with GroupMetadata, add_group_members,
+# the `group_members` roster, Event::ConversationMembersChanged behind the
+# `members_changed` contract event, injectable GroupV2 timing, the DirectV1
+# display class).
+logos-generic-chat = { git = "https://github.com/logos-messaging/libchat.git", package = "logos-generic-chat", rev = "147d0b3b88cf5ee1b825075447567dced918426e" }
 # The umbrella `libchat` crate, for `ChatStorage`: the builder's
 # `storage_config` panics on a bad DB, so we build the store fallibly and pass it in.
-libchat        = { git = "https://github.com/logos-messaging/libchat.git", package = "libchat", rev = "5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14" }
+libchat        = { git = "https://github.com/logos-messaging/libchat.git", package = "libchat", rev = "147d0b3b88cf5ee1b825075447567dced918426e" }
 # `TestLogosAccount` (gated behind logos-account's `dev` feature): the ephemeral
 # account identity that signs this installation's device bundle and whose key is
 # the shared account address. Enable `dev` on our own dep so its availability
 # doesn't hinge on another crate happening to turn the feature on.
-logos-account  = { git = "https://github.com/logos-messaging/libchat.git", package = "logos-account", features = ["dev"], rev = "5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14" }
+logos-account  = { git = "https://github.com/logos-messaging/libchat.git", package = "logos-account", features = ["dev"], rev = "147d0b3b88cf5ee1b825075447567dced918426e" }
 # The client hands back a `Receiver<Event>` and drains a `Receiver<Vec<u8>>`
 # through its `Transport`, so the module's plumbing speaks the same channel type.
 crossbeam-channel = "0.5"

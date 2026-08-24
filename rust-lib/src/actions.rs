@@ -199,12 +199,22 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
             None
         }
     };
+    let error_sub = match dm.on_message_error() {
+        Ok(sub) => Some(sub),
+        Err(e) => {
+            // Non-fatal in the same way: sends still go out, a send the node
+            // gives up on just goes unreported.
+            tracing::error!("init: subscribe(messageError) failed: {e}");
+            None
+        }
+    };
 
     let stop = Arc::new(AtomicBool::new(false));
     let inbound_thread = crate::inbound::spawn_bridge(
         stop.clone(),
         messages_sub,
         conn_sub,
+        error_sub,
         inbound_tx,
         subscribe_rx,
     );

@@ -3,8 +3,9 @@
 //! Two workers run alongside the client's own inbound worker:
 //! * The bridge ([`run_bridge`]) drains delivery_module's events: `messageReceived`
 //!   payloads are pushed to the client's inbound channel; `connectionStateChanged`
-//!   drives local `delivery_state`; and the core's queued subscription requests are
-//!   forwarded to delivery_module once its node is started.
+//!   drives local `delivery_state`; `messageError` reports a send the node gave up
+//!   on; and the core's queued subscription requests are forwarded to
+//!   delivery_module once its node is started.
 //! * The event consumer ([`run_events`]) drains the client's `Event` stream and
 //!   records each observation in the display history, emitting the matching plugin
 //!   events.
@@ -36,12 +37,13 @@ pub(crate) fn spawn_bridge(
     stop: Arc<AtomicBool>,
     messages: EventSubscription,
     conn: Option<EventSubscription>,
+    errors: Option<EventSubscription>,
     inbound_tx: Sender<Vec<u8>>,
     subscribe_rx: Receiver<String>,
 ) -> JoinHandle<()> {
     thread::Builder::new()
         .name("rust-chat-bridge".into())
-        .spawn(move || run_bridge(stop, messages, conn, inbound_tx, subscribe_rx))
+        .spawn(move || run_bridge(stop, messages, conn, errors, inbound_tx, subscribe_rx))
         .expect("failed to spawn bridge thread")
 }
 
@@ -56,6 +58,7 @@ fn run_bridge(
     stop: Arc<AtomicBool>,
     messages: EventSubscription,
     mut conn: Option<EventSubscription>,
+    mut errors: Option<EventSubscription>,
     inbound_tx: Sender<Vec<u8>>,
     subscribe_rx: Receiver<String>,
 ) {
@@ -66,31 +69,51 @@ fn run_bridge(
             Err(RecvTimeoutError::Disconnected) => return,
         }
 
-        // On Disconnected, drop the subscription so we stop re-polling a dead one.
-        let mut disconnected = false;
-        if let Some(events) = conn.as_ref() {
-            loop {
-                match events.receiver().try_recv() {
-                    Ok(evt) => {
-                        if let Some(state) =
-                            crate::delivery_module::DeliveryModuleClient::decode_connection_state_changed(&evt)
-                        {
-                            handle_connection_state(&state.status);
-                        }
-                    }
-                    Err(TryRecvError::Empty) => break,
-                    Err(TryRecvError::Disconnected) => {
-                        disconnected = true;
-                        break;
-                    }
-                }
+        if drain(&conn, |evt| {
+            if let Some(state) =
+                crate::delivery_module::DeliveryModuleClient::decode_connection_state_changed(evt)
+            {
+                handle_connection_state(&state.status);
             }
-        }
-        if disconnected {
+        }) {
             conn = None;
         }
 
+        if drain(&errors, |evt| {
+            if let Some(failed) =
+                crate::delivery_module::DeliveryModuleClient::decode_message_error(evt)
+            {
+                // The request id is the only handle on which send this was;
+                // `delivery.rs` logs it against the topic when the send is
+                // accepted.
+                tracing::error!(
+                    request_id = %failed.request_id,
+                    message_hash = %failed.message_hash,
+                    "delivery gave up on a send: {}",
+                    failed.error
+                );
+            }
+        }) {
+            errors = None;
+        }
+
         forward_subscriptions(&subscribe_rx);
+    }
+}
+
+/// Hands every event waiting on `sub` to `on_event`, and reports whether the
+/// sender went away, so the caller can drop a dead subscription rather than
+/// re-poll it for the life of the process.
+fn drain(sub: &Option<EventSubscription>, mut on_event: impl FnMut(&EventData)) -> bool {
+    let Some(events) = sub.as_ref() else {
+        return false;
+    };
+    loop {
+        match events.receiver().try_recv() {
+            Ok(evt) => on_event(&evt),
+            Err(TryRecvError::Empty) => return false,
+            Err(TryRecvError::Disconnected) => return true,
+        }
     }
 }
 
@@ -163,10 +186,10 @@ fn run_events(events: Receiver<Event>) {
 }
 
 /// Map libchat's display class to the module's contract kind: the pairwise
-/// shape (PrivateV1 / DirectV1) is `direct`, GroupV2 is `group`.
+/// shape (DirectV1) is `direct`, GroupV2 is `group`.
 fn kind_for_class(class: ConversationClass) -> ConversationKind {
     match class {
-        ConversationClass::Private => ConversationKind::Direct,
+        ConversationClass::Dm => ConversationKind::Direct,
         ConversationClass::Group => ConversationKind::Group,
     }
 }
@@ -265,7 +288,7 @@ mod tests {
     #[test]
     fn class_maps_to_contract_kind() {
         assert_eq!(
-            kind_for_class(ConversationClass::Private),
+            kind_for_class(ConversationClass::Dm),
             ConversationKind::Direct
         );
         assert_eq!(

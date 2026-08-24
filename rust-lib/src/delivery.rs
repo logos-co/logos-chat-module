@@ -81,12 +81,18 @@ impl DeliveryService for SdkPublisher {
         // delivery's accept handshake, so hand off async and return. A failed send is
         // only logged, not surfaced to the caller; a future "sent" confirmation will
         // close that gap.
+        //
+        // Accepting a send yields a request id, and that id is all a later
+        // `messageError` carries to say which send it means, so log the pair:
+        // the error line (`inbound.rs`) is unreadable without it.
+        let accepted = topic.clone();
         crate::modules()
             .delivery_module
-            .send_async(&topic, &envelope.data, move |res| {
-                if let Err(e) = res {
-                    tracing::error!("delivery_module.send failed: {e}");
+            .send_async(&topic, &envelope.data, move |res| match res {
+                Ok(request_id) => {
+                    tracing::debug!(topic = %accepted, %request_id, "delivery accepted a send")
                 }
+                Err(e) => tracing::error!(topic = %accepted, "delivery_module.send failed: {e}"),
             });
         Ok(())
     }
