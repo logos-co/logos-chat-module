@@ -8,10 +8,13 @@ Everything on this page is rendered from that file, so it says exactly what a
 generated client can call. See :doc:`Using the API <using-the-api>` for how the
 pieces fit together.
 
-Types are LIDL's, not any one language's: ``tstr`` is a text string, ``bstr``
-binary data, ``int`` a signed integer, ``bool`` a boolean, ``[T]`` an array of
-``T``, and ``result`` a structured success-or-error. How each maps onto a
-concrete type is up to the SDK generating your client.
+Types are LIDL's, not any one language's. The primitives are ``tstr`` (text),
+``bstr`` (binary), ``int``, ``uint``, ``float64``, ``bool``, ``any``, and
+``result`` -- a structured success-or-error. They compose as ``[T]`` for an
+array, ``{K: V}`` for a map, and ``?T`` for a value that may be absent. That
+set is fixed by the `LIDL specification
+<https://github.com/logos-co/logos-lidl/blob/master/docs/spec.md>`_; how each
+maps onto a concrete type is up to the SDK generating your client.
 
 Methods
 -------
