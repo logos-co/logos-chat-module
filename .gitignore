@@ -7,3 +7,4 @@ result-*
 # and the generated module-impl scaffold. Neither is committed.
 /logos-rust-sdk-src/
 /rust-lib/generated/
+.venv
