@@ -45,9 +45,11 @@ implementation scaffold, and a consumer runs the same generator over the same
 file to get a typed caller.
 
 The published **[API reference](https://logos-co.github.io/logos-chat-module/latest/pages/api_reference.html)**
-is rendered from that contract, so it cannot drift from it. Alongside it are a
-guide to using the API, how the module is put together, and what it logs. See
-[Documentation](#documentation) below to build the site locally.
+is rendered from that contract, so it cannot drift from it, and alongside it are
+the internal docs: how the module is put together, and what it logs. For a
+walk-through of the calls in order, with working code, see
+[building a module that uses the Chat module API](https://docs.logos.co/messaging/chat-module/build-logos-module-that-uses-chat-module-api).
+See [Documentation](#documentation) below to build the site locally.
 
 ## Doc-tests
 
@@ -74,8 +76,8 @@ nix run github:logos-co/logos-doctest -- run doctests/chat-module-exchange.test.
 ## Documentation
 
 The module's documentation is published at
-**<https://logos-co.github.io/logos-chat-module/>** — the API reference, a guide
-to using it, and the internal docs.
+**<https://logos-co.github.io/logos-chat-module/>** — the API reference
+generated from the contract, and the internal docs.
 
 ### Building the documentation
 

@@ -3,3 +3,4 @@ _generated
 html
 latex
 site
+__pycache__

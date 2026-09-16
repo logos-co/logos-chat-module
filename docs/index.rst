@@ -5,7 +5,9 @@ Logos Chat Module
 
    | The main Logos Messaging documentation is at
      `docs.logos.co/messaging <https://docs.logos.co/messaging>`_.
-   | Start there for the concepts and the wider stack.
+   | Start there for the concepts, the wider stack, and a walk-through of
+     `building a module that uses this API
+     <https://docs.logos.co/messaging/chat-module/build-logos-module-that-uses-chat-module-api>`_.
 
    **This site is the API reference** and the internal docs.
 
@@ -18,26 +20,18 @@ through
 other module -- or a UI -- can open a conversation and exchange messages by
 calling methods on ``chat_module``.
 
-Using the API
--------------
-
-1. ``init`` -- start the module and its delivery node (once per instance).
-2. ``get_address`` -- read this installation's address, and share it with a peer.
-3. ``create_conversation`` / ``create_group_conversation`` -- open a
-   conversation with a peer, or start a group.
-4. ``send_message`` -- publish into a conversation.
-5. ``shutdown`` -- stop the module.
-
-``init`` returns as soon as the request is dispatched; the module is ready to
-exchange messages once ``delivery_state_changed`` reports ``online``. What
-arrives from the network is delivered as an **event** -- subscribe to those
-rather than polling.
+Its public surface is a single `LIDL
+<https://github.com/logos-co/logos-lidl/blob/master/docs/spec.md>`_ contract,
+`rust-lib/chat_module.lidl
+<https://github.com/logos-co/logos-chat-module/blob/master/rust-lib/chat_module.lidl>`_.
+Consumers generate a typed client from it, and the reference below is rendered
+from the same file.
 
 API Reference
 -------------
 
-- :doc:`Using the API <pages/using-the-api>`
-- :doc:`API reference <pages/api_reference>`
+- :doc:`API reference <pages/api_reference>` -- every method, event and record,
+  generated from the contract.
 
 Internal docs
 -------------
@@ -54,6 +48,5 @@ Internal docs
    :hidden:
    :maxdepth: 2
 
-   pages/using-the-api
    pages/api_reference
    pages/internal

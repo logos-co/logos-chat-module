@@ -7,6 +7,7 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 import os
 import subprocess
+import sys
 
 project = 'Logos Chat Module'
 copyright = '2026, Institute of Free Technology'
@@ -29,12 +30,16 @@ release = git_tag
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = []
+sys.path.insert(0, os.path.join(selfpath, '_ext'))
+
+# The LIDL domain: renders a contract declaration as a signature that is also a
+# link target and a page-navigation entry. See docs/_ext/lidl.py.
+extensions = ['lidl']
 
 # _generated holds the API reference fragments docs/lidl2rst.py renders from the
 # contract. They are included into pages/api_reference.rst, not built as pages
 # of their own.
-exclude_patterns = ['_build', '_generated', 'Thumbs.db', '.DS_Store']
+exclude_patterns = ['_build', '_generated', '_ext', 'Thumbs.db', '.DS_Store']
 
 root_doc = 'index'
 
