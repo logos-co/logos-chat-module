@@ -51,6 +51,26 @@ walk-through of the calls in order, with working code, see
 [building a module that uses the Chat module API](https://docs.logos.co/messaging/chat-module/build-logos-module-that-uses-chat-module-api).
 See [Documentation](#documentation) below to build the site locally.
 
+## Runtime
+
+End-to-end chat needs a `delivery_module` available to the host at runtime; the
+flake pins [`logos-delivery-module`](https://github.com/logos-co/logos-delivery-module)
+at `v0.2.0`. Load `chat_module` via `logoscore` or Basecamp.
+
+Bring-up is `init(config)`, taking a `ChatConfig` record whose every field is
+optional: `delivery_preset` (empty or absent → `logos.test`) and `log_level`.
+What it does, and how you learn the module is ready, is on
+[`init`](https://logos-co.github.io/logos-chat-module/latest/pages/api_reference.html#init)
+in the API reference.
+
+A generated client passes the record itself. `logoscore call` cannot — it coerces
+an argument to a bool, a number or a string, never to an object — so from the CLI
+pass the record's JSON text and the module reads it back:
+
+```bash
+logoscore call chat_module init '{"delivery_preset":"logos.test","log_level":"debug"}'
+```
+
 ## Doc-tests
 
 The specs under [`doctests/`](doctests/) are executable usage tutorials: each

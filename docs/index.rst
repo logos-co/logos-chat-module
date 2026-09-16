@@ -36,9 +36,8 @@ API Reference
 Internal docs
 -------------
 
-- :doc:`Architecture <pages/architecture>`
-- :doc:`Logging <pages/logging>`
-- :doc:`Versioning <pages/versioning>`
+- :doc:`Logging <pages/logging>` -- what the module logs, where it goes, and
+  how to turn it up.
 
 .. Hidden: the lists above are the visible index. This only builds the page
    hierarchy; these entries are what the top bar shows, and pages/internal owns
