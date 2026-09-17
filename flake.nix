@@ -16,10 +16,8 @@
     # structs, which this module's providers are not written against.
     logos-module-builder.url = "github:logos-co/logos-module-builder/0.2.6";
 
-    # Pinned to the v0.2.0 release tag (Reliable Channels API, storeQuery,
-    # layered createNode config; the flat config shape this module sends still
-    # parses). Kept in lockstep with logos-chat-ui's pin.
-    logos-delivery-module.url = "github:logos-co/logos-delivery-module/v0.2.0";
+    # Kept in lockstep with logos-chat-ui's pin.
+    logos-delivery-module.url = "github:logos-co/logos-delivery-module/b908d18a34104e70e1fd48ba472531d92fb10cea";
   };
 
   outputs = inputs@{ self, logos-module-builder, logos-delivery-module, ... }:
