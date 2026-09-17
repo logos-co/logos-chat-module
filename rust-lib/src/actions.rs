@@ -17,7 +17,10 @@ use logos_generic_chat::{
     ChatClientBuilder, ContactRegistry, DelegateSigner, GroupMetadata, RegistryPublishMode,
     StorageConfig,
 };
-use serde::Serialize;
+// The contract's record types, generated from chat_module.lidl and re-exported
+// at the crate root by the `generated` module in lib.rs. These getters build
+// them directly; nothing here serialises a hand-written mirror any more.
+use crate::{Conversation, GroupMember, Message, Status};
 
 use crate::delivery::SdkDelivery;
 
@@ -61,35 +64,17 @@ pub(crate) enum InitError {
 
 // ── Contract view types ──────────────────────────────────────────────────────
 //
-// Serde shapes matching the `Conversation` / `Status` records in
-// chat_module.lidl — the payloads `list_conversations` and `status` return. The
-// messages list reuses `persistence::DisplayMessage`, which already matches the
-// `Message` record.
+// The record types these getters return are the GENERATED ones
+// (`crate::Conversation` / `Message` / `GroupMember` / `Status`), emitted from
+// chat_module.lidl. They used to be hand-written `#[derive(Serialize)]` mirrors
+// serialised to `serde_json::Value`; the generated records are the contract
+// itself, so the mirrors — and the chance of one drifting from the .lidl — are
+// gone. `persistence::DisplayMessage` is still the stored shape and is mapped
+// to `Message` at the boundary.
 
 /// Character cap for a conversation-list preview. Mirrored on the UI so live and
 /// rehydrated previews agree.
 const PREVIEW_MAX_CHARS: usize = 160;
-
-/// One element of `list_conversations` — mirrors the `Conversation` record.
-#[derive(Serialize)]
-struct ConversationSummary {
-    convo_id: String,
-    nickname: Option<String>,
-    message_count: usize,
-    last_activity_ms: u64,
-    kind: ConversationKind,
-    name: Option<String>,
-    description: Option<String>,
-    preview: Option<String>,
-}
-
-/// `status` payload — mirrors the `Status` record.
-#[derive(Serialize)]
-struct StatusView {
-    convo_count: usize,
-    delivery_state: DeliveryStateKind,
-    detail: String,
-}
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
@@ -489,57 +474,46 @@ fn member_address(member: logos_generic_chat::GroupMember) -> String {
         .unwrap_or_default()
 }
 
-/// One roster entry — mirrors the `GroupMember` record.
-#[derive(Serialize)]
-struct GroupMemberRow {
-    address: String,
-    pending: bool,
-}
-
-/// The roster of the conversation `convo_id`, one [`GroupMemberRow`] per
-/// element; a direct conversation reports both participants. This is a plain
-/// list with no error channel, mirroring `get_messages`: an unknown
-/// conversation, or a client error, yields an empty array (the client error is
-/// logged).
-pub(crate) fn list_group_members(convo_id: &str) -> serde_json::Value {
-    let empty = || serde_json::Value::Array(vec![]);
+/// The roster of the conversation `convo_id`, one [`GroupMember`] per element; a
+/// direct conversation reports both participants. This is a plain list with no
+/// error channel, mirroring `get_messages`: an unknown conversation, or a client
+/// error, yields an empty list (the client error is logged).
+pub(crate) fn list_group_members(convo_id: &str) -> Vec<GroupMember> {
     if !with_display(|d| d.state.chats.contains_key(convo_id)) {
-        return empty();
+        return Vec::new();
     }
     match with_client(|client| client.group_members(convo_id)) {
-        Ok(Ok(members)) => {
-            let rows: Vec<GroupMemberRow> = members
-                .into_iter()
-                .map(|m| GroupMemberRow {
-                    pending: m.pending,
-                    address: member_address(m),
-                })
-                .collect();
-            serde_json::to_value(rows).unwrap_or_else(|_| empty())
-        }
+        Ok(Ok(members)) => members
+            .into_iter()
+            .map(|m| GroupMember {
+                pending: m.pending,
+                address: member_address(m),
+            })
+            .collect(),
         Ok(Err(e)) => {
             tracing::warn!("list_group_members failed: {e:?}");
-            empty()
+            Vec::new()
         }
         Err(e) => {
             tracing::warn!("list_group_members: {e}");
-            empty()
+            Vec::new()
         }
     }
 }
 
-pub(crate) fn list_conversations() -> serde_json::Value {
+pub(crate) fn list_conversations() -> Vec<Conversation> {
     with_display(|d| {
-        let items: Vec<ConversationSummary> = d
-            .state
+        d.state
             .chats
             .values()
-            .map(|s| ConversationSummary {
+            .map(|s| Conversation {
                 convo_id: s.chat_id.clone(),
                 nickname: s.nickname.clone(),
-                message_count: s.messages.len(),
-                last_activity_ms: s.messages.last().map(|m| m.timestamp_ms).unwrap_or(0),
-                kind: s.kind,
+                // The contract's numbers are 64-bit signed; neither a message
+                // count nor a millisecond timestamp can exceed that in practice.
+                message_count: s.messages.len() as i64,
+                last_activity_ms: s.messages.last().map(|m| m.timestamp_ms).unwrap_or(0) as i64,
+                kind: s.kind.as_str().to_string(),
                 name: s.name.clone(),
                 description: s.description.clone(),
                 preview: s
@@ -547,20 +521,25 @@ pub(crate) fn list_conversations() -> serde_json::Value {
                     .last()
                     .map(|m| m.content.chars().take(PREVIEW_MAX_CHARS).collect()),
             })
-            .collect();
-        serde_json::to_value(items).unwrap_or_else(|_| serde_json::Value::Array(vec![]))
+            .collect()
     })
 }
 
-pub(crate) fn get_messages(convo_id: &str) -> serde_json::Value {
+pub(crate) fn get_messages(convo_id: &str) -> Vec<Message> {
     with_display(|d| {
-        let msgs = d
-            .state
+        d.state
             .chats
             .get(convo_id)
             .map(|s| s.messages.as_slice())
-            .unwrap_or(&[]);
-        serde_json::to_value(msgs).unwrap_or_else(|_| serde_json::Value::Array(vec![]))
+            .unwrap_or(&[])
+            .iter()
+            .map(|m| Message {
+                from_self: m.from_self,
+                content: m.content.clone(),
+                timestamp_ms: m.timestamp_ms as i64,
+                sender: m.sender.clone(),
+            })
+            .collect()
     })
 }
 
@@ -626,14 +605,11 @@ pub(crate) fn delete_conversation(convo_id: &str) -> Result<(), CoreError> {
 
 // ── Status ───────────────────────────────────────────────────────────────────
 
-pub(crate) fn status() -> serde_json::Value {
-    with_display(|d| {
-        let view = StatusView {
-            convo_count: d.state.chats.len(),
-            delivery_state: d.delivery_state.state,
-            detail: d.delivery_state.detail.clone(),
-        };
-        serde_json::to_value(view).unwrap_or(serde_json::Value::Null)
+pub(crate) fn status() -> Status {
+    with_display(|d| Status {
+        convo_count: d.state.chats.len() as i64,
+        delivery_state: d.delivery_state.state.as_str().to_string(),
+        detail: d.delivery_state.detail.clone(),
     })
 }
 
