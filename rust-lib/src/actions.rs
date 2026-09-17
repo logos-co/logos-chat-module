@@ -255,12 +255,24 @@ pub(crate) fn start_delivery_bootstrap(preset: &str) {
     // reroutes the config to the legacy flat parser, whose port defaults are
     // fixed values — the layered path defaults every unpinned listening port to
     // 0 (OS-assigned), which is what keeps instances sharing a host apart.
-    let config_json = serde_json::json!({
-        "mode": "Core",
-        "preset": preset,
-        "messagingOverrides": { "logLevel": "ERROR" },
-    })
-    .to_string();
+    //
+    // CHAT_DELIVERY_CONF_OVERRIDE (test/e2e hook): a non-empty JSON string
+    // replaces the config WHOLESALE — no merging, the caller owns the
+    // complete shape (layered or legacy-flat alike, e.g. an e2e driving
+    // explicit ports, cluster and rln-relay-* keys). Without the env var the
+    // behavior is byte-identical to before.
+    let config_json = match std::env::var("CHAT_DELIVERY_CONF_OVERRIDE") {
+        Ok(v) if !v.trim().is_empty() => {
+            eprintln!("chat_module: delivery config overridden via CHAT_DELIVERY_CONF_OVERRIDE");
+            v
+        }
+        _ => serde_json::json!({
+            "mode": "Core",
+            "preset": preset,
+            "messagingOverrides": { "logLevel": "ERROR" },
+        })
+        .to_string(),
+    };
 
     crate::modules()
         .delivery_module
