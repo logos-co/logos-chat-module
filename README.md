@@ -44,7 +44,7 @@ it: `metadata.json#codegen` drives `logos-lidl-gen` to produce this module's own
 implementation scaffold, and a consumer runs the same generator over the same
 file to get a typed caller.
 
-The published **[API reference](https://logos-co.github.io/logos-chat-module/latest/pages/api_reference.html)**
+The published **[API reference](https://logos-co.github.io/logos-chat-module/v0.2.2/pages/api_reference.html)**
 is rendered from that contract, so it cannot drift from it, and alongside it are
 the internal docs: how the module is put together, and what it logs. For a
 walk-through of the calls in order, with working code, see
@@ -58,9 +58,9 @@ flake pins [`logos-delivery-module`](https://github.com/logos-co/logos-delivery-
 at `v0.2.0`. Load `chat_module` via `logoscore` or Basecamp.
 
 Bring-up is `init(config)`, taking a `ChatConfig` record whose every field is
-optional: `delivery_preset` (empty or absent → `logos.test`) and `log_level`.
+optional: `delivery_preset` (empty or absent → `logos.dev`) and `log_level`.
 What it does, and how you learn the module is ready, is on
-[`init`](https://logos-co.github.io/logos-chat-module/latest/pages/api_reference.html#init)
+[`init`](https://logos-co.github.io/logos-chat-module/v0.2.2/pages/api_reference.html#init)
 in the API reference.
 
 A generated client passes the record itself. `logoscore call` cannot — it coerces
