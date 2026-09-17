@@ -44,33 +44,23 @@ jobs:
       # Resolve the commit under test. For pull requests this is the PR's head
       # commit (not the synthetic merge commit); for pushes it's the pushed commit.
       # Passed to --release-for so the doc-test builds chat_module against THIS
-      # commit instead of latest master. Fork PRs are the exception: their head
-      # commit lives in the fork, not in logos-co/logos-chat-module, so nix could
-      # not fetch github:logos-co/logos-chat-module/<sha>. Blank the SHA for forks
-      # (--release-for repo= -> pins that repo to latest), so the doc-test still
-      # runs for fork PRs, just against master.
+      # commit instead of latest master. A fork PR's head commit resolves as
+      # github:logos-co/logos-chat-module/<sha> too.
       - name: Resolve commit under test
         id: commit
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ] && \
-             [ "${{ github.event.pull_request.head.repo.fork }}" = "true" ]; then
-            echo "sha=" >> "$GITHUB_OUTPUT"
-            echo "Fork PR detected; doc-test will run against latest master."
-          else
-            echo "sha=${{ github.event.pull_request.head.sha || github.sha }}" >> "$GITHUB_OUTPUT"
-          fi
+          echo "sha=${{ github.event.pull_request.head.sha || github.sha }}" >> "$GITHUB_OUTPUT"
 
       # Pre-build the closures the spec builds inline, so its bash steps hit the
       # nix store instead of compiling under the run (and inside its poll budgets).
       # chat_module#lgx (libchat + openssl from source) is the heavy, uncached one
       # (it's the commit under test); logoscore / delivery / lgpm should be attic
-      # hits. Fork PRs blank the SHA -> build the default branch, as the spec does.
+      # hits.
       - name: Pre-build doc-test closures
         shell: bash
         run: |
-          ref="github:logos-co/logos-chat-module"
-          [ -n "${{ steps.commit.outputs.sha }}" ] && ref="$ref/${{ steps.commit.outputs.sha }}"
+          ref="github:logos-co/logos-chat-module/${{ steps.commit.outputs.sha }}"
           nix build --no-link "$ref#lgx" -L
           nix build --no-link "$ref#delivery_module-lgx" -L
           nix build --no-link 'github:logos-co/logos-logoscore-cli' -L
