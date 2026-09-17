@@ -5,6 +5,9 @@
 ; subscribes via on_<event>() — no polling. Status-bearing calls return
 ; `result` (success + value + error string).
 ;
+; The comments on each declaration below are the published API reference
+; (docs/lidl2rst.py renders them), so keep them true of the implementation.
+;
 ; The record types below are the contract's source of truth for wire shapes.
 ; Today's codegen materializes them as QVariant/QVariantList on the Qt side
 ; (no generated C++ struct) — they document the shape and "light up" if the
@@ -17,32 +20,51 @@ module chat_module {
 
   ; --- data shapes ---
   type Conversation {
+    ; Identifies the conversation in every other call. Returned by
+    ; create_conversation and create_group_conversation.
     convo_id: tstr
+    ; A label for this conversation, set with set_conversation_nickname. Local
+    ; to this installation; no other member sees it.
     ? nickname: tstr
+    ; How many messages this installation holds for the conversation. It counts
+    ; what was received here, not everything ever sent to the conversation.
     message_count: int
+    ; When the most recent held message arrived, in milliseconds since the Unix
+    ; epoch. Zero when the conversation has no messages.
     last_activity_ms: int
     ; "direct" (1:1) or "group". PrivateV1 and DirectV1 are both "direct".
     kind: tstr
-    ; A group's shared name and description (set at creation, identical for
-    ; every member). Absent for direct conversations and unnamed groups;
-    ; distinct from the local-only `nickname`.
+    ; A group's shared name, set at creation and identical for every member.
+    ; Absent for direct conversations and unnamed groups; distinct from the
+    ; local-only `nickname`.
     ? name: tstr
+    ; A group's shared description, set at creation alongside `name` and
+    ; likewise the same for every member. Absent on the same terms.
     ? description: tstr
     ; The last message's content, truncated to 160 characters, for a
     ; conversation-list preview. Absent when the conversation has no messages.
     ? preview: tstr
   }
   type Message {
+    ; True for a message this installation sent, false for one it received.
     from_self: bool
+    ; The message text, decrypted.
     content: tstr
+    ; When the message was sent (own messages) or recorded (received ones), in
+    ; milliseconds since the Unix epoch.
     timestamp_ms: int
     ; Sender's account address (device id if unassociated); unset on
     ; messages this installation sent.
     ? sender: tstr
   }
   type Status {
+    ; How many conversations this installation currently holds.
     convo_count: int
+    ; The delivery node's state, same vocabulary as the
+    ; delivery_state_changed event: "initialising", "online", "error" or
+    ; "stopped".
     delivery_state: tstr
+    ; A human-readable reason for that state, empty when there is none.
     detail: tstr
   }
   type GroupMember {
@@ -66,9 +88,25 @@ module chat_module {
     ; means "info". Read once, at init: a later init leaves it as it was.
     ? log_level: tstr
   }
+  ; Bring the module up and join the delivery network.
+  ;
+  ; Delivery starts asynchronously and this returns without waiting for it, so
+  ; the module is not yet reachable when it succeeds. Readiness arrives as a
+  ; delivery_state_changed event reaching "online"; there is no polling
+  ; equivalent. Subscribe to the events before calling this, or the early ones
+  ; are missed.
+  ;
+  ; Calling it again while initialised succeeds without doing anything, and the
+  ; new config is ignored — call shutdown() first to reconfigure.
+  ;
   ; Storage lives under the instance directory the host assigns; init fails when
-  ; the host assigned none.
+  ; the host assigned none. Two instances therefore run side by side by giving
+  ; each host its own session directory, and need no port coordination: the
+  ; delivery node picks its own.
   method init(config: ChatConfig) -> result
+  ; Stop the module: end the inbound worker, drop the chat client, and write
+  ; conversation state out. Succeeds when the module was never initialised.
+  ; A later init() starts a fresh session from the persisted state.
   method shutdown() -> result
   ; The file this module is writing its log to, in the instance directory the
   ; host assigned. Empty before init, and on a host that assigned none.
@@ -79,50 +117,87 @@ module chat_module {
   method health() -> bool
 
   ; --- identity ---
+  ; This installation's display name: the one set with set_installation_name,
+  ; or the chat core's own name for the installation when none was set.
   method get_installation_name() -> tstr
+  ; Set this installation's display name; empty restores the default. Local to
+  ; this installation — it is not carried to peers.
   method set_installation_name(name: tstr) -> result
   ; The local installation address, shared out-of-band so a peer can open a
-  ; conversation with this installation via create_conversation.
+  ; conversation with this installation via create_conversation. Empty before
+  ; init.
   method get_address() -> tstr
 
   ; --- conversations & messages ---
   ; Open a 1:1 conversation with the peer at peer_address (their get_address).
   ; Sends the cryptographic invite; the first message follows via send_message.
+  ; Returns the new conversation's id.
   method create_conversation(peer_address: tstr) -> result
   ; Create a group conversation with this installation as its only member;
   ; grow it with add_group_member. Every member sees the returned convo_id.
   ; name and desc are the group's shared metadata, visible to every member;
   ; both may be empty for an unnamed group.
   method create_group_conversation(name: tstr, desc: tstr) -> result
-  ; Invite the peer at peer_address into an existing group conversation. The
-  ; invite is committed and delivered asynchronously; the peer observes the
-  ; conversation once its instance has joined.
+  ; Invite the peer at peer_address, and every device it has endorsed, into an
+  ; existing group conversation. The invite is committed and delivered
+  ; asynchronously; the peer observes the conversation once its instance has
+  ; joined. Raises conversation_updated here, and members_changed once the
+  ; group commits the add. Fails on an unknown convo_id.
   method add_group_member(convo_id: tstr, peer_address: tstr) -> result
+  ; Every conversation this installation holds, in no particular order — sort
+  ; by last_activity_ms for a conversation list.
   method list_conversations() -> [Conversation]
+  ; The messages this installation holds for a conversation, oldest first. An
+  ; unknown conversation reports an empty list rather than failing.
   method get_messages(convo_id: tstr) -> [Message]
   ; The roster of a conversation, one GroupMember per element: committed members
   ; first, then invites still awaiting the group's commit. A direct conversation
   ; reports both participants and never a pending one; an unknown conversation
   ; reports an empty roster.
   method list_group_members(convo_id: tstr) -> [GroupMember]
+  ; Encrypt content and publish it to the conversation, then record it here and
+  ; raise message_sent. Success means the message reached delivery, not that any
+  ; peer received it. Fails on an unknown convo_id.
   method send_message(convo_id: tstr, content: tstr) -> result
+  ; Label a conversation for this installation; empty clears the label. Local
+  ; only — unlike a group's name, no other member sees it. Raises
+  ; conversation_updated. Fails on an unknown convo_id.
   method set_conversation_nickname(convo_id: tstr, nickname: tstr) -> result
+  ; Drop a conversation and its messages from this installation, and ignore
+  ; anything that arrives for it afterwards rather than reopening it. Local
+  ; only: the other members keep theirs. Raises conversation_deleted. Fails on
+  ; an unknown convo_id.
   method delete_conversation(convo_id: tstr) -> result
 
   ; --- status ---
+  ; A snapshot of the module: how many conversations it holds, and what the
+  ; delivery node is doing. Readable before init, reporting zero conversations.
   method status() -> Status
 
   ; --- events ---
+  ; An inbound message was decrypted and recorded.
   ; sender: the sender's directory-verified account address, or its device id
   ; when the sender claims no account.
   event message_received(convo_id: tstr, content: tstr, timestamp_ms: int, sender: tstr)
+  ; A message this installation sent was published and recorded.
   event message_sent(convo_id: tstr, content: tstr, timestamp_ms: int)
+  ; A conversation was opened — by a call here, or by a peer's invite arriving.
+  ; is_outgoing tells the two apart.
   ; kind: "direct" (1:1) or "group", matching the Conversation record's field.
   ; name, desc: the group's shared metadata, empty for direct conversations and
   ; unnamed groups.
   event conversation_created(convo_id: tstr, is_outgoing: bool, peer_label: tstr, kind: tstr, name: tstr, desc: tstr)
+  ; A conversation's local metadata changed here: a nickname was set, or a
+  ; member was invited. Re-read it with list_conversations.
   event conversation_updated(convo_id: tstr)
+  ; The group committed a roster change. Call list_group_members for the roster
+  ; it committed.
   event members_changed(convo_id: tstr)
+  ; A conversation was deleted on this installation.
   event conversation_deleted(convo_id: tstr)
+  ; The delivery node's state changed: "initialising", "online", "error" or
+  ; "stopped", with detail carrying a human-readable reason where there is one.
+  ; Reaching "online" is how a caller learns init() has finished bringing the
+  ; network up.
   event delivery_state_changed(delivery_state: tstr, detail: tstr)
 }

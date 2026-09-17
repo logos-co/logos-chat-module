@@ -1,0 +1,12 @@
+[
+  {
+    "name": "latest",
+    "version": "latest",
+    "url": "https://logos-co.github.io/logos-chat-module/latest/"
+  },
+  {
+    "version": "0.2.2",
+    "url": "https://logos-co.github.io/logos-chat-module/v0.2.2/",
+    "preferred": true
+  }
+]
