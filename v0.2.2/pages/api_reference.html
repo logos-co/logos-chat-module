@@ -1,0 +1,889 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" data-theme="auto">
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>API reference &#8212; Logos Chat Module 0.2.2 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "auto";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "auto";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=55c26ed414f5f8a31ebb" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=55c26ed414f5f8a31ebb" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=1c826b74" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=55c26ed414f5f8a31ebb"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=55c26ed414f5f8a31ebb" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=55c26ed414f5f8a31ebb" />
+
+    <script src="../_static/documentation_options.js?v=000c92bf"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'pages/api_reference';</script>
+    <script>
+        DOCUMENTATION_OPTIONS.theme_version = '0.17.1';
+        DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://logos-co.github.io/logos-chat-module/switcher.json';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.2.2';
+        DOCUMENTATION_OPTIONS.show_version_warning_banner =
+            false;
+        </script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="icon" href="../_static/logos-logo-dark.png"/>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Internal docs" href="internal.html" />
+    <link rel="prev" title="Logos Chat Module" href="../index.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="0.2.2" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="auto">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/logos-logo-dark.png" class="logo__image only-light" alt=""/>
+    <img src="../_static/logos-logo-dark.png" class="logo__image only-dark pst-js-only" alt=""/>
+  
+  
+    <p class="title logo__title">Chat Module 0.2.2</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="#">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="internal.html">
+    Internal docs
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://docs.logos.co/messaging">
+    Logos Messaging Docs
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+<div class="version-switcher__container dropdown pst-js-only">
+  <button id="pst-version-switcher-button-2"
+    type="button"
+    class="version-switcher__button btn btn-sm dropdown-toggle"
+    data-bs-toggle="dropdown"
+    aria-haspopup="listbox"
+    aria-controls="pst-version-switcher-list-2"
+    aria-label="Version switcher list"
+  >
+    Choose version  <!-- this text may get changed later by javascript -->
+    <span class="caret"></span>
+  </button>
+  <div id="pst-version-switcher-list-2"
+    class="version-switcher__menu dropdown-menu list-group-flush py-0"
+    role="listbox" aria-labelledby="pst-version-switcher-button-2">
+    <!-- dropdown will be populated by javascript on page load -->
+  </div>
+</div></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/logos-co/logos-chat-module" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="#">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="internal.html">
+    Internal docs
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://docs.logos.co/messaging">
+    Logos Messaging Docs
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+<div class="version-switcher__container dropdown pst-js-only">
+  <button id="pst-version-switcher-button-3"
+    type="button"
+    class="version-switcher__button btn btn-sm dropdown-toggle"
+    data-bs-toggle="dropdown"
+    aria-haspopup="listbox"
+    aria-controls="pst-version-switcher-list-3"
+    aria-label="Version switcher list"
+  >
+    Choose version  <!-- this text may get changed later by javascript -->
+    <span class="caret"></span>
+  </button>
+  <div id="pst-version-switcher-list-3"
+    class="version-switcher__menu dropdown-menu list-group-flush py-0"
+    role="listbox" aria-labelledby="pst-version-switcher-button-3">
+    <!-- dropdown will be populated by javascript on page load -->
+  </div>
+</div></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/logos-co/logos-chat-module" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar"><svg class="pst-icon svg-inline--fa" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"></div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">API reference</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="api-reference">
+<h1>API reference<a class="headerlink" href="#api-reference" title="Link to this heading">#</a></h1>
+<p>The module’s public surface is its contract,
+<a class="reference external" href="https://github.com/logos-co/logos-chat-module/blob/master/rust-lib/chat_module.lidl">rust-lib/chat_module.lidl</a>.
+Everything on this page is rendered from that file, so it says exactly what a
+generated client can call.</p>
+<p>For a walk-through of the calls in order – bring-up, identity, opening a
+conversation, sending – with working code, see <a class="reference external" href="https://docs.logos.co/messaging/chat-module/build-logos-module-that-uses-chat-module-api">building a module that uses
+the Chat module API</a>
+on docs.logos.co.</p>
+<p>Types are <a class="reference external" href="https://github.com/logos-co/logos-lidl/blob/master/docs/spec.md">LIDL</a>’s, not any
+one language’s. The primitives are <code class="docutils literal notranslate"><span class="pre">tstr</span></code> (text), <code class="docutils literal notranslate"><span class="pre">bstr</span></code> (binary), <code class="docutils literal notranslate"><span class="pre">int</span></code>,
+<code class="docutils literal notranslate"><span class="pre">uint</span></code>, <code class="docutils literal notranslate"><span class="pre">float64</span></code>, <code class="docutils literal notranslate"><span class="pre">bool</span></code>, <code class="docutils literal notranslate"><span class="pre">any</span></code>, and <code class="docutils literal notranslate"><span class="pre">result</span></code> – a structured
+success-or-error. They compose as <code class="docutils literal notranslate"><span class="pre">[T]</span></code> for an array, <code class="docutils literal notranslate"><span class="pre">{K:</span> <span class="pre">V}</span></code> for a map,
+and <code class="docutils literal notranslate"><span class="pre">?T</span></code> for a value that may be absent. That set is fixed by the
+specification; how each maps onto a concrete type is up to the SDK generating
+your client.</p>
+<section id="methods">
+<h2>Methods<a class="headerlink" href="#methods" title="Link to this heading">#</a></h2>
+<p>Calls are dispatched over the Logos IPC bus. Status-bearing methods return
+<code class="docutils literal notranslate"><span class="pre">result</span></code>: success carries any payload – a conversation id, or nothing –
+and failure a human-readable reason. Collection getters return an array of the
+named record. A method that returns a plain string returns it empty when the
+module has not been initialised.</p>
+<dl class="lidl method">
+<dt class="sig sig-object lidl" id="init">
+<span class="sig-name descname"><span class="pre">init</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">config:</span> <span class="pre">ChatConfig</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">result</span></span></span><a class="headerlink" href="#init" title="Link to this definition">#</a></dt>
+<dd><p>Bring the module up and join the delivery network.</p>
+<p>Delivery starts asynchronously and this returns without waiting for it, so
+the module is not yet reachable when it succeeds. Readiness arrives as a
+delivery_state_changed event reaching “online”; there is no polling
+equivalent. Subscribe to the events before calling this, or the early ones
+are missed.</p>
+<p>Calling it again while initialised succeeds without doing anything, and the
+new config is ignored — call shutdown() first to reconfigure.</p>
+<p>Storage lives under the instance directory the host assigns; init fails when
+the host assigned none. Two instances therefore run side by side by giving
+each host its own session directory, and need no port coordination: the
+delivery node picks its own.</p>
+</dd></dl>
+
+<dl class="lidl method">
+<dt class="sig sig-object lidl" id="shutdown">
+<span class="sig-name descname"><span class="pre">shutdown</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">result</span></span></span><a class="headerlink" href="#shutdown" title="Link to this definition">#</a></dt>
+<dd><p>Stop the module: end the inbound worker, drop the chat client, and write
+conversation state out. Succeeds when the module was never initialised. A
+later init() starts a fresh session from the persisted state.</p>
+</dd></dl>
+
+<dl class="lidl method">
+<dt class="sig sig-object lidl" id="get_log_path">
+<span class="sig-name descname"><span class="pre">get_log_path</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tstr</span></span></span><a class="headerlink" href="#get_log_path" title="Link to this definition">#</a></dt>
+<dd><p>The file this module is writing its log to, in the instance directory the
+host assigned. Empty before init, and on a host that assigned none.</p>
+</dd></dl>
+
+<dl class="lidl method">
+<dt class="sig sig-object lidl" id="health">
+<span class="sig-name descname"><span class="pre">health</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#health" title="Link to this definition">#</a></dt>
+<dd><p>Liveness. Always true, and reachable without init or any lock held, so what
+a caller learns is whether this module answered at all: a host that lost the
+process fails the call instead, and a false is that failure surfacing.</p>
+</dd></dl>
+
+<dl class="lidl method">
+<dt class="sig sig-object lidl" id="get_installation_name">
+<span class="sig-name descname"><span class="pre">get_installation_name</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tstr</span></span></span><a class="headerlink" href="#get_installation_name" title="Link to this definition">#</a></dt>
+<dd><p>This installation’s display name: the one set with set_installation_name,
+or the chat core’s own name for the installation when none was set.</p>
+</dd></dl>
+
+<dl class="lidl method">
+<dt class="sig sig-object lidl" id="set_installation_name">
+<span class="sig-name descname"><span class="pre">set_installation_name</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">name:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">result</span></span></span><a class="headerlink" href="#set_installation_name" title="Link to this definition">#</a></dt>
+<dd><p>Set this installation’s display name; empty restores the default. Local to
+this installation — it is not carried to peers.</p>
+</dd></dl>
+
+<dl class="lidl method">
+<dt class="sig sig-object lidl" id="get_address">
+<span class="sig-name descname"><span class="pre">get_address</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tstr</span></span></span><a class="headerlink" href="#get_address" title="Link to this definition">#</a></dt>
+<dd><p>The local installation address, shared out-of-band so a peer can open a
+conversation with this installation via create_conversation. Empty before
+init.</p>
+</dd></dl>
+
+<dl class="lidl method">
+<dt class="sig sig-object lidl" id="create_conversation">
+<span class="sig-name descname"><span class="pre">create_conversation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">peer_address:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">result</span></span></span><a class="headerlink" href="#create_conversation" title="Link to this definition">#</a></dt>
+<dd><p>Open a 1:1 conversation with the peer at peer_address (their get_address).
+Sends the cryptographic invite; the first message follows via send_message.
+Returns the new conversation’s id.</p>
+</dd></dl>
+
+<dl class="lidl method">
+<dt class="sig sig-object lidl" id="create_group_conversation">
+<span class="sig-name descname"><span class="pre">create_group_conversation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">name:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">desc:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">result</span></span></span><a class="headerlink" href="#create_group_conversation" title="Link to this definition">#</a></dt>
+<dd><p>Create a group conversation with this installation as its only member; grow
+it with add_group_member. Every member sees the returned convo_id. name
+and desc are the group’s shared metadata, visible to every member; both may
+be empty for an unnamed group.</p>
+</dd></dl>
+
+<dl class="lidl method">
+<dt class="sig sig-object lidl" id="add_group_member">
+<span class="sig-name descname"><span class="pre">add_group_member</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">convo_id:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">peer_address:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">result</span></span></span><a class="headerlink" href="#add_group_member" title="Link to this definition">#</a></dt>
+<dd><p>Invite the peer at peer_address, and every device it has endorsed, into an
+existing group conversation. The invite is committed and delivered
+asynchronously; the peer observes the conversation once its instance has
+joined. Raises conversation_updated here, and members_changed once the
+group commits the add. Fails on an unknown convo_id.</p>
+</dd></dl>
+
+<dl class="lidl method">
+<dt class="sig sig-object lidl" id="list_conversations">
+<span class="sig-name descname"><span class="pre">list_conversations</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">[Conversation]</span></span></span><a class="headerlink" href="#list_conversations" title="Link to this definition">#</a></dt>
+<dd><p>Every conversation this installation holds, in no particular order — sort by
+last_activity_ms for a conversation list.</p>
+</dd></dl>
+
+<dl class="lidl method">
+<dt class="sig sig-object lidl" id="get_messages">
+<span class="sig-name descname"><span class="pre">get_messages</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">convo_id:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">[Message]</span></span></span><a class="headerlink" href="#get_messages" title="Link to this definition">#</a></dt>
+<dd><p>The messages this installation holds for a conversation, oldest first. An
+unknown conversation reports an empty list rather than failing.</p>
+</dd></dl>
+
+<dl class="lidl method">
+<dt class="sig sig-object lidl" id="list_group_members">
+<span class="sig-name descname"><span class="pre">list_group_members</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">convo_id:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">[GroupMember]</span></span></span><a class="headerlink" href="#list_group_members" title="Link to this definition">#</a></dt>
+<dd><p>The roster of a conversation, one GroupMember per element: committed members
+first, then invites still awaiting the group’s commit. A direct conversation
+reports both participants and never a pending one; an unknown conversation
+reports an empty roster.</p>
+</dd></dl>
+
+<dl class="lidl method">
+<dt class="sig sig-object lidl" id="send_message">
+<span class="sig-name descname"><span class="pre">send_message</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">convo_id:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">content:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">result</span></span></span><a class="headerlink" href="#send_message" title="Link to this definition">#</a></dt>
+<dd><p>Encrypt content and publish it to the conversation, then record it here and
+raise message_sent. Success means the message reached delivery, not that
+any peer received it. Fails on an unknown convo_id.</p>
+</dd></dl>
+
+<dl class="lidl method">
+<dt class="sig sig-object lidl" id="set_conversation_nickname">
+<span class="sig-name descname"><span class="pre">set_conversation_nickname</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">convo_id:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">nickname:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">result</span></span></span><a class="headerlink" href="#set_conversation_nickname" title="Link to this definition">#</a></dt>
+<dd><p>Label a conversation for this installation; empty clears the label. Local
+only — unlike a group’s name, no other member sees it. Raises
+conversation_updated. Fails on an unknown convo_id.</p>
+</dd></dl>
+
+<dl class="lidl method">
+<dt class="sig sig-object lidl" id="delete_conversation">
+<span class="sig-name descname"><span class="pre">delete_conversation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">convo_id:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">result</span></span></span><a class="headerlink" href="#delete_conversation" title="Link to this definition">#</a></dt>
+<dd><p>Drop a conversation and its messages from this installation, and ignore
+anything that arrives for it afterwards rather than reopening it. Local
+only: the other members keep theirs. Raises conversation_deleted. Fails on
+an unknown convo_id.</p>
+</dd></dl>
+
+<dl class="lidl method">
+<dt class="sig sig-object lidl" id="status">
+<span class="sig-name descname"><span class="pre">status</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Status</span></span></span><a class="headerlink" href="#status" title="Link to this definition">#</a></dt>
+<dd><p>A snapshot of the module: how many conversations it holds, and what the
+delivery node is doing. Readable before init, reporting zero conversations.</p>
+</dd></dl>
+
+</section>
+<section id="events">
+<h2>Events<a class="headerlink" href="#events" title="Link to this heading">#</a></h2>
+<p>Events are pushed over the <code class="docutils literal notranslate"><span class="pre">lp_*</span></code> IPC event channel; a consumer subscribes
+with <code class="docutils literal notranslate"><span class="pre">on_&lt;event&gt;()</span></code> rather than polling. They are fire-and-forget: they carry
+their arguments positionally, in the order listed here, and return nothing.</p>
+<p>This is where the results of the network arrive. A call returns once the
+request is dispatched, so an inbound message, a peer accepting an invite, or
+the delivery node coming online each reach you as an event rather than as a
+return value. Subscribe before calling <a class="reference internal" href="#init" title="init"><code class="xref lidl lidl-method docutils literal notranslate"><span class="pre">init</span></code></a>, or the earliest
+ones are missed.</p>
+<dl class="lidl event">
+<dt class="sig sig-object lidl" id="message_received">
+<span class="sig-name descname"><span class="pre">message_received</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">convo_id:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">content:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">timestamp_ms:</span> <span class="pre">int</span></em>, <em class="sig-param"><span class="pre">sender:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span><a class="headerlink" href="#message_received" title="Link to this definition">#</a></dt>
+<dd><p>An inbound message was decrypted and recorded. sender: the sender’s
+directory-verified account address, or its device id when the sender claims
+no account.</p>
+</dd></dl>
+
+<dl class="lidl event">
+<dt class="sig sig-object lidl" id="message_sent">
+<span class="sig-name descname"><span class="pre">message_sent</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">convo_id:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">content:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">timestamp_ms:</span> <span class="pre">int</span></em><span class="sig-paren">)</span><a class="headerlink" href="#message_sent" title="Link to this definition">#</a></dt>
+<dd><p>A message this installation sent was published and recorded.</p>
+</dd></dl>
+
+<dl class="lidl event">
+<dt class="sig sig-object lidl" id="conversation_created">
+<span class="sig-name descname"><span class="pre">conversation_created</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">convo_id:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">is_outgoing:</span> <span class="pre">bool</span></em>, <em class="sig-param"><span class="pre">peer_label:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">kind:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">name:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">desc:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span><a class="headerlink" href="#conversation_created" title="Link to this definition">#</a></dt>
+<dd><p>A conversation was opened — by a call here, or by a peer’s invite arriving.
+is_outgoing tells the two apart. kind: “direct” (1:1) or “group”, matching
+the Conversation record’s field. name, desc: the group’s shared metadata,
+empty for direct conversations and unnamed groups.</p>
+</dd></dl>
+
+<dl class="lidl event">
+<dt class="sig sig-object lidl" id="conversation_updated">
+<span class="sig-name descname"><span class="pre">conversation_updated</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">convo_id:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span><a class="headerlink" href="#conversation_updated" title="Link to this definition">#</a></dt>
+<dd><p>A conversation’s local metadata changed here: a nickname was set, or a
+member was invited. Re-read it with list_conversations.</p>
+</dd></dl>
+
+<dl class="lidl event">
+<dt class="sig sig-object lidl" id="members_changed">
+<span class="sig-name descname"><span class="pre">members_changed</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">convo_id:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span><a class="headerlink" href="#members_changed" title="Link to this definition">#</a></dt>
+<dd><p>The group committed a roster change. Call list_group_members for the
+roster it committed.</p>
+</dd></dl>
+
+<dl class="lidl event">
+<dt class="sig sig-object lidl" id="conversation_deleted">
+<span class="sig-name descname"><span class="pre">conversation_deleted</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">convo_id:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span><a class="headerlink" href="#conversation_deleted" title="Link to this definition">#</a></dt>
+<dd><p>A conversation was deleted on this installation.</p>
+</dd></dl>
+
+<dl class="lidl event">
+<dt class="sig sig-object lidl" id="delivery_state_changed">
+<span class="sig-name descname"><span class="pre">delivery_state_changed</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">delivery_state:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">detail:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span><a class="headerlink" href="#delivery_state_changed" title="Link to this definition">#</a></dt>
+<dd><p>The delivery node’s state changed: “initialising”, “online”, “error” or
+“stopped”, with detail carrying a human-readable reason where there is one.
+Reaching “online” is how a caller learns init() has finished bringing the
+network up.</p>
+</dd></dl>
+
+</section>
+<section id="records">
+<h2>Records<a class="headerlink" href="#records" title="Link to this heading">#</a></h2>
+<p>The structured payloads the methods above exchange. A field marked <em>optional</em>
+may be absent.</p>
+<dl class="lidl record">
+<dt class="sig sig-object lidl" id="record-Conversation">
+<span class="property"><span class="pre">type</span> </span><span class="sig-name descname"><span class="pre">Conversation</span></span><a class="headerlink" href="#record-Conversation" title="Link to this definition">#</a></dt>
+<dd><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">convo_id</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>) – Identifies the conversation in every other
+call. Returned by create_conversation and create_group_conversation.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">nickname</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>, optional) – A label for this conversation, set
+with set_conversation_nickname. Local to this installation; no other
+member sees it.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">message_count</span></code> (<code class="docutils literal notranslate"><span class="pre">int</span></code>) – How many messages this installation holds
+for the conversation. It counts what was received here, not everything
+ever sent to the conversation.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">last_activity_ms</span></code> (<code class="docutils literal notranslate"><span class="pre">int</span></code>) – When the most recent held message
+arrived, in milliseconds since the Unix epoch. Zero when the conversation
+has no messages.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">kind</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>) – “direct” (1:1) or “group”. PrivateV1 and DirectV1
+are both “direct”.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">name</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>, optional) – A group’s shared name, set at creation
+and identical for every member. Absent for direct conversations and
+unnamed groups; distinct from the local-only <code class="docutils literal notranslate"><span class="pre">nickname</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">description</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>, optional) – A group’s shared description, set
+at creation alongside <code class="docutils literal notranslate"><span class="pre">name</span></code> and likewise the same for every member.
+Absent on the same terms.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">preview</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>, optional) – The last message’s content, truncated
+to 160 characters, for a conversation-list preview. Absent when the
+conversation has no messages.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="lidl record">
+<dt class="sig sig-object lidl" id="record-Message">
+<span class="property"><span class="pre">type</span> </span><span class="sig-name descname"><span class="pre">Message</span></span><a class="headerlink" href="#record-Message" title="Link to this definition">#</a></dt>
+<dd><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">from_self</span></code> (<code class="docutils literal notranslate"><span class="pre">bool</span></code>) – True for a message this installation sent,
+false for one it received.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">content</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>) – The message text, decrypted.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">timestamp_ms</span></code> (<code class="docutils literal notranslate"><span class="pre">int</span></code>) – When the message was sent (own messages) or
+recorded (received ones), in milliseconds since the Unix epoch.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">sender</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>, optional) – Sender’s account address (device id if
+unassociated); unset on messages this installation sent.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="lidl record">
+<dt class="sig sig-object lidl" id="record-Status">
+<span class="property"><span class="pre">type</span> </span><span class="sig-name descname"><span class="pre">Status</span></span><a class="headerlink" href="#record-Status" title="Link to this definition">#</a></dt>
+<dd><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">convo_count</span></code> (<code class="docutils literal notranslate"><span class="pre">int</span></code>) – How many conversations this installation
+currently holds.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">delivery_state</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>) – The delivery node’s state, same
+vocabulary as the delivery_state_changed event: “initialising”,
+“online”, “error” or “stopped”.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">detail</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>) – A human-readable reason for that state, empty
+when there is none.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="lidl record">
+<dt class="sig sig-object lidl" id="record-GroupMember">
+<span class="property"><span class="pre">type</span> </span><span class="sig-name descname"><span class="pre">GroupMember</span></span><a class="headerlink" href="#record-GroupMember" title="Link to this definition">#</a></dt>
+<dd><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">address</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>) – The member’s directory-verified account address,
+or empty when the member claims no confirmed account (the UI renders these
+as an unknown account).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pending</span></code> (<code class="docutils literal notranslate"><span class="pre">bool</span></code>) – True while the group has not committed this
+member’s add, so it cannot read the conversation yet. Only invites this
+instance sent are reported, so a member another instance invited appears
+once the group commits it. The flag clears when that commit lands; an
+invite the group never commits stays pending for the life of the
+conversation.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="lidl record">
+<dt class="sig sig-object lidl" id="record-ChatConfig">
+<span class="property"><span class="pre">type</span> </span><span class="sig-name descname"><span class="pre">ChatConfig</span></span><a class="headerlink" href="#record-ChatConfig" title="Link to this definition">#</a></dt>
+<dd><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">delivery_preset</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>, optional) – The delivery network to join.
+Empty or absent means “logos.dev”.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">log_level</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>, optional) – How much of the chat core’s own
+account of a run to log: “error” | “warn” | “info” | “debug” |
+“trace”. Absent or unrecognised means “info”. Read once, at init: a later
+init leaves it as it was.</p></li>
+</ul>
+</dd></dl>
+
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="../index.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Logos Chat Module</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="internal.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Internal docs</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#methods">Methods</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#init"><code class="docutils literal notranslate"><span class="pre">init()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#shutdown"><code class="docutils literal notranslate"><span class="pre">shutdown()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#get_log_path"><code class="docutils literal notranslate"><span class="pre">get_log_path()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#health"><code class="docutils literal notranslate"><span class="pre">health()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#get_installation_name"><code class="docutils literal notranslate"><span class="pre">get_installation_name()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#set_installation_name"><code class="docutils literal notranslate"><span class="pre">set_installation_name()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#get_address"><code class="docutils literal notranslate"><span class="pre">get_address()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#create_conversation"><code class="docutils literal notranslate"><span class="pre">create_conversation()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#create_group_conversation"><code class="docutils literal notranslate"><span class="pre">create_group_conversation()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#add_group_member"><code class="docutils literal notranslate"><span class="pre">add_group_member()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#list_conversations"><code class="docutils literal notranslate"><span class="pre">list_conversations()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#get_messages"><code class="docutils literal notranslate"><span class="pre">get_messages()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#list_group_members"><code class="docutils literal notranslate"><span class="pre">list_group_members()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#send_message"><code class="docutils literal notranslate"><span class="pre">send_message()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#set_conversation_nickname"><code class="docutils literal notranslate"><span class="pre">set_conversation_nickname()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#delete_conversation"><code class="docutils literal notranslate"><span class="pre">delete_conversation()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#status"><code class="docutils literal notranslate"><span class="pre">status()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#events">Events</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#message_received"><code class="docutils literal notranslate"><span class="pre">message_received()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#message_sent"><code class="docutils literal notranslate"><span class="pre">message_sent()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#conversation_created"><code class="docutils literal notranslate"><span class="pre">conversation_created()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#conversation_updated"><code class="docutils literal notranslate"><span class="pre">conversation_updated()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#members_changed"><code class="docutils literal notranslate"><span class="pre">members_changed()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#conversation_deleted"><code class="docutils literal notranslate"><span class="pre">conversation_deleted()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#delivery_state_changed"><code class="docutils literal notranslate"><span class="pre">delivery_state_changed()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#records">Records</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#record-Conversation"><code class="docutils literal notranslate"><span class="pre">Conversation</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#record-Message"><code class="docutils literal notranslate"><span class="pre">Message</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#record-Status"><code class="docutils literal notranslate"><span class="pre">Status</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#record-GroupMember"><code class="docutils literal notranslate"><span class="pre">GroupMember</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#record-ChatConfig"><code class="docutils literal notranslate"><span class="pre">ChatConfig</span></code></a></li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/pages/api_reference.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=55c26ed414f5f8a31ebb"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=55c26ed414f5f8a31ebb"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2026, Institute of Free Technology.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.0.4.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.17.1.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
