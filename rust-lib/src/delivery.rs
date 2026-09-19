@@ -17,6 +17,88 @@ pub(crate) fn content_topic_for(delivery_address: &str) -> String {
     format!("{TOPIC_PREFIX}{delivery_address}/proto")
 }
 
+/// The delivery networks `init` accepts, the default first.
+pub(crate) const DELIVERY_PRESETS: [&str; 2] = ["logos.test", "logos.dev"];
+
+/// Whether delivery routes this installation's traffic through the mix network:
+/// `ChatConfig.anonymity_level`, carried to delivery_module as the
+/// `anonymityLevel` messaging override.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum AnonymityLevel {
+    #[default]
+    None,
+    Preferred,
+    Required,
+}
+
+impl AnonymityLevel {
+    /// The contract's spelling, case-insensitively; empty is the default.
+    pub(crate) fn parse(level: &str) -> Option<Self> {
+        match level.to_ascii_lowercase().as_str() {
+            "" | "none" => Some(Self::None),
+            "preferred" => Some(Self::Preferred),
+            "required" => Some(Self::Required),
+            _ => None,
+        }
+    }
+
+    /// delivery_module's spelling of the level.
+    fn as_delivery(self) -> &'static str {
+        match self {
+            Self::None => "None",
+            Self::Preferred => "Preferred",
+            Self::Required => "Required",
+        }
+    }
+}
+
+/// The delivery node `init` asks delivery_module for, validated up front so a
+/// bad setting fails `init` rather than the asynchronous `createNode` after it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DeliverySettings {
+    pub preset: &'static str,
+    pub anonymity: AnonymityLevel,
+}
+
+impl DeliverySettings {
+    /// Reads the two `ChatConfig` fields; an empty one takes its default.
+    pub(crate) fn from_config(preset: &str, anonymity: &str) -> Result<Self, String> {
+        let preset = match preset {
+            "" => DELIVERY_PRESETS[0],
+            named => DELIVERY_PRESETS
+                .into_iter()
+                .find(|known| *known == named)
+                .ok_or_else(|| {
+                    format!(
+                        "unknown delivery_preset {named:?}; expected one of {}",
+                        DELIVERY_PRESETS.join(", ")
+                    )
+                })?,
+        };
+        let anonymity = AnonymityLevel::parse(anonymity).ok_or_else(|| {
+            format!("unknown anonymity_level {anonymity:?}; expected none, preferred or required")
+        })?;
+        Ok(Self { preset, anonymity })
+    }
+
+    /// The `createNode` config: delivery_module's layered app-developer shape.
+    ///
+    /// Only wrapper keys may sit at the top level: any bare key reroutes the
+    /// config to the legacy flat parser, whose listening ports are fixed rather
+    /// than OS-assigned, so two instances on one host would collide.
+    pub(crate) fn create_node_config(&self) -> String {
+        serde_json::json!({
+            "mode": "Core",
+            "preset": self.preset,
+            "messagingOverrides": {
+                "logLevel": "ERROR",
+                "anonymityLevel": self.anonymity.as_delivery(),
+            },
+        })
+        .to_string()
+    }
+}
+
 /// Carries each direction of the client's delivery boundary: the outbound
 /// [`SdkPublisher`], plus the inbound payload stream the client's worker drains.
 #[derive(Debug)]
@@ -98,5 +180,70 @@ impl DeliveryService for SdkPublisher {
         self.subscribe_tx
             .send(content_topic_for(delivery_address))
             .map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_settings_join_logos_test_without_anonymity() {
+        let settings = DeliverySettings::from_config("", "").unwrap();
+
+        assert_eq!(settings.preset, "logos.test");
+        assert_eq!(settings.anonymity, AnonymityLevel::None);
+    }
+
+    #[test]
+    fn both_networks_are_selectable() {
+        for preset in ["logos.test", "logos.dev"] {
+            assert_eq!(
+                DeliverySettings::from_config(preset, "").unwrap().preset,
+                preset
+            );
+        }
+    }
+
+    /// delivery_module fails `createNode` on a variant spelling such as
+    /// `logostest`, so `init` refuses it before the node is asked for.
+    #[test]
+    fn any_other_preset_is_refused() {
+        for preset in ["logostest", "Logos.Test", "status.prod"] {
+            assert!(
+                DeliverySettings::from_config(preset, "").is_err(),
+                "{preset}"
+            );
+        }
+    }
+
+    #[test]
+    fn anonymity_level_reads_in_any_case() {
+        assert_eq!(
+            AnonymityLevel::parse("Required"),
+            Some(AnonymityLevel::Required)
+        );
+        assert_eq!(
+            AnonymityLevel::parse("preferred"),
+            Some(AnonymityLevel::Preferred)
+        );
+        assert_eq!(AnonymityLevel::parse("NONE"), Some(AnonymityLevel::None));
+        assert_eq!(AnonymityLevel::parse("on"), None);
+    }
+
+    #[test]
+    fn create_node_config_is_layered_and_carries_the_anonymity_level() {
+        let settings = DeliverySettings::from_config("logos.dev", "required").unwrap();
+        let config: serde_json::Value =
+            serde_json::from_str(&settings.create_node_config()).unwrap();
+
+        assert_eq!(
+            config,
+            serde_json::json!({
+                "mode": "Core",
+                "preset": "logos.dev",
+                "messagingOverrides": { "logLevel": "ERROR", "anonymityLevel": "Required" },
+            })
+        );
     }
 }

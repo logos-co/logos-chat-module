@@ -26,7 +26,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use libchat::ChatStorage;
 use logos_generic_chat::{ChatClient, ContactRegistry};
-use serde::Serialize;
 
 use crate::delivery::{SdkDelivery, SdkPublisher};
 use crate::persistence::AppState;
@@ -47,12 +46,12 @@ pub(crate) const PERSISTENCE_ENABLED: bool = false;
 
 // ── Delivery state ──────────────────────────────────────────────────────────
 
-/// Serialises lowercase on the wire. `Initialising` covers the gap between a
-/// successful init and delivery finishing startup (the start/subscribe handshake
-/// in `actions::initialize`), at which point we report `Online` — distinct from
-/// `Stopped`, which means not initialised.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
+/// `Initialising` covers the gap between a successful init and delivery being
+/// able to send (the createNode/start handshake in
+/// `actions::start_delivery_bootstrap`, plus a mix exit when anonymity is on),
+/// at which point we report `Online` — distinct from `Stopped`, which means not
+/// initialised.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DeliveryStateKind {
     Initialising,
     Online,
@@ -62,8 +61,7 @@ pub(crate) enum DeliveryStateKind {
 
 impl DeliveryStateKind {
     /// Lowercase wire form — the `delivery_state` value carried by the
-    /// `delivery_state_changed` event. Matches the serde `rename_all` form
-    /// used when this enum is serialised inside `status`.
+    /// `delivery_state_changed` event and the `Status` record.
     pub fn as_str(self) -> &'static str {
         match self {
             DeliveryStateKind::Initialising => "initialising",
@@ -183,6 +181,12 @@ pub(crate) struct Display {
     pub state: AppState,
     pub state_path: PathBuf,
     pub delivery_state: DeliveryState,
+    /// Whether delivery_module's node has finished starting. Its connectivity
+    /// reports drive `delivery_state` only from then on.
+    pub delivery_started: bool,
+    /// Whether delivery_module last reported the node connected, whether or
+    /// not it had started.
+    pub delivery_connected: bool,
     /// libchat's intrinsic installation name, cached so `get_installation_name`
     /// needn't touch the client (which is behind the other lock).
     pub intrinsic_name: String,
@@ -198,6 +202,8 @@ impl Default for Display {
             state: AppState::default(),
             state_path: PathBuf::new(),
             delivery_state: DeliveryState::stopped(),
+            delivery_started: false,
+            delivery_connected: false,
             intrinsic_name: String::new(),
             address: String::new(),
         }
@@ -261,11 +267,10 @@ mod tests {
 
     // Pins the lowercase wire format consumers parse against.
     #[test]
-    fn delivery_state_kind_serialises_to_lowercase() {
-        let to_json = |k: DeliveryStateKind| serde_json::to_value(k).unwrap();
-        assert_eq!(to_json(DeliveryStateKind::Initialising), "initialising");
-        assert_eq!(to_json(DeliveryStateKind::Online), "online");
-        assert_eq!(to_json(DeliveryStateKind::Error), "error");
-        assert_eq!(to_json(DeliveryStateKind::Stopped), "stopped");
+    fn delivery_state_kind_is_lowercase_on_the_wire() {
+        assert_eq!(DeliveryStateKind::Initialising.as_str(), "initialising");
+        assert_eq!(DeliveryStateKind::Online.as_str(), "online");
+        assert_eq!(DeliveryStateKind::Error.as_str(), "error");
+        assert_eq!(DeliveryStateKind::Stopped.as_str(), "stopped");
     }
 }
