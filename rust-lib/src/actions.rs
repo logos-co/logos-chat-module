@@ -17,9 +17,9 @@ use logos_generic_chat::{
     ChatClientBuilder, ContactRegistry, DelegateSigner, GroupMetadata, RegistryPublishMode,
     StorageConfig,
 };
-use serde::Serialize;
 
-use crate::delivery::SdkDelivery;
+use crate::delivery::{AnonymityLevel, DeliverySettings, SdkDelivery};
+use crate::{Conversation, GroupMember, Message, Status};
 
 /// The devnet KeyPackage registry DirectV1 uses to publish this installation's
 /// key package and fetch a peer's. Hardcoded for now; a configurable endpoint is
@@ -59,37 +59,9 @@ pub(crate) enum InitError {
     Delivery(String),
 }
 
-// ── Contract view types ──────────────────────────────────────────────────────
-//
-// Serde shapes matching the `Conversation` / `Status` records in
-// chat_module.lidl — the payloads `list_conversations` and `status` return. The
-// messages list reuses `persistence::DisplayMessage`, which already matches the
-// `Message` record.
-
 /// Character cap for a conversation-list preview. Mirrored on the UI so live and
 /// rehydrated previews agree.
 const PREVIEW_MAX_CHARS: usize = 160;
-
-/// One element of `list_conversations` — mirrors the `Conversation` record.
-#[derive(Serialize)]
-struct ConversationSummary {
-    convo_id: String,
-    nickname: Option<String>,
-    message_count: usize,
-    last_activity_ms: u64,
-    kind: ConversationKind,
-    name: Option<String>,
-    description: Option<String>,
-    preview: Option<String>,
-}
-
-/// `status` payload — mirrors the `Status` record.
-#[derive(Serialize)]
-struct StatusView {
-    convo_count: usize,
-    delivery_state: DeliveryStateKind,
-    detail: String,
-}
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
@@ -216,6 +188,8 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         d.state = state;
         d.state_path = state_path;
         d.delivery_state = DeliveryState::initialising();
+        d.delivery_started = false;
+        d.delivery_connected = false;
         d.intrinsic_name = intrinsic_name;
         d.address = address;
     });
@@ -249,38 +223,41 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
 /// chat_module can't coexist with another delivery_module consumer today. Drop
 /// these calls once the host bootstraps delivery_module and exposes it
 /// ready-to-use.
-pub(crate) fn start_delivery_bootstrap(preset: &str) {
-    // The layered app-developer shape from delivery_module's docs. Only wrapper
-    // keys may sit at the top level: any bare key (a top-level logLevel included)
-    // reroutes the config to the legacy flat parser, whose port defaults are
-    // fixed values — the layered path defaults every unpinned listening port to
-    // 0 (OS-assigned), which is what keeps instances sharing a host apart.
-    let config_json = serde_json::json!({
-        "mode": "Core",
-        "preset": preset,
-        "messagingOverrides": { "logLevel": "ERROR" },
-    })
-    .to_string();
-
-    crate::modules()
-        .delivery_module
-        .create_node_async(&config_json, move |res| match res {
-            Ok(_) => start_node(),
+pub(crate) fn start_delivery_bootstrap(settings: DeliverySettings) {
+    crate::modules().delivery_module.create_node_async(
+        &settings.create_node_config(),
+        move |res| match res {
+            Ok(_) => start_node(settings.anonymity),
             Err(e) => set_delivery_error(format!("delivery_module.createNode failed: {e}")),
-        });
+        },
+    );
 }
 
-/// Bootstrap step 2 of 2: start the node and report readiness. Once online, the
+/// Bootstrap step 2 of 2: start the node and report readiness. Once started, the
 /// bridge worker forwards the core's queued subscriptions (see
 /// `inbound::forward_subscriptions`).
-fn start_node() {
+///
+/// A node that routes through mix reports itself disconnected until a mix exit
+/// is ready, and cannot send before then, so with anonymity on, readiness waits
+/// for connectivity rather than for the start handshake alone.
+fn start_node(anonymity: AnonymityLevel) {
     crate::modules()
         .delivery_module
         .start_async(move |res| match res {
-            Ok(_) => with_display_mut(|d| set_delivery_state(d, DeliveryStateKind::Online, "")),
+            Ok(_) => with_display_mut(|d| {
+                d.delivery_started = true;
+                if anonymity == AnonymityLevel::None || d.delivery_connected {
+                    set_delivery_state(d, DeliveryStateKind::Online, "");
+                } else {
+                    set_delivery_state(d, DeliveryStateKind::Initialising, WAITING_FOR_MIX);
+                }
+            }),
             Err(e) => set_delivery_error(format!("delivery_module.start failed: {e}")),
         });
 }
+
+/// The `delivery_state_changed` detail while a started node waits for a mix exit.
+const WAITING_FOR_MIX: &str = "waiting for a mix exit";
 
 /// Record an async-bootstrap failure in delivery_state, which is what logs it.
 fn set_delivery_error(detail: String) {
@@ -489,57 +466,45 @@ fn member_address(member: logos_generic_chat::GroupMember) -> String {
         .unwrap_or_default()
 }
 
-/// One roster entry — mirrors the `GroupMember` record.
-#[derive(Serialize)]
-struct GroupMemberRow {
-    address: String,
-    pending: bool,
-}
-
-/// The roster of the conversation `convo_id`, one [`GroupMemberRow`] per
+/// The roster of the conversation `convo_id`, one [`GroupMember`] per
 /// element; a direct conversation reports both participants. This is a plain
 /// list with no error channel, mirroring `get_messages`: an unknown
 /// conversation, or a client error, yields an empty array (the client error is
 /// logged).
-pub(crate) fn list_group_members(convo_id: &str) -> serde_json::Value {
-    let empty = || serde_json::Value::Array(vec![]);
+pub(crate) fn list_group_members(convo_id: &str) -> Vec<GroupMember> {
     if !with_display(|d| d.state.chats.contains_key(convo_id)) {
-        return empty();
+        return Vec::new();
     }
     match with_client(|client| client.group_members(convo_id)) {
-        Ok(Ok(members)) => {
-            let rows: Vec<GroupMemberRow> = members
-                .into_iter()
-                .map(|m| GroupMemberRow {
-                    pending: m.pending,
-                    address: member_address(m),
-                })
-                .collect();
-            serde_json::to_value(rows).unwrap_or_else(|_| empty())
-        }
+        Ok(Ok(members)) => members
+            .into_iter()
+            .map(|m| GroupMember {
+                pending: m.pending,
+                address: member_address(m),
+            })
+            .collect(),
         Ok(Err(e)) => {
             tracing::warn!("list_group_members failed: {e:?}");
-            empty()
+            Vec::new()
         }
         Err(e) => {
             tracing::warn!("list_group_members: {e}");
-            empty()
+            Vec::new()
         }
     }
 }
 
-pub(crate) fn list_conversations() -> serde_json::Value {
+pub(crate) fn list_conversations() -> Vec<Conversation> {
     with_display(|d| {
-        let items: Vec<ConversationSummary> = d
-            .state
+        d.state
             .chats
             .values()
-            .map(|s| ConversationSummary {
+            .map(|s| Conversation {
                 convo_id: s.chat_id.clone(),
                 nickname: s.nickname.clone(),
-                message_count: s.messages.len(),
-                last_activity_ms: s.messages.last().map(|m| m.timestamp_ms).unwrap_or(0),
-                kind: s.kind,
+                message_count: s.messages.len() as i64,
+                last_activity_ms: s.messages.last().map_or(0, |m| m.timestamp_ms as i64),
+                kind: s.kind.as_str().to_string(),
                 name: s.name.clone(),
                 description: s.description.clone(),
                 preview: s
@@ -547,20 +512,25 @@ pub(crate) fn list_conversations() -> serde_json::Value {
                     .last()
                     .map(|m| m.content.chars().take(PREVIEW_MAX_CHARS).collect()),
             })
-            .collect();
-        serde_json::to_value(items).unwrap_or_else(|_| serde_json::Value::Array(vec![]))
+            .collect()
     })
 }
 
-pub(crate) fn get_messages(convo_id: &str) -> serde_json::Value {
+pub(crate) fn get_messages(convo_id: &str) -> Vec<Message> {
     with_display(|d| {
-        let msgs = d
-            .state
+        d.state
             .chats
             .get(convo_id)
             .map(|s| s.messages.as_slice())
-            .unwrap_or(&[]);
-        serde_json::to_value(msgs).unwrap_or_else(|_| serde_json::Value::Array(vec![]))
+            .unwrap_or(&[])
+            .iter()
+            .map(|m| Message {
+                from_self: m.from_self,
+                content: m.content.clone(),
+                timestamp_ms: m.timestamp_ms as i64,
+                sender: m.sender.clone(),
+            })
+            .collect()
     })
 }
 
@@ -626,14 +596,11 @@ pub(crate) fn delete_conversation(convo_id: &str) -> Result<(), CoreError> {
 
 // ── Status ───────────────────────────────────────────────────────────────────
 
-pub(crate) fn status() -> serde_json::Value {
-    with_display(|d| {
-        let view = StatusView {
-            convo_count: d.state.chats.len(),
-            delivery_state: d.delivery_state.state,
-            detail: d.delivery_state.detail.clone(),
-        };
-        serde_json::to_value(view).unwrap_or(serde_json::Value::Null)
+pub(crate) fn status() -> Status {
+    with_display(|d| Status {
+        convo_count: d.state.chats.len() as i64,
+        delivery_state: d.delivery_state.state.as_str().to_string(),
+        detail: d.delivery_state.detail.clone(),
     })
 }
 

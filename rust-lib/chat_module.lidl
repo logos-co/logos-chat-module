@@ -9,9 +9,8 @@
 ; (docs/lidl2rst.py renders them), so keep them true of the implementation.
 ;
 ; The record types below are the contract's source of truth for wire shapes.
-; Today's codegen materializes them as QVariant/QVariantList on the Qt side
-; (no generated C++ struct) — they document the shape and "light up" if the
-; generators gain struct support.
+; The Rust provider takes and returns them as generated structs, and dispatch
+; refuses a record argument that is not an object of this shape.
 module chat_module {
   version "0.2.2"
   description "Chat module for Logos: e2e-encrypted conversations over delivery_module."
@@ -81,8 +80,14 @@ module chat_module {
 
   ; --- lifecycle ---
   type ChatConfig {
-    ; The delivery network to join. Empty or absent means "logos.test".
+    ; The delivery network to join: "logos.test" or "logos.dev". Empty or
+    ; absent means "logos.test"; any other name fails init.
     ? delivery_preset: tstr
+    ; Whether delivery routes this installation's messages through the mix
+    ; network: "none", "preferred" or "required", in any case. Empty or absent
+    ; means "none"; anything else fails init. Above "none", delivery reaches
+    ; "online" only once a mix exit is ready.
+    ? anonymity_level: tstr
     ; How much of the chat core's own account of a run to log:
     ; "error" | "warn" | "info" | "debug" | "trace". Absent or unrecognised
     ; means "info". Read once, at init: a later init leaves it as it was.

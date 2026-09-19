@@ -2,17 +2,16 @@
 ; dependency_override (see metadata.json). logos-lidl-gen turns this file into
 ; the typed `DeliveryModuleClient` that actions.rs/delivery.rs/inbound.rs call
 ; (createNode/start/subscribe/send + the messageReceived/connectionStateChanged
-; decoders). Hand-maintained, so keep it in sync with the pinned rev (v0.2.0,
-; which ships a published `lidl` flake output — switching to it is #58's scope,
-; so the manual copy stays for now).
+; decoders). Hand-maintained, so keep it in sync with the pinned rev: a stale
+; event signature does not fail the build, it fails to decode at runtime.
 module delivery_module {
-  version "0.2.0"
+  version "0.3.0"
 
   method createNode(config: tstr) -> result
   method start() -> result
   method subscribe(contentTopic: tstr) -> result
   method send(contentTopic: tstr, payload: bstr) -> result
 
-  event messageReceived(messageHash: tstr, contentTopic: tstr, payload: bstr, timestamp: int)
+  event messageReceived(messageHash: tstr, contentTopic: tstr, payload: bstr, source: tstr, timestamp: int)
   event connectionStateChanged(status: tstr, timestamp: int)
 }

@@ -11,15 +11,12 @@
   };
 
   inputs = {
-    # Held at the 0.2.6 release rather than master: master carries a
-    # logos-rust-sdk whose lidl-gen emits declared records as typed Rust
-    # structs, which this module's providers are not written against.
-    logos-module-builder.url = "github:logos-co/logos-module-builder/0.2.6";
+    # The release delivery_module v0.3.0 is built with, so both modules speak
+    # the same logos-protocol.
+    logos-module-builder.url = "github:logos-co/logos-module-builder/0.3.0";
 
-    # Pinned to the v0.2.0 release tag (Reliable Channels API, storeQuery,
-    # layered createNode config; the flat config shape this module sends still
-    # parses). Kept in lockstep with logos-chat-ui's pin.
-    logos-delivery-module.url = "github:logos-co/logos-delivery-module/v0.2.0";
+    # Kept in lockstep with logos-chat-ui's pin.
+    logos-delivery-module.url = "github:logos-co/logos-delivery-module/v0.3.0-rc.1";
   };
 
   outputs = inputs@{ self, logos-module-builder, logos-delivery-module, ... }:
@@ -54,6 +51,12 @@
           # locked delivery input, so the exact delivery_module rev chat_module is
           # built against can be installed alongside it.
           "delivery_module-lgx" = logos-delivery-module.packages.${system}.lgx;
+
+          # delivery_module's RLN dependency chain, which logoscore refuses to
+          # load it without, at the revs that delivery_module locks.
+          "liblogos_rln_module-lgx" = logos-delivery-module.packages.${system}."liblogos_rln_module-lgx";
+          "liblogos_lez_rln_module-lgx" = logos-delivery-module.packages.${system}."liblogos_lez_rln_module-lgx";
+          "lez_core-lgx" = logos-delivery-module.packages.${system}."lez_core-lgx";
         });
 
       # `nix run .#generate` materialises the two gitignored inputs `rust-lib/`
