@@ -11,8 +11,7 @@
   };
 
   inputs = {
-    # The release delivery_module v0.3.0 is built with, so both modules speak
-    # the same logos-protocol.
+    # Must match delivery_module's builder, or the two speak different protocols.
     logos-module-builder.url = "github:logos-co/logos-module-builder/0.3.0";
 
     # Kept in lockstep with logos-chat-ui's pin.
@@ -52,8 +51,7 @@
           # built against can be installed alongside it.
           "delivery_module-lgx" = logos-delivery-module.packages.${system}.lgx;
 
-          # delivery_module's RLN dependency chain, which logoscore refuses to
-          # load it without, at the revs that delivery_module locks.
+          # logoscore refuses to load delivery_module without these installed.
           "liblogos_rln_module-lgx" = logos-delivery-module.packages.${system}."liblogos_rln_module-lgx";
           "liblogos_lez_rln_module-lgx" = logos-delivery-module.packages.${system}."liblogos_lez_rln_module-lgx";
           "lez_core-lgx" = logos-delivery-module.packages.${system}."lez_core-lgx";
