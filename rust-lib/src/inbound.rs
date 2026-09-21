@@ -224,8 +224,7 @@ fn handle_connection_state(status: &str) {
 /// ignored: delivery reports `Connected` mid-bootstrap, ~tens of seconds before
 /// the transport can service a call, so readiness is gated on the start
 /// handshake (see `actions::start_delivery_bootstrap`) — not on this event. Once
-/// started, connectivity drives online/offline, which is also how a node
-/// routing through mix comes online once its mix exit is ready.
+/// started, connectivity drives online/offline.
 pub(crate) fn connection_transition(
     started: bool,
     next: DeliveryStateKind,

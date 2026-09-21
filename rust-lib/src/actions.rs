@@ -237,9 +237,7 @@ pub(crate) fn start_delivery_bootstrap(settings: DeliverySettings) {
 /// bridge worker forwards the core's queued subscriptions (see
 /// `inbound::forward_subscriptions`).
 ///
-/// A node that routes through mix reports itself disconnected until a mix exit
-/// is ready, and cannot send before then, so with anonymity on, readiness waits
-/// for connectivity rather than for the start handshake alone.
+/// A node routing through mix reports disconnected until a mix exit is ready.
 fn start_node(anonymity: AnonymityLevel) {
     crate::modules()
         .delivery_module
@@ -256,7 +254,6 @@ fn start_node(anonymity: AnonymityLevel) {
         });
 }
 
-/// The `delivery_state_changed` detail while a started node waits for a mix exit.
 const WAITING_FOR_MIX: &str = "waiting for a mix exit";
 
 /// Record an async-bootstrap failure in delivery_state, which is what logs it.

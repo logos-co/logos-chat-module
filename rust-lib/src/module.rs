@@ -47,10 +47,8 @@ pub(crate) const PERSISTENCE_ENABLED: bool = false;
 // ── Delivery state ──────────────────────────────────────────────────────────
 
 /// `Initialising` covers the gap between a successful init and delivery being
-/// able to send (the createNode/start handshake in
-/// `actions::start_delivery_bootstrap`, plus a mix exit when anonymity is on),
-/// at which point we report `Online` — distinct from `Stopped`, which means not
-/// initialised.
+/// able to send, at which point we report `Online` — distinct from `Stopped`,
+/// which means not initialised.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DeliveryStateKind {
     Initialising,
@@ -181,11 +179,7 @@ pub(crate) struct Display {
     pub state: AppState,
     pub state_path: PathBuf,
     pub delivery_state: DeliveryState,
-    /// Whether delivery_module's node has finished starting. Its connectivity
-    /// reports drive `delivery_state` only from then on.
     pub delivery_started: bool,
-    /// Whether delivery_module last reported the node connected, whether or
-    /// not it had started.
     pub delivery_connected: bool,
     /// libchat's intrinsic installation name, cached so `get_installation_name`
     /// needn't touch the client (which is behind the other lock).

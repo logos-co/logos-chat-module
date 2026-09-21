@@ -17,12 +17,9 @@ pub(crate) fn content_topic_for(delivery_address: &str) -> String {
     format!("{TOPIC_PREFIX}{delivery_address}/proto")
 }
 
-/// The delivery networks `init` accepts, the default first.
+/// The first is the default.
 pub(crate) const DELIVERY_PRESETS: [&str; 2] = ["logos.test", "logos.dev"];
 
-/// Whether delivery routes this installation's traffic through the mix network:
-/// `ChatConfig.anonymity_level`, carried to delivery_module as the
-/// `anonymityLevel` messaging override.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum AnonymityLevel {
     #[default]
@@ -32,7 +29,6 @@ pub(crate) enum AnonymityLevel {
 }
 
 impl AnonymityLevel {
-    /// The contract's spelling, case-insensitively; empty is the default.
     pub(crate) fn parse(level: &str) -> Option<Self> {
         match level.to_ascii_lowercase().as_str() {
             "" | "none" => Some(Self::None),
@@ -42,7 +38,6 @@ impl AnonymityLevel {
         }
     }
 
-    /// delivery_module's spelling of the level.
     fn as_delivery(self) -> &'static str {
         match self {
             Self::None => "None",
@@ -52,8 +47,6 @@ impl AnonymityLevel {
     }
 }
 
-/// The delivery node `init` asks delivery_module for, validated up front so a
-/// bad setting fails `init` rather than the asynchronous `createNode` after it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct DeliverySettings {
     pub preset: &'static str,
@@ -61,7 +54,6 @@ pub(crate) struct DeliverySettings {
 }
 
 impl DeliverySettings {
-    /// Reads the two `ChatConfig` fields; an empty one takes its default.
     pub(crate) fn from_config(preset: &str, anonymity: &str) -> Result<Self, String> {
         let preset = match preset {
             "" => DELIVERY_PRESETS[0],
@@ -81,11 +73,8 @@ impl DeliverySettings {
         Ok(Self { preset, anonymity })
     }
 
-    /// The `createNode` config: delivery_module's layered app-developer shape.
-    ///
-    /// Only wrapper keys may sit at the top level: any bare key reroutes the
-    /// config to the legacy flat parser, whose listening ports are fixed rather
-    /// than OS-assigned, so two instances on one host would collide.
+    /// Only wrapper keys may sit at the top level: a bare key selects delivery's
+    /// legacy flat parser, whose fixed ports collide between instances on a host.
     pub(crate) fn create_node_config(&self) -> String {
         serde_json::json!({
             "mode": "Core",
@@ -205,8 +194,6 @@ mod tests {
         }
     }
 
-    /// delivery_module fails `createNode` on a variant spelling such as
-    /// `logostest`, so `init` refuses it before the node is asked for.
     #[test]
     fn any_other_preset_is_refused() {
         for preset in ["logostest", "Logos.Test", "status.prod"] {
