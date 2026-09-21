@@ -81,13 +81,13 @@ sections:
           the exact rev `chat_module` is built against.
       - title: "Build the RLN modules (delivery_module's own dependencies)"
         run: |
-          for pkg in lez_core liblogos_lez_rln_module liblogos_rln_module; do
-            nix build "github:logos-co/logos-chat-module{release}#${pkg}-lgx" -o "${pkg}-lgx"
-          done
+          nix build "github:logos-co/logos-chat-module{release}#lez_core-lgx" -o lez_core-lgx
+          nix build "github:logos-co/logos-chat-module{release}#liblogos_lez_rln_module-lgx" -o liblogos_lez_rln_module-lgx
+          nix build "github:logos-co/logos-chat-module{release}#liblogos_rln_module-lgx" -o liblogos_rln_module-lgx
         code_block: |
-          for pkg in lez_core liblogos_lez_rln_module liblogos_rln_module; do
-            nix build "github:logos-co/logos-chat-module#${pkg}-lgx" -o "${pkg}-lgx"
-          done
+          nix build "github:logos-co/logos-chat-module#lez_core-lgx" -o lez_core-lgx
+          nix build "github:logos-co/logos-chat-module#liblogos_lez_rln_module-lgx" -o liblogos_lez_rln_module-lgx
+          nix build "github:logos-co/logos-chat-module#liblogos_rln_module-lgx" -o liblogos_rln_module-lgx
         check_file: "liblogos_rln_module-lgx"
         post_text: |
           `delivery_module` declares `liblogos_rln_module` as a dependency, which
@@ -105,17 +105,17 @@ sections:
         run: |
           mkdir -p modules
           cp -RL ./logos/modules/. ./modules/
-          for pkg in lez_core liblogos_lez_rln_module liblogos_rln_module; do
-            ./lgpm/bin/lgpm --modules-dir ./modules --allow-unsigned install --file "${pkg}-lgx"/*.lgx
-          done
+          ./lgpm/bin/lgpm --modules-dir ./modules --allow-unsigned install --file lez_core-lgx/*.lgx
+          ./lgpm/bin/lgpm --modules-dir ./modules --allow-unsigned install --file liblogos_lez_rln_module-lgx/*.lgx
+          ./lgpm/bin/lgpm --modules-dir ./modules --allow-unsigned install --file liblogos_rln_module-lgx/*.lgx
           ./lgpm/bin/lgpm --modules-dir ./modules --allow-unsigned install --file delivery-lgx/*.lgx
           ./lgpm/bin/lgpm --modules-dir ./modules --allow-unsigned install --file chat-lgx/*.lgx
         code_block: |
           mkdir -p modules
           cp -RL ./logos/modules/. ./modules/                       # bundled capability_module
-          for pkg in lez_core liblogos_lez_rln_module liblogos_rln_module; do
-            lgpm --modules-dir ./modules --allow-unsigned install --file "${pkg}-lgx"/*.lgx
-          done
+          lgpm --modules-dir ./modules --allow-unsigned install --file lez_core-lgx/*.lgx
+          lgpm --modules-dir ./modules --allow-unsigned install --file liblogos_lez_rln_module-lgx/*.lgx
+          lgpm --modules-dir ./modules --allow-unsigned install --file liblogos_rln_module-lgx/*.lgx
           lgpm --modules-dir ./modules --allow-unsigned install --file delivery-lgx/*.lgx
           lgpm --modules-dir ./modules --allow-unsigned install --file chat-lgx/*.lgx
         expect_contains:
