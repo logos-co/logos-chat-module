@@ -252,17 +252,19 @@ sections:
       - title: "Alice invites Bob"
         run: |
           gid=$(cat group-id.txt)
-          out=$(./logos/bin/logoscore --config-dir alice call chat_module add_group_member "$gid" @bob-addr.txt)
+          out=$(./logos/bin/logoscore --config-dir alice call chat_module add_group_member "str:$gid" @bob-addr.txt)
           echo "$out"
           echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "add_group_member failed: $out" >&2; exit 1; }
           echo "BOB_INVITED"
         code_block: |
-          logoscore --config-dir alice call chat_module add_group_member "$GROUP_ID" @bob-addr.txt
+          logoscore --config-dir alice call chat_module add_group_member "str:$GROUP_ID" @bob-addr.txt
         expect_contains:
           - "BOB_INVITED"
         post_text: |
           The call returns as soon as the add is proposed; the commit and the
-          welcome happen asynchronously in the group.
+          welcome happen asynchronously in the group. The `str:` prefix keeps
+          the group id a string: `logoscore call` would coerce an all-digit id
+          to a number.
       - title: "Bob joins and sees the shared name"
         run: |
           gid=$(cat group-id.txt)
@@ -284,12 +286,12 @@ sections:
       - title: "Bob invites Carol (a non-creator add)"
         run: |
           gid=$(cat group-id.txt)
-          out=$(./logos/bin/logoscore --config-dir bob call chat_module add_group_member "$gid" @carol-addr.txt)
+          out=$(./logos/bin/logoscore --config-dir bob call chat_module add_group_member "str:$gid" @carol-addr.txt)
           echo "$out"
           echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "add_group_member failed: $out" >&2; exit 1; }
           echo "CAROL_INVITED"
         code_block: |
-          logoscore --config-dir bob call chat_module add_group_member "$GROUP_ID" @carol-addr.txt
+          logoscore --config-dir bob call chat_module add_group_member "str:$GROUP_ID" @carol-addr.txt
         expect_contains:
           - "CAROL_INVITED"
         post_text: |
@@ -317,7 +319,7 @@ sections:
           for who in alice bob carol; do
             ok=""
             for i in $(seq 1 150); do
-              roster=$(./logos/bin/logoscore --config-dir "$who" call chat_module list_group_members "$gid" 2>/dev/null | jq -r '.result[]? | select(.pending | not) | .address' || true)
+              roster=$(./logos/bin/logoscore --config-dir "$who" call chat_module list_group_members "str:$gid" 2>/dev/null | jq -r '.result[]? | select(.pending | not) | .address' || true)
               if printf '%s\n' "$roster" | grep -qF "$a" && printf '%s\n' "$roster" | grep -qF "$b" && printf '%s\n' "$roster" | grep -qF "$c"; then
                 ok=1; echo "$(echo "$who" | tr a-z A-Z)_ROSTER_COMPLETE"; break
               fi
@@ -327,9 +329,9 @@ sections:
           done
         code_block: |
           # each member's roster lists all three account addresses
-          logoscore --config-dir alice call chat_module list_group_members "$GROUP_ID"
-          logoscore --config-dir bob   call chat_module list_group_members "$GROUP_ID"
-          logoscore --config-dir carol call chat_module list_group_members "$GROUP_ID"
+          logoscore --config-dir alice call chat_module list_group_members "str:$GROUP_ID"
+          logoscore --config-dir bob   call chat_module list_group_members "str:$GROUP_ID"
+          logoscore --config-dir carol call chat_module list_group_members "str:$GROUP_ID"
         expect_contains:
           - "ALICE_ROSTER_COMPLETE"
           - "BOB_ROSTER_COMPLETE"
@@ -355,13 +357,13 @@ sections:
           gid=$(cat group-id.txt)
           sent=""
           for i in $(seq 1 20); do
-            out=$(./logos/bin/logoscore --config-dir alice call chat_module send_message "$gid" hello-group 2>/dev/null || true)
+            out=$(./logos/bin/logoscore --config-dir alice call chat_module send_message "str:$gid" hello-group 2>/dev/null || true)
             if echo "$out" | jq -e '.result.success == true' >/dev/null 2>&1; then sent=1; echo "ALICE_SENT"; break; fi
             sleep 5
           done
           [ -n "$sent" ] || { echo "alice could not send: $out" >&2; exit 1; }
         code_block: |
-          logoscore --config-dir alice call chat_module send_message "$GROUP_ID" hello-group
+          logoscore --config-dir alice call chat_module send_message "str:$GROUP_ID" hello-group
         expect_contains:
           - "ALICE_SENT"
         post_text: |
@@ -375,7 +377,7 @@ sections:
           for who in bob carol; do
             got=""
             for i in $(seq 1 150); do
-              ok=$(./logos/bin/logoscore --config-dir "$who" call chat_module get_messages "$gid" 2>/dev/null | jq -r --arg a "$addr" '.result[]? | select(.content == "hello-group") | select(.sender == $a) | .content' || true)
+              ok=$(./logos/bin/logoscore --config-dir "$who" call chat_module get_messages "str:$gid" 2>/dev/null | jq -r --arg a "$addr" '.result[]? | select(.content == "hello-group") | select(.sender == $a) | .content' || true)
               if [ -n "$ok" ]; then got=1; echo "$(echo "$who" | tr a-z A-Z)_GOT_HELLO_FROM_ALICE"; break; fi
               sleep 4
             done
@@ -383,8 +385,8 @@ sections:
           done
         code_block: |
           # each member sees the message with sender == Alice's address
-          logoscore --config-dir bob   call chat_module get_messages "$GROUP_ID"
-          logoscore --config-dir carol call chat_module get_messages "$GROUP_ID"
+          logoscore --config-dir bob   call chat_module get_messages "str:$GROUP_ID"
+          logoscore --config-dir carol call chat_module get_messages "str:$GROUP_ID"
         expect_contains:
           - "BOB_GOT_HELLO_FROM_ALICE"
           - "CAROL_GOT_HELLO_FROM_ALICE"
@@ -393,13 +395,13 @@ sections:
           gid=$(cat group-id.txt)
           sent=""
           for i in $(seq 1 20); do
-            out=$(./logos/bin/logoscore --config-dir carol call chat_module send_message "$gid" carol-checking-in 2>/dev/null || true)
+            out=$(./logos/bin/logoscore --config-dir carol call chat_module send_message "str:$gid" carol-checking-in 2>/dev/null || true)
             if echo "$out" | jq -e '.result.success == true' >/dev/null 2>&1; then sent=1; echo "CAROL_SENT"; break; fi
             sleep 5
           done
           [ -n "$sent" ] || { echo "carol could not send: $out" >&2; exit 1; }
         code_block: |
-          logoscore --config-dir carol call chat_module send_message "$GROUP_ID" carol-checking-in
+          logoscore --config-dir carol call chat_module send_message "str:$GROUP_ID" carol-checking-in
         expect_contains:
           - "CAROL_SENT"
       - title: "Alice and Bob both receive Carol's reply"
@@ -409,15 +411,15 @@ sections:
           for who in alice bob; do
             got=""
             for i in $(seq 1 150); do
-              ok=$(./logos/bin/logoscore --config-dir "$who" call chat_module get_messages "$gid" 2>/dev/null | jq -r --arg a "$addr" '.result[]? | select(.content == "carol-checking-in") | select(.sender == $a) | .content' || true)
+              ok=$(./logos/bin/logoscore --config-dir "$who" call chat_module get_messages "str:$gid" 2>/dev/null | jq -r --arg a "$addr" '.result[]? | select(.content == "carol-checking-in") | select(.sender == $a) | .content' || true)
               if [ -n "$ok" ]; then got=1; echo "$(echo "$who" | tr a-z A-Z)_GOT_CAROL_REPLY"; break; fi
               sleep 4
             done
             [ -n "$got" ] || { echo "$who never received carol's reply" >&2; grep -F '[chat_module]' "${who}-daemon.log" | grep -v -e 'Wakeup convo' -e 'Cached Convos' | tail -n 40 >&2; exit 1; }
           done
         code_block: |
-          logoscore --config-dir alice call chat_module get_messages "$GROUP_ID"
-          logoscore --config-dir bob   call chat_module get_messages "$GROUP_ID"
+          logoscore --config-dir alice call chat_module get_messages "str:$GROUP_ID"
+          logoscore --config-dir bob   call chat_module get_messages "str:$GROUP_ID"
         expect_contains:
           - "ALICE_GOT_CAROL_REPLY"
           - "BOB_GOT_CAROL_REPLY"

@@ -263,25 +263,27 @@ sections:
       - title: "Bob sends the first message"
         run: |
           cid=$(cat bob-convo.txt)
-          ./logos/bin/logoscore --config-dir bob call chat_module send_message "$cid" hello-from-bob
+          ./logos/bin/logoscore --config-dir bob call chat_module send_message "str:$cid" hello-from-bob
         code_block: |
-          logoscore --config-dir bob call chat_module send_message "$BOB_CONVO" hello-from-bob
+          logoscore --config-dir bob call chat_module send_message "str:$BOB_CONVO" hello-from-bob
         expect_contains:
           - '"status":"ok"'
         post_text: |
           Bob sends only after Alice has joined (previous step), so the message
           reaches her subscribed thread rather than racing ahead of her join.
+          The `str:` prefix keeps the conversation id a string: `logoscore call`
+          would coerce an all-digit id to a number.
       - title: "Alice receives Bob's message"
         run: |
           cid=$(cat alice-convo.txt)
           for i in $(seq 1 200); do
-            msgs=$(./logos/bin/logoscore --config-dir alice call chat_module get_messages "$cid" 2>/dev/null || true)
+            msgs=$(./logos/bin/logoscore --config-dir alice call chat_module get_messages "str:$cid" 2>/dev/null || true)
             case "$msgs" in *'"content":"hello-from-bob"'*) echo "ALICE_GOT_BOB_MSG"; exit 0;; esac
             sleep 3
           done
           echo "alice never received bob's message" >&2; grep -F '[chat_module]' "alice-daemon.log" | grep -v -e 'Wakeup convo' -e 'Cached Convos' | tail -n 40 >&2; exit 1
         code_block: |
-          logoscore --config-dir alice call chat_module get_messages "$ALICE_CONVO"
+          logoscore --config-dir alice call chat_module get_messages "str:$ALICE_CONVO"
         expect_contains:
           - "ALICE_GOT_BOB_MSG"
         post_text: |
@@ -292,22 +294,22 @@ sections:
       - title: "Alice replies"
         run: |
           cid=$(cat alice-convo.txt)
-          ./logos/bin/logoscore --config-dir alice call chat_module send_message "$cid" hi-bob-got-it
+          ./logos/bin/logoscore --config-dir alice call chat_module send_message "str:$cid" hi-bob-got-it
         code_block: |
-          logoscore --config-dir alice call chat_module send_message "$ALICE_CONVO" hi-bob-got-it
+          logoscore --config-dir alice call chat_module send_message "str:$ALICE_CONVO" hi-bob-got-it
         expect_contains:
           - '"status":"ok"'
       - title: "Bob receives Alice's reply"
         run: |
           cid=$(cat bob-convo.txt)
           for i in $(seq 1 200); do
-            msgs=$(./logos/bin/logoscore --config-dir bob call chat_module get_messages "$cid" 2>/dev/null || true)
+            msgs=$(./logos/bin/logoscore --config-dir bob call chat_module get_messages "str:$cid" 2>/dev/null || true)
             case "$msgs" in *'"content":"hi-bob-got-it"'*) echo "BOB_GOT_REPLY"; exit 0;; esac
             sleep 3
           done
           echo "bob never received alice's reply" >&2; grep -F '[chat_module]' "bob-daemon.log" | grep -v -e 'Wakeup convo' -e 'Cached Convos' | tail -n 40 >&2; exit 1
         code_block: |
-          logoscore --config-dir bob call chat_module get_messages "$BOB_CONVO"
+          logoscore --config-dir bob call chat_module get_messages "str:$BOB_CONVO"
         expect_contains:
           - "BOB_GOT_REPLY"
         post_text: |
