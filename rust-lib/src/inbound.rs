@@ -100,10 +100,6 @@ fn run_bridge(
 /// channel. The loose topic-prefix filter stays: libp2p delivers every message in
 /// the shard regardless of subscribed topic, so non-chat traffic is dropped here
 /// and `Core::handle_payload` (inside the client) discriminates the rest.
-///
-/// A message is forwarded once: Store catch-up (`source` "history") re-delivers
-/// what may already have arrived live, and delivery_module suppresses those
-/// repeats only for a few minutes.
 fn forward_message(evt: &EventData, inbound_tx: &Sender<Vec<u8>>, seen: &mut SeenMessages) {
     let Some(msg) = crate::delivery_module::DeliveryModuleClient::decode_message_received(evt)
     else {
@@ -126,11 +122,10 @@ fn forward_message(evt: &EventData, inbound_tx: &Sender<Vec<u8>>, seen: &mut See
     let _ = inbound_tx.send(msg.payload);
 }
 
-/// How many recent message hashes [`SeenMessages`] remembers.
 const SEEN_CAPACITY: usize = 10_000;
 
-/// The hashes of the most recent [`SEEN_CAPACITY`] messages forwarded to the
-/// client, oldest evicted first.
+/// Recently forwarded message hashes. delivery_module re-delivers a message
+/// after its own few-minute dedupe window, e.g. on Store catch-up.
 #[derive(Default)]
 struct SeenMessages {
     hashes: HashSet<String>,
@@ -138,7 +133,6 @@ struct SeenMessages {
 }
 
 impl SeenMessages {
-    /// Records `hash`; false when it was already recorded.
     fn first_sighting(&mut self, hash: &str) -> bool {
         if self.hashes.contains(hash) {
             return false;

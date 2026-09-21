@@ -9,8 +9,6 @@
 ; (docs/lidl2rst.py renders them), so keep them true of the implementation.
 ;
 ; The record types below are the contract's source of truth for wire shapes.
-; The Rust provider takes and returns them as generated structs, and dispatch
-; refuses a record argument that is not an object of this shape.
 module chat_module {
   version "0.2.2"
   description "Chat module for Logos: e2e-encrypted conversations over delivery_module."
