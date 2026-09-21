@@ -71,14 +71,17 @@ impl DeliveryStateKind {
     }
 }
 
-/// Mirrors the `delivery_state`/`detail` payload of the `delivery_state_changed`
-/// event and the same fields in `status`.
+/// Mirrors the payload of the `delivery_state_changed` event and the same
+/// fields in `status`, except `started`, which only this module reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DeliveryState {
     pub state: DeliveryStateKind,
     pub detail: String,
     /// This init's bootstrap started the node, so connectivity is this module's.
     pub started: bool,
+    /// The node already existed and was not created by this process with its
+    /// preset, so it keeps whatever settings it was created with.
+    pub adopted: bool,
 }
 
 impl DeliveryState {
@@ -87,6 +90,7 @@ impl DeliveryState {
             state: DeliveryStateKind::Initialising,
             detail: String::new(),
             started: false,
+            adopted: false,
         }
     }
 
@@ -95,6 +99,7 @@ impl DeliveryState {
             state: DeliveryStateKind::Stopped,
             detail: String::new(),
             started: false,
+            adopted: false,
         }
     }
 }
