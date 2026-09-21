@@ -18,7 +18,7 @@ use logos_generic_chat::{
     StorageConfig,
 };
 
-use crate::delivery::SdkDelivery;
+use crate::delivery::{AnonymityLevel, DeliverySettings, SdkDelivery};
 use crate::{Conversation, GroupMember, Message, Status};
 
 /// The devnet KeyPackage registry DirectV1 uses to publish this installation's
@@ -188,6 +188,8 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         d.state = state;
         d.state_path = state_path;
         d.delivery_state = DeliveryState::initialising();
+        d.delivery_started = false;
+        d.delivery_connected = false;
         d.intrinsic_name = intrinsic_name;
         d.address = address;
     });
@@ -221,38 +223,41 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
 /// chat_module can't coexist with another delivery_module consumer today. Drop
 /// these calls once the host bootstraps delivery_module and exposes it
 /// ready-to-use.
-pub(crate) fn start_delivery_bootstrap(preset: &str) {
-    // The layered app-developer shape from delivery_module's docs. Only wrapper
-    // keys may sit at the top level: any bare key (a top-level logLevel included)
-    // reroutes the config to the legacy flat parser, whose port defaults are
-    // fixed values — the layered path defaults every unpinned listening port to
-    // 0 (OS-assigned), which is what keeps instances sharing a host apart.
-    let config_json = serde_json::json!({
-        "mode": "Core",
-        "preset": preset,
-        "messagingOverrides": { "logLevel": "ERROR" },
-    })
-    .to_string();
-
-    crate::modules()
-        .delivery_module
-        .create_node_async(&config_json, move |res| match res {
-            Ok(_) => start_node(),
+pub(crate) fn start_delivery_bootstrap(settings: DeliverySettings) {
+    crate::modules().delivery_module.create_node_async(
+        &settings.create_node_config(),
+        move |res| match res {
+            Ok(_) => start_node(settings.anonymity),
             Err(e) => set_delivery_error(format!("delivery_module.createNode failed: {e}")),
-        });
+        },
+    );
 }
 
-/// Bootstrap step 2 of 2: start the node and report readiness. Once online, the
+/// Bootstrap step 2 of 2: start the node and report readiness. Once started, the
 /// bridge worker forwards the core's queued subscriptions (see
 /// `inbound::forward_subscriptions`).
-fn start_node() {
+///
+/// A node that routes through mix reports itself disconnected until a mix exit
+/// is ready, and cannot send before then, so with anonymity on, readiness waits
+/// for connectivity rather than for the start handshake alone.
+fn start_node(anonymity: AnonymityLevel) {
     crate::modules()
         .delivery_module
         .start_async(move |res| match res {
-            Ok(_) => with_display_mut(|d| set_delivery_state(d, DeliveryStateKind::Online, "")),
+            Ok(_) => with_display_mut(|d| {
+                d.delivery_started = true;
+                if anonymity == AnonymityLevel::None || d.delivery_connected {
+                    set_delivery_state(d, DeliveryStateKind::Online, "");
+                } else {
+                    set_delivery_state(d, DeliveryStateKind::Initialising, WAITING_FOR_MIX);
+                }
+            }),
             Err(e) => set_delivery_error(format!("delivery_module.start failed: {e}")),
         });
 }
+
+/// The `delivery_state_changed` detail while a started node waits for a mix exit.
+const WAITING_FOR_MIX: &str = "waiting for a mix exit";
 
 /// Record an async-bootstrap failure in delivery_state, which is what logs it.
 fn set_delivery_error(detail: String) {

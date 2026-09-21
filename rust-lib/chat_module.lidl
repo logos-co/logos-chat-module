@@ -80,8 +80,14 @@ module chat_module {
 
   ; --- lifecycle ---
   type ChatConfig {
-    ; The delivery network to join. Empty or absent means "logos.test".
+    ; The delivery network to join: "logos.test" or "logos.dev". Empty or
+    ; absent means "logos.test"; any other name fails init.
     ? delivery_preset: tstr
+    ; Whether delivery routes this installation's messages through the mix
+    ; network: "none", "preferred" or "required", in any case. Empty or absent
+    ; means "none"; anything else fails init. Above "none", delivery reaches
+    ; "online" only once a mix exit is ready.
+    ? anonymity_level: tstr
     ; How much of the chat core's own account of a run to log:
     ; "error" | "warn" | "info" | "debug" | "trace". Absent or unrecognised
     ; means "info". Read once, at init: a later init leaves it as it was.

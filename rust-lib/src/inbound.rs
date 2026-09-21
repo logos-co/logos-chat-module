@@ -155,11 +155,11 @@ impl SeenMessages {
 }
 
 /// Forward the core's queued subscription requests to delivery_module, but only
-/// once its node is online. `subscribe` rejects until the node is started, so the
-/// requests queued at client construction wait in the channel until then; later
-/// requests are forwarded as they arrive.
+/// once its node has started. `subscribe` rejects until then, so the requests
+/// queued at client construction wait in the channel; later requests are
+/// forwarded as they arrive.
 fn forward_subscriptions(subscribe_rx: &Receiver<String>) {
-    if with_display(|d| d.delivery_state.state) != DeliveryStateKind::Online {
+    if !with_display(|d| d.delivery_started) {
         return;
     }
     while let Ok(topic) = subscribe_rx.try_recv() {
@@ -217,26 +217,26 @@ fn handle_connection_state(status: &str) {
     // delivery_module's `connectionStateChanged` carries only a status (its
     // second field is a timestamp, not a human detail), so detail stays empty.
     with_display_mut(|d| {
-        if let Some(next) = connection_transition(d.delivery_state.state, status) {
+        let next = map_connection_status(status);
+        d.delivery_connected = next == DeliveryStateKind::Online;
+        if let Some(next) = connection_transition(d.delivery_started, next) {
             set_delivery_state(d, next, "");
         }
     });
 }
 
-/// The delivery state to move to for an upstream connectivity `status`, or
-/// `None` to ignore the event. While still `Initialising`, connectivity is
+/// The delivery state to move to for an upstream connectivity report mapped to
+/// `next`, or `None` to ignore it. Until the node has started, connectivity is
 /// ignored: delivery reports `Connected` mid-bootstrap, ~tens of seconds before
 /// the transport can service a call, so readiness is gated on the start
 /// handshake (see `actions::start_delivery_bootstrap`) — not on this event. Once
-/// started, connectivity drives online/offline for reconnect handling.
+/// started, connectivity drives online/offline, which is also how a node
+/// routing through mix comes online once its mix exit is ready.
 pub(crate) fn connection_transition(
-    current: DeliveryStateKind,
-    status: &str,
+    started: bool,
+    next: DeliveryStateKind,
 ) -> Option<DeliveryStateKind> {
-    if current == DeliveryStateKind::Initialising {
-        return None;
-    }
-    Some(map_connection_status(status))
+    started.then_some(next)
 }
 
 /// Unknown statuses map to `Error` so a degraded state isn't silently
@@ -282,13 +282,10 @@ mod tests {
         // Pre-startup, `Connected` fires mid-bootstrap and must NOT promote to
         // Online — readiness is gated on the start handshake.
         assert_eq!(
-            connection_transition(DeliveryStateKind::Initialising, "Connected"),
+            connection_transition(false, DeliveryStateKind::Online),
             None
         );
-        assert_eq!(
-            connection_transition(DeliveryStateKind::Initialising, "Disconnected"),
-            None
-        );
+        assert_eq!(connection_transition(false, DeliveryStateKind::Error), None);
     }
 
     #[test]
@@ -316,11 +313,11 @@ mod tests {
     fn connectivity_drives_state_once_started() {
         // After startup, connectivity drives online/offline for reconnect.
         assert_eq!(
-            connection_transition(DeliveryStateKind::Online, "Disconnected"),
+            connection_transition(true, DeliveryStateKind::Error),
             Some(DeliveryStateKind::Error)
         );
         assert_eq!(
-            connection_transition(DeliveryStateKind::Error, "Connected"),
+            connection_transition(true, DeliveryStateKind::Online),
             Some(DeliveryStateKind::Online)
         );
     }

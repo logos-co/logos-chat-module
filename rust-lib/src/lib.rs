@@ -42,6 +42,7 @@ mod persistence;
 
 use serde_json::Value;
 
+use delivery::DeliverySettings;
 use module::{module, InstallOutcome};
 
 // The module-impl C ABI scaffold generated from chat_module.lidl: the
@@ -76,19 +77,24 @@ impl ChatModule for ChatModuleImpl {
         panic_hook::install_once();
         logging::install_once(config.log_level.as_deref().unwrap_or_default());
 
-        let preset = match config.delivery_preset.as_deref().unwrap_or_default() {
-            "" => "logos.test",
-            named => named,
-        };
+        let settings = DeliverySettings::from_config(
+            config.delivery_preset.as_deref().unwrap_or_default(),
+            config.anonymity_level.as_deref().unwrap_or_default(),
+        )
+        .inspect_err(|e| tracing::error!("init: {e}"))?;
 
         match module().install_with(actions::initialize) {
             Err(_) => Err(ERR_LOCK_POISONED.to_string()),
             Ok(Ok(InstallOutcome::Installed)) => {
-                tracing::info!("init: state installed, joining delivery preset {preset}");
+                tracing::info!(
+                    "init: state installed, joining delivery preset {} with anonymity {:?}",
+                    settings.preset,
+                    settings.anonymity
+                );
                 // State is installed and the module lock is released; only now
                 // bootstrap delivery, so its async completion callbacks acquire
                 // a free lock instead of re-entering the one init holds.
-                actions::start_delivery_bootstrap(preset);
+                actions::start_delivery_bootstrap(settings);
                 Ok(Value::Null)
             }
             Ok(Ok(InstallOutcome::AlreadyInstalled)) => {

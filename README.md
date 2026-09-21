@@ -70,8 +70,17 @@ done
 Load `chat_module` via `logoscore` or Basecamp.
 
 Bring-up is `init(config)`, taking a `ChatConfig` record whose every field is
-optional: `delivery_preset` (empty or absent → `logos.test`) and `log_level`.
-What it does, and how you learn the module is ready, is on
+optional:
+
+| Field | Values | Default |
+|---|---|---|
+| `delivery_preset` | `logos.test`, `logos.dev` | `logos.test` |
+| `anonymity_level` | `none`, `preferred`, `required` | `none` |
+| `log_level` | `error`, `warn`, `info`, `debug`, `trace` | `info` |
+
+An unknown preset or anonymity level fails `init`. Above `none`, delivery routes
+sends through the mix network and the module reports `online` only once a mix
+exit is ready. What `init` does, and how you learn the module is ready, is on
 [`init`](https://logos-co.github.io/logos-chat-module/latest/pages/api_reference.html#init)
 in the API reference.
 
@@ -79,7 +88,7 @@ A generated client passes the record itself. From the CLI, prefix the record's
 JSON with `json:` so `logoscore call` sends it as an object:
 
 ```bash
-logoscore call chat_module init 'json:{"delivery_preset":"logos.test","log_level":"debug"}'
+logoscore call chat_module init 'json:{"delivery_preset":"logos.test","anonymity_level":"required"}'
 ```
 
 ## Doc-tests
