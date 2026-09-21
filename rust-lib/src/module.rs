@@ -46,10 +46,10 @@ pub(crate) const PERSISTENCE_ENABLED: bool = false;
 
 // ── Delivery state ──────────────────────────────────────────────────────────
 
-/// `Initialising` covers the gap between a
-/// successful init and delivery finishing startup (the start/subscribe handshake
-/// in `actions::initialize`), at which point we report `Online` — distinct from
-/// `Stopped`, which means not initialised.
+/// `Initialising` covers the gap between a successful init and delivery
+/// finishing startup (the start/subscribe handshake in `actions::initialize`),
+/// at which point we report `Online` — distinct from `Stopped`, which means not
+/// initialised.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DeliveryStateKind {
     Initialising,
