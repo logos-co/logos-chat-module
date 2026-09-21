@@ -77,6 +77,8 @@ impl DeliveryStateKind {
 pub(crate) struct DeliveryState {
     pub state: DeliveryStateKind,
     pub detail: String,
+    /// This init's bootstrap started the node, so connectivity is this module's.
+    pub started: bool,
 }
 
 impl DeliveryState {
@@ -84,6 +86,7 @@ impl DeliveryState {
         Self {
             state: DeliveryStateKind::Initialising,
             detail: String::new(),
+            started: false,
         }
     }
 
@@ -91,6 +94,7 @@ impl DeliveryState {
         Self {
             state: DeliveryStateKind::Stopped,
             detail: String::new(),
+            started: false,
         }
     }
 }

@@ -13,10 +13,11 @@
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder/0.3.0";
 
-    # Pinned to the v0.2.0 release tag (Reliable Channels API, storeQuery,
-    # layered createNode config; the flat config shape this module sends still
-    # parses). Kept in lockstep with logos-chat-ui's pin.
-    logos-delivery-module.url = "github:logos-co/logos-delivery-module/v0.2.0";
+    # Pinned to the v0.2.1 release tag, the one the module catalog runs. A
+    # start on a running node is a no-op from this tag, which
+    # start_delivery_bootstrap relies on when the node already exists. Kept in
+    # lockstep with logos-chat-ui's pin.
+    logos-delivery-module.url = "github:logos-co/logos-delivery-module/v0.2.1";
   };
 
   outputs = inputs@{ self, logos-module-builder, logos-delivery-module, ... }:

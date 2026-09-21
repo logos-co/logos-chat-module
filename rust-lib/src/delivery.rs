@@ -7,6 +7,8 @@
 
 use crossbeam_channel::{Receiver, Sender};
 use logos_generic_chat::{AddressedEnvelope, DeliveryService, Transport};
+use logos_rust_sdk::LogosError;
+use serde_json::Value;
 
 /// The single home for chat's content-topic scheme. Both the outbound topic
 /// ([`content_topic_for`]) and the inbound prefix filter (`inbound.rs`) derive
@@ -15,6 +17,31 @@ pub(crate) const TOPIC_PREFIX: &str = "/logos-chat/1/";
 
 pub(crate) fn content_topic_for(delivery_address: &str) -> String {
     format!("{TOPIC_PREFIX}{delivery_address}/proto")
+}
+
+/// A delivery_module `result` as delivery_module decided it: the returned value
+/// on success, its reason otherwise.
+///
+/// The generated client's `Ok` says only that the call arrived; delivery_module's
+/// own verdict is the `{success, value, error}` envelope it carries.
+///
+/// TODO: drop once the generated client maps a failed `result` to `Err`
+/// (logos-co/logos-rust-sdk#63).
+pub(crate) fn delivery_outcome(res: Result<Value, LogosError>) -> Result<Value, String> {
+    let mut envelope = res.map_err(|e| e.to_string())?;
+    match envelope.get("success").and_then(Value::as_bool) {
+        Some(true) => Ok(envelope
+            .get_mut("value")
+            .map(Value::take)
+            .unwrap_or_default()),
+        Some(false) => Err(envelope
+            .get("error")
+            .and_then(Value::as_str)
+            .filter(|reason| !reason.is_empty())
+            .unwrap_or("no reason given")
+            .to_owned()),
+        None => Err(format!("not a result envelope: {envelope}")),
+    }
 }
 
 /// Carries each direction of the client's delivery boundary: the outbound
@@ -84,7 +111,7 @@ impl DeliveryService for SdkPublisher {
         crate::modules()
             .delivery_module
             .send_async(&topic, &envelope.data, move |res| {
-                if let Err(e) = res {
+                if let Err(e) = delivery_outcome(res) {
                     tracing::error!("delivery_module.send failed: {e}");
                 }
             });
@@ -98,5 +125,54 @@ impl DeliveryService for SdkPublisher {
         self.subscribe_tx
             .send(content_topic_for(delivery_address))
             .map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn result(success: bool, value: Value, error: Value) -> Result<Value, LogosError> {
+        Ok(json!({ "success": success, "value": value, "error": error }))
+    }
+
+    #[test]
+    fn a_successful_result_yields_its_value() {
+        assert_eq!(
+            delivery_outcome(result(true, json!("enr:-abc"), Value::Null)),
+            Ok(json!("enr:-abc"))
+        );
+    }
+
+    /// The call arrived and delivery_module said no, which the generated client
+    /// alone reports as `Ok`.
+    #[test]
+    fn a_refused_call_fails_with_delivery_modules_reason() {
+        assert_eq!(
+            delivery_outcome(result(false, Value::Null, json!("Context not initialized"))),
+            Err("Context not initialized".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_refusal_without_a_reason_still_fails() {
+        for error in [Value::Null, json!("")] {
+            assert_eq!(
+                delivery_outcome(result(false, Value::Null, error)),
+                Err("no reason given".to_owned())
+            );
+        }
+    }
+
+    #[test]
+    fn a_call_that_never_arrived_keeps_its_error() {
+        let failed = delivery_outcome(Err(LogosError::Other("no such module".into())));
+        assert!(failed.unwrap_err().contains("no such module"));
+    }
+
+    #[test]
+    fn a_value_with_no_envelope_fails() {
+        assert!(delivery_outcome(Ok(json!(true))).is_err());
     }
 }

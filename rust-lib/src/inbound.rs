@@ -124,7 +124,7 @@ fn forward_subscriptions(subscribe_rx: &Receiver<String>) {
         crate::modules()
             .delivery_module
             .subscribe_async(&topic, move |res| {
-                if let Err(e) = res {
+                if let Err(e) = crate::delivery::delivery_outcome(res) {
                     tracing::error!("delivery_module.subscribe failed: {e}");
                 }
             });
@@ -175,23 +175,22 @@ fn handle_connection_state(status: &str) {
     // delivery_module's `connectionStateChanged` carries only a status (its
     // second field is a timestamp, not a human detail), so detail stays empty.
     with_display_mut(|d| {
-        if let Some(next) = connection_transition(d.delivery_state.state, status) {
+        if let Some(next) = connection_transition(d.delivery_state.started, status) {
             set_delivery_state(d, next, "");
         }
     });
 }
 
 /// The delivery state to move to for an upstream connectivity `status`, or
-/// `None` to ignore the event. While still `Initialising`, connectivity is
-/// ignored: delivery reports `Connected` mid-bootstrap, ~tens of seconds before
-/// the transport can service a call, so readiness is gated on the start
-/// handshake (see `actions::start_delivery_bootstrap`) — not on this event. Once
-/// started, connectivity drives online/offline for reconnect handling.
-pub(crate) fn connection_transition(
-    current: DeliveryStateKind,
-    status: &str,
-) -> Option<DeliveryStateKind> {
-    if current == DeliveryStateKind::Initialising {
+/// `None` to ignore the event. Until this init's bootstrap has `started` the
+/// node, connectivity is ignored: delivery reports `Connected` mid-bootstrap,
+/// ~tens of seconds before the transport can service a call, so readiness is
+/// gated on the start handshake (see `actions::start_delivery_bootstrap`) — not
+/// on this event. After a failed bootstrap it reports a node another consumer
+/// started, which this module never joined. Once started, connectivity drives
+/// online/offline for reconnect handling.
+pub(crate) fn connection_transition(started: bool, status: &str) -> Option<DeliveryStateKind> {
+    if !started {
         return None;
     }
     Some(map_connection_status(status))
@@ -238,26 +237,21 @@ mod tests {
     #[test]
     fn connectivity_ignored_until_started() {
         // Pre-startup, `Connected` fires mid-bootstrap and must NOT promote to
-        // Online — readiness is gated on the start handshake.
-        assert_eq!(
-            connection_transition(DeliveryStateKind::Initialising, "Connected"),
-            None
-        );
-        assert_eq!(
-            connection_transition(DeliveryStateKind::Initialising, "Disconnected"),
-            None
-        );
+        // Online — readiness is gated on the start handshake. After a failed
+        // bootstrap it is another consumer's node, and must not either.
+        assert_eq!(connection_transition(false, "Connected"), None);
+        assert_eq!(connection_transition(false, "Disconnected"), None);
     }
 
     #[test]
     fn connectivity_drives_state_once_started() {
         // After startup, connectivity drives online/offline for reconnect.
         assert_eq!(
-            connection_transition(DeliveryStateKind::Online, "Disconnected"),
+            connection_transition(true, "Disconnected"),
             Some(DeliveryStateKind::Error)
         );
         assert_eq!(
-            connection_transition(DeliveryStateKind::Error, "Connected"),
+            connection_transition(true, "Connected"),
             Some(DeliveryStateKind::Online)
         );
     }
