@@ -72,23 +72,44 @@ sections:
         post_text: |
           Built from `chat_module`'s own flake, so the running `delivery_module`
           is the exact rev `chat_module` is built against.
+      - title: "Build the RLN modules (delivery_module's own dependencies)"
+        run: |
+          for pkg in lez_core liblogos_lez_rln_module liblogos_rln_module; do
+            nix build "github:logos-co/logos-chat-module{release}#${pkg}-lgx" -o "${pkg}-lgx"
+          done
+        code_block: |
+          for pkg in lez_core liblogos_lez_rln_module liblogos_rln_module; do
+            nix build "github:logos-co/logos-chat-module#${pkg}-lgx" -o "${pkg}-lgx"
+          done
+        check_file: "liblogos_rln_module-lgx"
+        post_text: |
+          `delivery_module` declares `liblogos_rln_module` as a dependency, which
+          in turn needs `liblogos_lez_rln_module` and `lez_core`, and the host
+          refuses to load a module whose dependency chain is missing. This flake
+          re-exports the three at the revs `delivery_module` is built against.
 
   - title: "Assemble the modules directory"
     step: true
     text: |
       All three daemons load from one shared modules directory: the
-      `capability_module` that ships with `logoscore`, plus the two `.lgx`s
+      `capability_module` that ships with `logoscore`, plus the built `.lgx`s
       installed on top.
     steps:
       - title: "Install the bundled and built modules"
         run: |
           mkdir -p modules
           cp -RL ./logos/modules/. ./modules/
+          for pkg in lez_core liblogos_lez_rln_module liblogos_rln_module; do
+            ./lgpm/bin/lgpm --modules-dir ./modules --allow-unsigned install --file "${pkg}-lgx"/*.lgx
+          done
           ./lgpm/bin/lgpm --modules-dir ./modules --allow-unsigned install --file delivery-lgx/*.lgx
           ./lgpm/bin/lgpm --modules-dir ./modules --allow-unsigned install --file chat-lgx/*.lgx
         code_block: |
           mkdir -p modules
           cp -RL ./logos/modules/. ./modules/                       # bundled capability_module
+          for pkg in lez_core liblogos_lez_rln_module liblogos_rln_module; do
+            lgpm --modules-dir ./modules --allow-unsigned install --file "${pkg}-lgx"/*.lgx
+          done
           lgpm --modules-dir ./modules --allow-unsigned install --file delivery-lgx/*.lgx
           lgpm --modules-dir ./modules --allow-unsigned install --file chat-lgx/*.lgx
         expect_contains:
@@ -157,24 +178,24 @@ sections:
       - title: "Initialise Alice, Bob, and Carol"
         run: |
           for who in alice bob carol; do
-            out=$(./logos/bin/logoscore --config-dir "$who" call chat_module init '{"delivery_preset":"logos.test"}')
+            out=$(./logos/bin/logoscore --config-dir "$who" call chat_module init 'json:{"delivery_preset":"logos.test"}')
             echo "$out"
             echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "$who init failed: $out" >&2; exit 1; }
             echo "${who}_INIT_OK"
           done
         code_block: |
-          logoscore --config-dir alice call chat_module init '{"delivery_preset":"logos.test"}'
-          logoscore --config-dir bob   call chat_module init '{"delivery_preset":"logos.test"}'
-          logoscore --config-dir carol call chat_module init '{"delivery_preset":"logos.test"}'
+          logoscore --config-dir alice call chat_module init 'json:{"delivery_preset":"logos.test"}'
+          logoscore --config-dir bob   call chat_module init 'json:{"delivery_preset":"logos.test"}'
+          logoscore --config-dir carol call chat_module init 'json:{"delivery_preset":"logos.test"}'
         expect_contains:
           - "alice_INIT_OK"
           - "bob_INIT_OK"
           - "carol_INIT_OK"
         post_text: |
           `init` takes a `ChatConfig` record, and every field of it is optional:
-          `log_level` is left out here, so the chat core logs at its default. The
-          record arrives as its JSON text because `logoscore call` coerces an
-          argument to a bool, a number or a string, never to an object.
+          `log_level` is left out here, so the chat core logs at its default.
+          The `json:` prefix makes `logoscore call` send the record as an object; without
+          it the record would arrive as a string, which `init` refuses.
 
           Neither storage nor ports need an argument: each instance uses the
           directory its daemon assigned it, and its delivery node listens on

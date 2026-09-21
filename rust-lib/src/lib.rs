@@ -20,7 +20,7 @@
 //! Return conventions. Status-bearing methods return `result`, surfaced here as
 //! `Result<serde_json::Value, String>`: `Ok(value)` carries any payload (a
 //! conversation id or `Null`), `Err(message)` a human-readable reason.
-//! Collection getters return `serde_json::Value` (a JSON array/object);
+//! The record getters return the structs generated from the contract's records;
 //! `get_installation_name`/`get_address`/`get_log_path` return a plain string,
 //! empty when not initialised.
 //!
@@ -65,40 +65,6 @@ pub(crate) use generated::*;
 /// exists only to satisfy the `result` return type.
 const ERR_LOCK_POISONED: &str = "internal error: module lock poisoned";
 
-/// The `ChatConfig` record `init` received, as the object its fields are read
-/// out of.
-///
-/// Two shapes arrive. A caller with a generated client sends an object. A caller
-/// using `logoscore call` sends the object's JSON *text*, because the CLI coerces
-/// an argument to a bool, a number or a string and never to an object — so a
-/// record parameter reaches a module as a string or not at all.
-fn chat_config(argument: Value) -> Value {
-    let Value::String(text) = &argument else {
-        return argument;
-    };
-    serde_json::from_str(text).unwrap_or_else(|_| {
-        // Said out loud: the argument before the record existed was the preset
-        // itself, so the alternative is joining the wrong delivery network in
-        // silence.
-        eprintln!(
-            "chat_module init: {text:?} is not a ChatConfig record; pass the \
-             record, or its JSON text. Every setting takes its default."
-        );
-        Value::Null
-    })
-}
-
-/// One field of a [`chat_config`] record.
-///
-/// The record materialises untyped — today's codegen has no generated struct for
-/// a record in parameter position — so every field is read out by hand and every
-/// one is optional. An empty string is what an absent field, a field of the wrong
-/// type, and a caller who sent no record at all all look like; each field's own
-/// default covers it.
-fn config_field<'a>(config: &'a Value, name: &str) -> &'a str {
-    config.get(name).and_then(Value::as_str).unwrap_or_default()
-}
-
 /// The `ChatModule` contract implementation. Stateless: all module state lives
 /// in the [`module`] singleton and the display lock, so every method delegates
 /// to `actions` (which own their locking) and `&mut self` is unused.
@@ -106,12 +72,11 @@ fn config_field<'a>(config: &'a Value, name: &str) -> &'a str {
 struct ChatModuleImpl;
 
 impl ChatModule for ChatModuleImpl {
-    fn init(&mut self, config: Value) -> Result<Value, String> {
+    fn init(&mut self, config: ChatConfig) -> Result<Value, String> {
         panic_hook::install_once();
-        let config = chat_config(config);
-        logging::install_once(config_field(&config, "log_level"));
+        logging::install_once(config.log_level.as_deref().unwrap_or_default());
 
-        let preset = match config_field(&config, "delivery_preset") {
+        let preset = match config.delivery_preset.as_deref().unwrap_or_default() {
             "" => "logos.test",
             named => named,
         };
@@ -198,15 +163,15 @@ impl ChatModule for ChatModuleImpl {
             .map_err(|e| e.to_string())
     }
 
-    fn list_conversations(&mut self) -> Value {
+    fn list_conversations(&mut self) -> Vec<Conversation> {
         actions::list_conversations()
     }
 
-    fn get_messages(&mut self, convo_id: String) -> Value {
+    fn get_messages(&mut self, convo_id: String) -> Vec<Message> {
         actions::get_messages(&convo_id)
     }
 
-    fn list_group_members(&mut self, convo_id: String) -> Value {
+    fn list_group_members(&mut self, convo_id: String) -> Vec<GroupMember> {
         actions::list_group_members(&convo_id)
     }
 
@@ -232,7 +197,7 @@ impl ChatModule for ChatModuleImpl {
             .map_err(|e| e.to_string())
     }
 
-    fn status(&mut self) -> Value {
+    fn status(&mut self) -> Status {
         actions::status()
     }
 }
@@ -242,60 +207,4 @@ impl ChatModule for ChatModuleImpl {
 #[no_mangle]
 pub extern "Rust" fn logos_module_install() {
     install::<ChatModuleImpl>();
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A generated client sends the record as an object.
-    #[test]
-    fn a_record_is_read_field_by_field() {
-        let config = chat_config(serde_json::json!({
-            "delivery_preset": "logos.test",
-            "log_level": "debug",
-        }));
-
-        assert_eq!(config_field(&config, "delivery_preset"), "logos.test");
-        assert_eq!(config_field(&config, "log_level"), "debug");
-    }
-
-    /// `logoscore call` can only send the record as text, so the text is the
-    /// record.
-    #[test]
-    fn the_records_json_text_is_the_record() {
-        let config = chat_config(Value::String(
-            r#"{"delivery_preset":"logos.test"}"#.to_string(),
-        ));
-
-        assert_eq!(config_field(&config, "delivery_preset"), "logos.test");
-    }
-
-    /// Every field is optional, so a caller may configure one setting and leave
-    /// the rest alone.
-    #[test]
-    fn an_absent_field_reads_empty() {
-        let config = chat_config(serde_json::json!({ "log_level": "trace" }));
-
-        assert_eq!(config_field(&config, "delivery_preset"), "");
-        assert_eq!(config_field(&config, "log_level"), "trace");
-    }
-
-    /// What a caller from before the record sends: the preset on its own. It is
-    /// not a record, so it configures nothing — but it must not take the module
-    /// down on the way to finding that out.
-    #[test]
-    fn an_argument_that_is_no_record_configures_nothing() {
-        for argument in [
-            Value::String("logos.test".to_string()),
-            Value::Null,
-            serde_json::json!(3),
-            serde_json::json!(["logos.test"]),
-        ] {
-            let config = chat_config(argument);
-
-            assert_eq!(config_field(&config, "delivery_preset"), "");
-            assert_eq!(config_field(&config, "log_level"), "");
-        }
-    }
 }

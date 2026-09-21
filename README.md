@@ -55,7 +55,19 @@ See [Documentation](#documentation) below to build the site locally.
 
 End-to-end chat needs a `delivery_module` available to the host at runtime; the
 flake pins [`logos-delivery-module`](https://github.com/logos-co/logos-delivery-module)
-at `v0.2.0`. Load `chat_module` via `logoscore` or Basecamp.
+at `v0.3.0-rc.1`. That `delivery_module` declares the RLN module chain as a
+dependency, and the host refuses to load it without `liblogos_rln_module`,
+`liblogos_lez_rln_module` and `lez_core` in the modules directory. This flake
+re-exports all four at the revs it is built against:
+
+```bash
+for pkg in lez_core liblogos_lez_rln_module liblogos_rln_module delivery_module; do
+  nix build "github:logos-co/logos-chat-module#${pkg}-lgx" -o "${pkg}-lgx"
+  lgpm --modules-dir ./modules --allow-unsigned install --file "${pkg}-lgx"/*.lgx
+done
+```
+
+Load `chat_module` via `logoscore` or Basecamp.
 
 Bring-up is `init(config)`, taking a `ChatConfig` record whose every field is
 optional: `delivery_preset` (empty or absent → `logos.test`) and `log_level`.
@@ -63,12 +75,11 @@ What it does, and how you learn the module is ready, is on
 [`init`](https://logos-co.github.io/logos-chat-module/latest/pages/api_reference.html#init)
 in the API reference.
 
-A generated client passes the record itself. `logoscore call` cannot — it coerces
-an argument to a bool, a number or a string, never to an object — so from the CLI
-pass the record's JSON text and the module reads it back:
+A generated client passes the record itself. From the CLI, prefix the record's
+JSON with `json:` so `logoscore call` sends it as an object:
 
 ```bash
-logoscore call chat_module init '{"delivery_preset":"logos.test","log_level":"debug"}'
+logoscore call chat_module init 'json:{"delivery_preset":"logos.test","log_level":"debug"}'
 ```
 
 ## Doc-tests

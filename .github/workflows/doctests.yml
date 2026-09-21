@@ -63,6 +63,9 @@ jobs:
           ref="github:logos-co/logos-chat-module/${{ steps.commit.outputs.sha }}"
           nix build --no-link "$ref#lgx" -L
           nix build --no-link "$ref#delivery_module-lgx" -L
+          for pkg in lez_core liblogos_lez_rln_module liblogos_rln_module; do
+            nix build --no-link "$ref#${pkg}-lgx" -L
+          done
           nix build --no-link 'github:logos-co/logos-logoscore-cli' -L
           nix build --no-link 'github:logos-co/logos-package-manager#cli' -L
 
