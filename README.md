@@ -61,10 +61,14 @@ dependency, and the host refuses to load it without `liblogos_rln_module`,
 re-exports all four at the revs it is built against:
 
 ```bash
-for pkg in lez_core liblogos_lez_rln_module liblogos_rln_module delivery_module; do
-  nix build "github:logos-co/logos-chat-module#${pkg}-lgx" -o "${pkg}-lgx"
-  lgpm --modules-dir ./modules --allow-unsigned install --file "${pkg}-lgx"/*.lgx
-done
+nix build "github:logos-co/logos-chat-module#lez_core-lgx" -o lez_core-lgx
+nix build "github:logos-co/logos-chat-module#liblogos_lez_rln_module-lgx" -o liblogos_lez_rln_module-lgx
+nix build "github:logos-co/logos-chat-module#liblogos_rln_module-lgx" -o liblogos_rln_module-lgx
+nix build "github:logos-co/logos-chat-module#delivery_module-lgx" -o delivery_module-lgx
+lgpm --modules-dir ./modules --allow-unsigned install --file lez_core-lgx/*.lgx
+lgpm --modules-dir ./modules --allow-unsigned install --file liblogos_lez_rln_module-lgx/*.lgx
+lgpm --modules-dir ./modules --allow-unsigned install --file liblogos_rln_module-lgx/*.lgx
+lgpm --modules-dir ./modules --allow-unsigned install --file delivery_module-lgx/*.lgx
 ```
 
 Load `chat_module` via `logoscore` or Basecamp.
