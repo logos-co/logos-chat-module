@@ -10,6 +10,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use libchat::ChatStorage;
 use logos_account::TestLogosAccount;
@@ -218,19 +219,69 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
 /// into the IPC timeout). The bridge worker keeps consuming connectionStateChanged
 /// for reconnect/offline handling once we're started.
 ///
+/// If another module already created the node, createNode rejects the duplicate
+/// and chat adopts that node instead (see [`adopt_running_node`]); its owner's
+/// configuration applies, so `settings` are ignored.
+///
 /// TODO: delivery_module's lifecycle should be owned by the host, not the
-/// consumer. createNode rejects duplicates and start is not idempotent, so
-/// chat_module can't coexist with another delivery_module consumer today. Drop
-/// these calls once the host bootstraps delivery_module and exposes it
-/// ready-to-use.
+/// consumer. Drop these calls once the host bootstraps delivery_module and
+/// exposes it ready-to-use.
 pub(crate) fn start_delivery_bootstrap(settings: DeliverySettings) {
     crate::modules().delivery_module.create_node_async(
         &settings.create_node_config(),
         move |res| match res {
             Ok(_) => start_node(settings.anonymity),
-            Err(e) => set_delivery_error(format!("delivery_module.createNode failed: {e}")),
+            Err(e) => adopt_running_node(
+                format!("delivery_module.createNode failed: {e}"),
+                ADOPT_ATTEMPTS,
+            ),
         },
     );
+}
+
+const ADOPT_ATTEMPTS: u32 = 60;
+const ADOPT_POLL_INTERVAL: Duration = Duration::from_secs(2);
+
+/// Use a node another delivery_module consumer created, without creating or
+/// starting it. Its owner starts it: chat is online once the node has bound its
+/// TCP port, polled up to `attempts_left` more times. Reports `create_error`
+/// when no node answers.
+fn adopt_running_node(create_error: String, attempts_left: u32) {
+    crate::modules()
+        .delivery_module
+        .get_node_info_async("MyBoundPorts", move |res| match res {
+            Err(_) => set_delivery_error(create_error),
+            Ok(ports) if tcp_port_bound(&ports) => with_display_mut(|d| {
+                tracing::info!("init: adopted the running delivery_module node");
+                d.delivery_started = true;
+                set_delivery_state(d, DeliveryStateKind::Online, "");
+            }),
+            Ok(_) if attempts_left > 0 => {
+                std::thread::spawn(move || {
+                    std::thread::sleep(ADOPT_POLL_INTERVAL);
+                    adopt_running_node(create_error, attempts_left - 1);
+                });
+            }
+            Ok(_) => set_delivery_error(format!(
+                "{create_error}; the existing delivery node never started"
+            )),
+        });
+}
+
+/// `MyBoundPorts` is a JSON object, possibly delivered as a string.
+fn tcp_port_bound(ports: &serde_json::Value) -> bool {
+    let parsed;
+    let ports = match ports.as_str() {
+        Some(text) => match serde_json::from_str::<serde_json::Value>(text) {
+            Ok(value) => {
+                parsed = value;
+                &parsed
+            }
+            Err(_) => return false,
+        },
+        None => ports,
+    };
+    ports["tcp"].as_u64().is_some_and(|port| port != 0)
 }
 
 /// Bootstrap step 2 of 2: start the node and report readiness. Once started, the
@@ -741,7 +792,7 @@ pub(crate) fn record_members_changed(convo_id: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::member_address;
+    use super::{member_address, tcp_port_bound};
     use libchat::IdentId;
     use logos_generic_chat::GroupMember;
 
@@ -762,5 +813,15 @@ mod tests {
             pending: false,
         };
         assert_eq!(member_address(no_account), "");
+    }
+
+    #[test]
+    fn tcp_port_bound_reads_the_bound_ports_json() {
+        let started = r#"{"tcp":60001,"webSocket":0,"quic":0,"rest":0,"discv5Udp":9001,"metrics":0}"#;
+        let created = r#"{"tcp":0,"webSocket":0,"quic":0,"rest":0,"discv5Udp":0,"metrics":0}"#;
+        assert!(tcp_port_bound(&serde_json::json!(started)));
+        assert!(tcp_port_bound(&serde_json::from_str(started).unwrap()));
+        assert!(!tcp_port_bound(&serde_json::json!(created)));
+        assert!(!tcp_port_bound(&serde_json::json!("not json")));
     }
 }

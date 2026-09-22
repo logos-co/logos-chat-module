@@ -84,7 +84,13 @@ optional:
 
 An unknown preset or anonymity level fails `init`. Above `none`, delivery routes
 sends through the mix network and the module reports `online` only once a mix
-exit is ready. What `init` does, and how you learn the module is ready, is on
+exit is ready.
+
+If another module already created the `delivery_module` node, `init` uses that
+node as is: `delivery_preset` and `anonymity_level` are ignored, and the module
+reports `online` once the node's owner has started it.
+
+What `init` does, and how you learn the module is ready, is on
 [`init`](https://logos-co.github.io/logos-chat-module/latest/pages/api_reference.html#init)
 in the API reference.
 

@@ -11,6 +11,7 @@ module delivery_module {
   method start() -> result
   method subscribe(contentTopic: tstr) -> result
   method send(contentTopic: tstr, payload: bstr) -> result
+  method getNodeInfo(nodeInfoId: tstr) -> result
 
   event messageReceived(messageHash: tstr, contentTopic: tstr, payload: bstr, source: tstr, timestamp: int)
   event connectionStateChanged(status: tstr, timestamp: int)
