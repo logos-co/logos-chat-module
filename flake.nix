@@ -66,6 +66,11 @@
           # Re-export the matching delivery package for every target, including
           # Windows, so the two modules can be installed together.
           "delivery_module-lgx" = logos-delivery-module.packages.${system}.lgx;
+        } // nixpkgs.lib.optionalAttrs (system == "x86_64-windows") {
+          # The Windows smoke job stages the exact delivery build this module
+          # uses, along with its installable layout.
+          "delivery_module-default" = logos-delivery-module.packages.${system}.default;
+          "delivery_module-install-portable" = logos-delivery-module.packages.${system}.install-portable;
         });
 
       # `nix run .#generate` materialises the two gitignored inputs `rust-lib/`
