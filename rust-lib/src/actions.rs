@@ -9,7 +9,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use libchat::ChatStorage;
 use logos_account::TestLogosAccount;
@@ -18,7 +18,7 @@ use logos_generic_chat::{
     StorageConfig,
 };
 
-use crate::delivery::SdkDelivery;
+use crate::delivery::{delivery_outcome, SdkDelivery};
 use crate::{Conversation, GroupMember, Message, Status};
 
 /// The devnet KeyPackage registry DirectV1 uses to publish this installation's
@@ -200,13 +200,23 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     })
 }
 
+/// The preset this process last created delivery_module's node with. This module
+/// never stops the node, so an init after `shutdown` is refused by the node an
+/// earlier init created: this module's own, not an adopted one.
+static OWN_NODE_PRESET: Mutex<Option<String>> = Mutex::new(None);
+
+fn own_node_preset() -> MutexGuard<'static, Option<String>> {
+    OWN_NODE_PRESET.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// Bootstrap delivery_module's node and report readiness, asynchronously.
 ///
 /// Called by `lib.rs` *after* the module state is installed and the module lock
 /// is released, so the async completion callbacks acquire a free lock and never
 /// re-enter it. createNode → start are chained (start rejects until the node
-/// exists), and every step runs off the dispatch (Qt event-loop) thread, so
-/// bootstrap, which can take tens of seconds, never blocks it.
+/// exists), with a getNodeInfo between them when createNode is refused, and
+/// every step runs off the dispatch (Qt event-loop) thread, so bootstrap, which
+/// can take tens of seconds, never blocks it.
 ///
 /// Readiness (`online`) is reported once the node has started; the bridge worker
 /// then forwards the core's queued inbound-address subscriptions to delivery_module
@@ -217,10 +227,10 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
 /// for reconnect/offline handling once we're started.
 ///
 /// TODO: delivery_module's lifecycle should be owned by the host, not the
-/// consumer. createNode rejects duplicates and start is not idempotent, so
-/// chat_module can't coexist with another delivery_module consumer today. Drop
-/// these calls once the host bootstraps delivery_module and exposes it
-/// ready-to-use.
+/// consumer. createNode rejects duplicates and start is not idempotent, so the
+/// first consumer to bootstrap configures the node for every consumer after it;
+/// this module then joins that node and reports it as adopted. Drop these calls
+/// once the host bootstraps delivery_module and exposes it ready-to-use.
 pub(crate) fn start_delivery_bootstrap(preset: &str) {
     // The layered app-developer shape from delivery_module's docs. Only wrapper
     // keys may sit at the top level: any bare key (a top-level logLevel included)
@@ -234,11 +244,39 @@ pub(crate) fn start_delivery_bootstrap(preset: &str) {
     })
     .to_string();
 
+    let preset = preset.to_owned();
     crate::modules()
         .delivery_module
-        .create_node_async(&config_json, move |res| match res {
-            Ok(_) => start_node(),
-            Err(e) => set_delivery_error(format!("delivery_module.createNode failed: {e}")),
+        .create_node_async(&config_json, move |res| match delivery_outcome(res) {
+            Ok(_) => {
+                *own_node_preset() = Some(preset);
+                start_node();
+            }
+            Err(reason) => join_existing_node(preset, reason),
+        });
+}
+
+/// After a refused createNode: start the node that already exists, adopted
+/// unless this process created it with `preset`, or fail with createNode's
+/// `reason` when there is none. delivery_module refuses a second createNode
+/// before it reads the config, and answers getNodeInfo only while a node
+/// exists, so an answer means the refusal was for that node.
+fn join_existing_node(preset: String, reason: String) {
+    crate::modules()
+        .delivery_module
+        .get_node_info_async("Version", move |res| match delivery_outcome(res) {
+            Ok(_) => {
+                let adopted = own_node_preset().as_deref() != Some(preset.as_str());
+                if adopted {
+                    tracing::warn!(
+                        "delivery_module already has a node this module did not create \
+                         with preset {preset}; joining it with the settings it was created with"
+                    );
+                }
+                with_display_mut(|d| d.delivery_state.adopted = adopted);
+                start_node();
+            }
+            Err(_) => set_delivery_error(format!("delivery_module.createNode failed: {reason}")),
         });
 }
 
@@ -248,8 +286,11 @@ pub(crate) fn start_delivery_bootstrap(preset: &str) {
 fn start_node() {
     crate::modules()
         .delivery_module
-        .start_async(move |res| match res {
-            Ok(_) => with_display_mut(|d| set_delivery_state(d, DeliveryStateKind::Online, "")),
+        .start_async(move |res| match delivery_outcome(res) {
+            Ok(_) => with_display_mut(|d| {
+                d.delivery_state.started = true;
+                set_delivery_state(d, DeliveryStateKind::Online, "");
+            }),
             Err(e) => set_delivery_error(format!("delivery_module.start failed: {e}")),
         });
 }
@@ -596,6 +637,7 @@ pub(crate) fn status() -> Status {
         convo_count: d.state.chats.len() as i64,
         delivery_state: d.delivery_state.state.as_str().to_string(),
         detail: d.delivery_state.detail.clone(),
+        delivery_adopted: d.delivery_state.adopted,
     })
 }
 
@@ -607,10 +649,8 @@ pub(crate) fn set_delivery_state(d: &mut Display, state: DeliveryStateKind, deta
     if d.delivery_state.state == state && d.delivery_state.detail == detail {
         return;
     }
-    d.delivery_state = DeliveryState {
-        state,
-        detail: detail.to_owned(),
-    };
+    d.delivery_state.state = state;
+    d.delivery_state.detail = detail.to_owned();
     // The transitions, not the polling: this returns early while the state
     // stands, so a line here is one thing actually changing.
     match (state, detail) {
@@ -618,7 +658,7 @@ pub(crate) fn set_delivery_state(d: &mut Display, state: DeliveryStateKind, deta
         (_, "") => tracing::info!("delivery is {}", state.as_str()),
         _ => tracing::info!("delivery is {}: {detail}", state.as_str()),
     }
-    crate::emit_delivery_state_changed(state.as_str(), detail);
+    crate::emit_delivery_state_changed(state.as_str(), detail, d.delivery_state.adopted);
 }
 
 /// Record a newly-observed conversation (the client's `ConversationStarted`

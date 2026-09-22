@@ -63,6 +63,13 @@ module chat_module {
     delivery_state: tstr
     ; A human-readable reason for that state, empty when there is none.
     detail: tstr
+    ; True when delivery_module already had a node this module did not create,
+    ; in its current process, with its delivery_preset; a node it created before
+    ; its process restarted counts. delivery_module runs one node for every
+    ; module that uses it, configured by whichever asked first, so this node
+    ; keeps the settings it was created with, and they may differ from
+    ; delivery_preset.
+    delivery_adopted: bool
   }
   type GroupMember {
     ; The member's directory-verified account address, or empty when the member
@@ -78,7 +85,9 @@ module chat_module {
 
   ; --- lifecycle ---
   type ChatConfig {
-    ; The delivery network to join. Empty or absent means "logos.test".
+    ; The delivery network to create delivery_module's node on. A node that
+    ; already exists keeps its own, which Status.delivery_adopted reports. Empty
+    ; or absent means "logos.test".
     ? delivery_preset: tstr
     ; How much of the chat core's own account of a run to log:
     ; "error" | "warn" | "info" | "debug" | "trace". Absent or unrecognised
@@ -94,7 +103,8 @@ module chat_module {
   ; are missed.
   ;
   ; Calling it again while initialised succeeds without doing anything, and the
-  ; new config is ignored — call shutdown() first to reconfigure.
+  ; new config is ignored — call shutdown() first to reconfigure. The delivery
+  ; node outlives shutdown(), so a new delivery_preset does not reach it.
   ;
   ; Storage lives under the instance directory the host assigns; init fails when
   ; the host assigned none. Two instances therefore run side by side by giving
@@ -195,6 +205,7 @@ module chat_module {
   ; The delivery node's state changed: "initialising", "online", "error" or
   ; "stopped", with detail carrying a human-readable reason where there is one.
   ; Reaching "online" is how a caller learns init() has finished bringing the
-  ; network up.
-  event delivery_state_changed(delivery_state: tstr, detail: tstr)
+  ; network up. delivery_adopted is as in the Status record, and settled by the
+  ; time the state reaches "online".
+  event delivery_state_changed(delivery_state: tstr, detail: tstr, delivery_adopted: bool)
 }
