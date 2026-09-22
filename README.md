@@ -63,12 +63,11 @@ What it does, and how you learn the module is ready, is on
 [`init`](https://logos-co.github.io/logos-chat-module/latest/pages/api_reference.html#init)
 in the API reference.
 
-A generated client passes the record itself. `logoscore call` cannot — it coerces
-an argument to a bool, a number or a string, never to an object — so from the CLI
-pass the record's JSON text and the module reads it back:
+A generated client passes the record itself. From the CLI, prefix the record's
+JSON with `json:` so `logoscore call` sends it as an object:
 
 ```bash
-logoscore call chat_module init '{"delivery_preset":"logos.test","log_level":"debug"}'
+logoscore call chat_module init 'json:{"delivery_preset":"logos.test","log_level":"debug"}'
 ```
 
 ## Doc-tests

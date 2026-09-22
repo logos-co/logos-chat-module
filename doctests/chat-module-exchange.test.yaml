@@ -160,18 +160,18 @@ sections:
     steps:
       - title: "Initialise Alice and Bob"
         run: |
-          ./logos/bin/logoscore --config-dir alice call chat_module init '{"delivery_preset":"logos.test"}'
-          ./logos/bin/logoscore --config-dir bob   call chat_module init '{"delivery_preset":"logos.test"}'
+          ./logos/bin/logoscore --config-dir alice call chat_module init 'json:{"delivery_preset":"logos.test"}'
+          ./logos/bin/logoscore --config-dir bob   call chat_module init 'json:{"delivery_preset":"logos.test"}'
         code_block: |
-          logoscore --config-dir alice call chat_module init '{"delivery_preset":"logos.test"}'
-          logoscore --config-dir bob   call chat_module init '{"delivery_preset":"logos.test"}'
+          logoscore --config-dir alice call chat_module init 'json:{"delivery_preset":"logos.test"}'
+          logoscore --config-dir bob   call chat_module init 'json:{"delivery_preset":"logos.test"}'
         expect_contains:
           - '"status":"ok"'
         post_text: |
           `init` takes a `ChatConfig` record, and every field of it is optional:
           `log_level` is left out here, so the chat core logs at its default. The
-          record arrives as its JSON text because `logoscore call` coerces an
-          argument to a bool, a number or a string, never to an object.
+          `json:` prefix makes `logoscore call` send the record as an object;
+          without it the record would arrive as a string, which `init` refuses.
 
           Neither storage nor ports need an argument: each instance uses the
           directory its daemon assigned it, and its delivery node listens on

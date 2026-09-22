@@ -11,10 +11,7 @@
   };
 
   inputs = {
-    # Held at the 0.2.6 release rather than master: master carries a
-    # logos-rust-sdk whose lidl-gen emits declared records as typed Rust
-    # structs, which this module's providers are not written against.
-    logos-module-builder.url = "github:logos-co/logos-module-builder/0.2.6";
+    logos-module-builder.url = "github:logos-co/logos-module-builder/0.3.0";
 
     # Pinned to the v0.2.0 release tag (Reliable Channels API, storeQuery,
     # layered createNode config; the flat config shape this module sends still
