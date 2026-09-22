@@ -44,7 +44,7 @@ prerequisites:
     ```
   - "**A Linux or macOS machine.** Nix provides every toolchain (Qt, CMake, cargo, rustc) during the builds."
   - "**`jq`** on `PATH` (used to read the JSON the CLI prints). GitHub runners ship it; locally, run the spec inside `nix shell nixpkgs#jq`."
-  - "**Network access.** The three delivery nodes discover each other over the `logos.test` Waku fleet; an isolated sandbox won't complete the exchange. Expect ~5-40s to reach Online, minutes per membership change, and up to several minutes for messages to propagate."
+  - "**Network access.** The three delivery nodes discover each other over the `logos.test` Waku fleet; an isolated sandbox won't complete the exchange. Expect ~5-40s to reach Online, minutes per membership change, and up to ~2 min for messages to propagate."
 
 sections:
   - title: "Build the tools and the two modules"
@@ -273,7 +273,7 @@ sections:
             if [ -n "$row" ]; then echo "BOB_IN_GROUP name=$(echo "$row" | jq -r '.name // ""')"; break; fi
             sleep 4
           done
-          [ -n "$row" ] || { echo "bob never joined the group" >&2; grep -F '[chat_module]' "bob-daemon.log" | grep -v -e 'Wakeup convo' -e 'Cached Convos' | tail -n 40 >&2; exit 1; }
+          [ -n "$row" ] || { echo "bob never joined the group" >&2; tail -n 40 bob-daemon.log >&2; exit 1; }
         code_block: |
           # poll until the group appears in Bob's conversations, carrying its name
           logoscore --config-dir bob call chat_module list_conversations
@@ -306,7 +306,7 @@ sections:
             if [ -n "$got" ]; then echo "CAROL_IN_GROUP $got"; break; fi
             sleep 4
           done
-          [ -n "$got" ] || { echo "carol never joined the group" >&2; grep -F '[chat_module]' "carol-daemon.log" | grep -v -e 'Wakeup convo' -e 'Cached Convos' | tail -n 40 >&2; exit 1; }
+          [ -n "$got" ] || { echo "carol never joined the group" >&2; tail -n 40 carol-daemon.log >&2; exit 1; }
         code_block: |
           # poll until the group id appears in Carol's conversations
           logoscore --config-dir carol call chat_module list_conversations
@@ -318,14 +318,14 @@ sections:
           a=$(cat alice-addr.txt); b=$(cat bob-addr.txt); c=$(cat carol-addr.txt)
           for who in alice bob carol; do
             ok=""
-            for i in $(seq 1 150); do
+            for i in $(seq 1 60); do
               roster=$(./logos/bin/logoscore --config-dir "$who" call chat_module list_group_members "str:$gid" 2>/dev/null | jq -r '.result[]? | select(.pending | not) | .address' || true)
               if printf '%s\n' "$roster" | grep -qF "$a" && printf '%s\n' "$roster" | grep -qF "$b" && printf '%s\n' "$roster" | grep -qF "$c"; then
                 ok=1; echo "$(echo "$who" | tr a-z A-Z)_ROSTER_COMPLETE"; break
               fi
               sleep 4
             done
-            [ -n "$ok" ] || { echo "$who roster never converged: $roster" >&2; grep -F '[chat_module]' "${who}-daemon.log" | grep -v -e 'Wakeup convo' -e 'Cached Convos' | tail -n 40 >&2; exit 1; }
+            [ -n "$ok" ] || { echo "$who roster never converged: $roster" >&2; exit 1; }
           done
         code_block: |
           # each member's roster lists all three account addresses
@@ -376,12 +376,12 @@ sections:
           addr=$(cat alice-addr.txt)
           for who in bob carol; do
             got=""
-            for i in $(seq 1 150); do
+            for i in $(seq 1 60); do
               ok=$(./logos/bin/logoscore --config-dir "$who" call chat_module get_messages "str:$gid" 2>/dev/null | jq -r --arg a "$addr" '.result[]? | select(.content == "hello-group") | select(.sender == $a) | .content' || true)
               if [ -n "$ok" ]; then got=1; echo "$(echo "$who" | tr a-z A-Z)_GOT_HELLO_FROM_ALICE"; break; fi
               sleep 4
             done
-            [ -n "$got" ] || { echo "$who never received alice's message" >&2; grep -F '[chat_module]' "${who}-daemon.log" | grep -v -e 'Wakeup convo' -e 'Cached Convos' | tail -n 40 >&2; exit 1; }
+            [ -n "$got" ] || { echo "$who never received alice's message" >&2; tail -n 40 "${who}-daemon.log" >&2; exit 1; }
           done
         code_block: |
           # each member sees the message with sender == Alice's address
@@ -410,12 +410,12 @@ sections:
           addr=$(cat carol-addr.txt)
           for who in alice bob; do
             got=""
-            for i in $(seq 1 150); do
+            for i in $(seq 1 60); do
               ok=$(./logos/bin/logoscore --config-dir "$who" call chat_module get_messages "str:$gid" 2>/dev/null | jq -r --arg a "$addr" '.result[]? | select(.content == "carol-checking-in") | select(.sender == $a) | .content' || true)
               if [ -n "$ok" ]; then got=1; echo "$(echo "$who" | tr a-z A-Z)_GOT_CAROL_REPLY"; break; fi
               sleep 4
             done
-            [ -n "$got" ] || { echo "$who never received carol's reply" >&2; grep -F '[chat_module]' "${who}-daemon.log" | grep -v -e 'Wakeup convo' -e 'Cached Convos' | tail -n 40 >&2; exit 1; }
+            [ -n "$got" ] || { echo "$who never received carol's reply" >&2; tail -n 40 "${who}-daemon.log" >&2; exit 1; }
           done
         code_block: |
           logoscore --config-dir alice call chat_module get_messages "str:$GROUP_ID"

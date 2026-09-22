@@ -42,7 +42,7 @@ prerequisites:
     ```
   - "**A Linux or macOS machine.** Nix provides every toolchain (Qt, CMake, cargo, rustc) during the builds."
   - "**`jq`** on `PATH` (used to read the JSON the CLI prints). GitHub runners ship it; locally, run the spec inside `nix shell nixpkgs#jq`."
-  - "**Network access.** The two delivery nodes discover each other over the `logos.test` Waku fleet; an isolated sandbox won't complete the exchange. Expect ~5-40s to reach Online and up to several minutes for messages to propagate."
+  - "**Network access.** The two delivery nodes discover each other over the `logos.test` Waku fleet; an isolated sandbox won't complete the exchange. Expect ~5-40s to reach Online and up to ~2 min for messages to propagate."
 
 sections:
   - title: "Build the tools and the two modules"
@@ -244,12 +244,12 @@ sections:
           has joined.
       - title: "Alice joins the conversation"
         run: |
-          for i in $(seq 1 200); do
+          for i in $(seq 1 50); do
             cid=$(./logos/bin/logoscore --config-dir alice call chat_module list_conversations 2>/dev/null | jq -r '.result[0].convo_id // empty')
             if [ -n "$cid" ]; then echo "$cid" > alice-convo.txt; echo "ALICE_HAS_CONVO $cid"; break; fi
             sleep 3
           done
-          [ -s alice-convo.txt ] || { echo "alice never joined the conversation" >&2; grep -F '[chat_module]' "alice-daemon.log" | grep -v -e 'Wakeup convo' -e 'Cached Convos' | tail -n 40 >&2; exit 1; }
+          [ -s alice-convo.txt ] || { echo "alice never joined the conversation" >&2; exit 1; }
         code_block: |
           # poll until Alice has processed the invite and joined
           logoscore --config-dir alice call chat_module list_conversations | jq -r '.result[0].convo_id'
@@ -276,12 +276,12 @@ sections:
       - title: "Alice receives Bob's message"
         run: |
           cid=$(cat alice-convo.txt)
-          for i in $(seq 1 200); do
+          for i in $(seq 1 50); do
             msgs=$(./logos/bin/logoscore --config-dir alice call chat_module get_messages "str:$cid" 2>/dev/null || true)
             case "$msgs" in *'"content":"hello-from-bob"'*) echo "ALICE_GOT_BOB_MSG"; exit 0;; esac
             sleep 3
           done
-          echo "alice never received bob's message" >&2; grep -F '[chat_module]' "alice-daemon.log" | grep -v -e 'Wakeup convo' -e 'Cached Convos' | tail -n 40 >&2; exit 1
+          echo "alice never received bob's message" >&2; exit 1
         code_block: |
           logoscore --config-dir alice call chat_module get_messages "str:$ALICE_CONVO"
         expect_contains:
@@ -302,12 +302,12 @@ sections:
       - title: "Bob receives Alice's reply"
         run: |
           cid=$(cat bob-convo.txt)
-          for i in $(seq 1 200); do
+          for i in $(seq 1 50); do
             msgs=$(./logos/bin/logoscore --config-dir bob call chat_module get_messages "str:$cid" 2>/dev/null || true)
             case "$msgs" in *'"content":"hi-bob-got-it"'*) echo "BOB_GOT_REPLY"; exit 0;; esac
             sleep 3
           done
-          echo "bob never received alice's reply" >&2; grep -F '[chat_module]' "bob-daemon.log" | grep -v -e 'Wakeup convo' -e 'Cached Convos' | tail -n 40 >&2; exit 1
+          echo "bob never received alice's reply" >&2; exit 1
         code_block: |
           logoscore --config-dir bob call chat_module get_messages "str:$BOB_CONVO"
         expect_contains:
