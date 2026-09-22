@@ -16,7 +16,7 @@
     # Delivery's Windows target is in PR #127. Pin its tested commit until the
     # change is released, then move this to the release tag. Keep the chat UI's
     # delivery input following this pin.
-    logos-delivery-module.url = "github:logos-co/logos-delivery-module/4e289878b0ba35cd49e1e9b517fde1643db22e3e";
+    logos-delivery-module.url = "github:logos-co/logos-delivery-module/160ef781d996530c0c2467de0cd8200eed3ec222";
   };
 
   outputs = inputs@{ self, logos-module-builder, logos-delivery-module, ... }:
