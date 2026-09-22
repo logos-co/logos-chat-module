@@ -11,13 +11,12 @@
   };
 
   inputs = {
-    logos-module-builder.url = "github:logos-co/logos-module-builder/0.3.0";
+    logos-module-builder.url = "github:logos-co/logos-module-builder/0.3.1";
 
-    # Pinned to the v0.2.1 release tag, the one the module catalog runs. A
-    # start on a running node is a no-op from this tag, which
-    # start_delivery_bootstrap relies on when the node already exists. Kept in
-    # lockstep with logos-chat-ui's pin.
-    logos-delivery-module.url = "github:logos-co/logos-delivery-module/v0.2.1";
+    # Delivery's Windows target is in PR #127. Pin its tested commit until the
+    # change is released, then move this to the release tag. Keep the chat UI's
+    # delivery input following this pin.
+    logos-delivery-module.url = "github:logos-co/logos-delivery-module/4e289878b0ba35cd49e1e9b517fde1643db22e3e";
   };
 
   outputs = inputs@{ self, logos-module-builder, logos-delivery-module, ... }:
@@ -63,19 +62,9 @@
           # set `m` (default, install, lidl, …) is exposed too, so the UI module
           # can consume chat_module's published .lidl contract.
           chat_module = m.default;
-        }
-        # The matching delivery_module .lgx, re-exported from this flake's locked
-        # delivery input, so the exact delivery_module rev chat_module is built
-        # against can be installed alongside it.
-        #
-        # Guarded because the pinned delivery_module publishes only the native
-        # systems; asking it for a target it does not build would fail this whole
-        # attrset over an extra convenience output. chat_module ITSELF still
-        # cross-builds — its delivery dependency resolves through the local
-        # `.lidl` in dependency_overrides, never through the dep's packages — so
-        # only the re-export is conditional. Drop the guard once delivery_module
-        # publishes the target too.
-        // nixpkgs.lib.optionalAttrs (logos-delivery-module.packages ? ${system}) {
+
+          # Re-export the matching delivery package for every target, including
+          # Windows, so the two modules can be installed together.
           "delivery_module-lgx" = logos-delivery-module.packages.${system}.lgx;
         });
 
