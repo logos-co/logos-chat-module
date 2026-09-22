@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use libchat::ChatStorage;
+use chat_sqlite::SqliteStore;
 use logos_account::TestLogosAccount;
 use logos_generic_chat::{
     ChatClientBuilder, ContactRegistry, DelegateSigner, GroupMetadata, RegistryPublishMode,
@@ -114,10 +114,10 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         // SQLCipher's keying requirement. A user-provided passphrase is a
         // future enhancement.
         let key = format!("rust-chat-{}", persistence_path.replace('/', "_"));
-        ChatStorage::new(StorageConfig::Encrypted { path: db_path, key })
+        SqliteStore::new(StorageConfig::Encrypted { path: db_path, key })
             .map_err(|e| InitError::Internal(format!("open store failed: {e:?}")))?
     } else {
-        ChatStorage::in_memory()
+        SqliteStore::in_memory()
     };
 
     // The transport's inbound channel: the bridge worker feeds `inbound_tx` from

@@ -32,15 +32,16 @@ panic = "abort"
 # the `group_members` roster, the Event::ConversationMembersChanged behind the
 # `members_changed` contract event, injectable GroupV2 timing, the honest DirectV1
 # display class). Not yet in a released libchat version.
-logos-generic-chat = { git = "https://github.com/logos-messaging/libchat.git", package = "logos-generic-chat", rev = "147d0b3b88cf5ee1b825075447567dced918426e" }
-# The umbrella `libchat` crate, for `ChatStorage`: the builder's
+logos-generic-chat = { git = "https://github.com/logos-messaging/logos-chat.git", package = "logos-generic-chat", rev = "4ac01dbb13480b06ff19338901e8195bbe7b6afc" }
+# `chat-sqlite`, for `SqliteStore`: the builder's
 # `storage_config` panics on a bad DB, so we build the store fallibly and pass it in.
-libchat        = { git = "https://github.com/logos-messaging/libchat.git", package = "libchat", rev = "147d0b3b88cf5ee1b825075447567dced918426e" }
+chat-sqlite    = { git = "https://github.com/logos-messaging/logos-chat.git", package = "chat-sqlite", rev = "4ac01dbb13480b06ff19338901e8195bbe7b6afc" }
+libchat        = { git = "https://github.com/logos-messaging/logos-chat.git", package = "libchat", rev = "4ac01dbb13480b06ff19338901e8195bbe7b6afc" }
 # `TestLogosAccount` (gated behind logos-account's `dev` feature): the ephemeral
 # account identity that signs this installation's device bundle and whose key is
 # the shared account address. Enable `dev` on our own dep so its availability
 # doesn't hinge on another crate happening to turn the feature on.
-logos-account  = { git = "https://github.com/logos-messaging/libchat.git", package = "logos-account", features = ["dev"], rev = "147d0b3b88cf5ee1b825075447567dced918426e" }
+logos-account  = { git = "https://github.com/logos-messaging/logos-chat.git", package = "logos-account", features = ["dev"], rev = "4ac01dbb13480b06ff19338901e8195bbe7b6afc" }
 # The client hands back a `Receiver<Event>` and drains a `Receiver<Vec<u8>>`
 # through its `Transport`, so the module's plumbing speaks the same channel type.
 crossbeam-channel = "0.5"
