@@ -13,10 +13,9 @@
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder/0.3.1";
 
-    # Delivery's Windows target is in PR #127. Pin its tested commit until the
-    # change is released, then move this to the release tag. Keep the chat UI's
-    # delivery input following this pin.
-    logos-delivery-module.url = "github:logos-co/logos-delivery-module/160ef781d996530c0c2467de0cd8200eed3ec222";
+    # Delivery's Windows target is on master after PR #127. The lockfile pins
+    # the merged revision until a release includes it.
+    logos-delivery-module.url = "github:logos-co/logos-delivery-module";
   };
 
   outputs = inputs@{ self, logos-module-builder, logos-delivery-module, ... }:
