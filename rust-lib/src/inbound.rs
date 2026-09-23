@@ -210,6 +210,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn forwards_delivery_message_with_source_field() {
+        let payload = b"chat invite";
+        let event = EventData::new(
+            "messageReceived",
+            serde_json::json!([
+                "hash",
+                "/logos-chat/1/alice/proto",
+                logos_rust_sdk::bytes::encode(payload),
+                "live",
+                42,
+            ]),
+        );
+        let (tx, rx) = crossbeam_channel::unbounded();
+
+        forward_message(&event, &tx);
+
+        assert_eq!(rx.try_recv().unwrap(), payload);
+    }
+
+    #[test]
     fn connection_status_maps_each_upstream_variant() {
         assert_eq!(
             map_connection_status("Connected"),
