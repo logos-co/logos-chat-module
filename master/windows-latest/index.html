@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tutorial Execution Report</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --pass: #2ea043; --fail: #f85149; --info: #d29922;
+    --code-bg: #0b0f14;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10; background: var(--panel);
+    border-bottom: 1px solid var(--border); padding: 12px 20px;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  .pill { padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .pill.pass { background: rgba(46,160,67,.15); color: var(--pass); }
+  .pill.fail { background: rgba(248,81,73,.15); color: var(--fail); }
+  .pill.skip { background: rgba(210,153,34,.15); color: var(--info); }
+  select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
+  main { max-width: 1600px; margin: 0 auto; padding: 16px; }
+  .tutorial-title { font-size: 20px; font-weight: 700; margin: 24px 0 8px; color: #fff; }
+  .row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+    border: 1px solid var(--border); border-radius: 8px; margin: 10px 0; overflow: hidden;
+  }
+  .row.preamble, .row.section { grid-template-columns: 1fr; }
+  .col { padding: 14px 18px; min-width: 0; }
+  .col.left { border-right: 1px solid var(--border); }
+  .row.preamble .col.left, .row.section .col.left { border-right: none; }
+  .col.right { background: var(--panel); }
+  /* A row containing any failed step is tinted red end-to-end so it's
+     impossible to miss when scanning the report. */
+  .row.has-fail { border-color: var(--fail); box-shadow: 0 0 0 1px var(--fail); }
+  .row.has-fail .col.left { background: rgba(248,81,73,.07); border-right-color: var(--fail); }
+  .row.has-fail .col.right { background: rgba(248,81,73,.12); }
+  .col-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 8px; }
+  .md :first-child { margin-top: 0; }
+  .md h1 { font-size: 22px; } .md h2 { font-size: 18px; } .md h3 { font-size: 15px; }
+  .md pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; overflow-x: auto; }
+  .md code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+  .md :not(pre) > code { background: rgba(110,118,129,.2); padding: .15em .4em; border-radius: 4px; }
+  .md table { border-collapse: collapse; margin: 8px 0; }
+  .md th, .md td { border: 1px solid var(--border); padding: 5px 10px; }
+  .md blockquote { border-left: 3px solid var(--border); margin: 8px 0; padding: 2px 12px; color: var(--muted); }
+  .md img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; }
+  .exec { margin-bottom: 14px; }
+  .exec:last-child { margin-bottom: 0; }
+  .exec-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .badge { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 4px; }
+  .badge.pass { background: rgba(46,160,67,.15); color: var(--pass); }
+  .badge.fail { background: rgba(248,81,73,.15); color: var(--fail); }
+  .badge.info { background: rgba(210,153,34,.15); color: var(--info); }
+  .kind { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .note { color: var(--muted); font-size: 12.5px; margin-bottom: 6px; }
+  pre.cmd { background: var(--code-bg); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 6px; padding: 10px 12px; margin: 0 0 6px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+  pre.output { background: #010409; border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin: 0; overflow-x: auto; max-height: 360px; overflow-y: auto; color: #b9c1ca; }
+  pre.cmd, pre.output { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.45; }
+  .empty { color: var(--muted); font-style: italic; font-size: 12.5px; }
+  details summary { cursor: pointer; color: var(--accent); font-size: 12px; margin-bottom: 4px; }
+  /* GitHub-style permalinks: every heading carries a link icon in the left
+     gutter (revealed on hover/focus) that copies a deep link to that section.
+     scroll-margin-top keeps the target clear of the sticky header. */
+  .heading-anchored { position: relative; scroll-margin-top: 76px; }
+  a.anchor {
+    position: absolute; left: -18px; top: 0; width: 16px; height: 1.55em;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--muted); opacity: 0; text-decoration: none;
+    transition: opacity .1s ease-in;
+  }
+  a.anchor svg { width: 14px; height: 14px; display: block; }
+  .heading-anchored:hover > a.anchor, a.anchor:focus { opacity: 1; }
+  a.anchor:hover { color: var(--accent); }
+  .heading-anchored.flash { animation: flash 1.4s ease-out; border-radius: 4px; }
+  @keyframes flash {
+    from { background: rgba(88,166,255,.28); box-shadow: 0 0 0 4px rgba(88,166,255,.28); }
+    to { background: transparent; box-shadow: 0 0 0 4px transparent; }
+  }
+  #toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 7px 14px; font-size: 12.5px; z-index: 20;
+    opacity: 0; pointer-events: none; transition: opacity .15s ease-in-out;
+  }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Tutorial Execution Report</h1>
+  <span id="summary"></span>
+  <label style="margin-left:auto; font-size:12px; color:var(--muted)">Tutorial
+    <select id="picker"></select>
+  </label>
+</header>
+<main id="main"></main>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script id="report-data" type="application/json">{"generated_platform": "windows-latest", "summary": {"failed": 0, "passed": 7, "skipped": 0}, "tutorials": [{"meta": {"name": "Load chat_module on Windows", "output": "chat-module-windows.md"}, "rows": [{"execs": [], "md": "# Load chat_module on Windows\n\nThis doc-test checks the Windows build of `chat_module` with its matching\n`delivery_module` dependency. CI stages both modules beside a native\n`logoscore` host, starts the daemon, loads `chat_module`, inspects its API,\nand calls `status()`.\n\nThe test uses no network. The Linux doc-tests separately exercise live\none-to-one and group message exchanges.\n\n**What you'll build:** A Windows chat_module plugin loaded and called through a native logoscore daemon.\n\n**What you'll learn:**\n\n- How to stage chat_module with its delivery_module dependency\n- How to load chat_module and inspect its methods through logoscore\n- How to call status() before bringing a delivery node online"}, {"execs": [], "md": "## Step 1: Load and call chat_module on Windows\n\nThe shared Windows CI stages the cross-built modules and `logoscore`.\nThese commands run on a native Windows runner from that staged directory."}, {"execs": [{"cmd": "check file: windows-logoscore/modules/chat_module/manifest.json", "exit_code": 0, "kind": "check_file", "output": "windows-logoscore/modules/chat_module/manifest.json\n", "status": "pass"}], "md": "### 1.1 Stage chat and delivery modules\n\n```bash\ntest -f windows-logoscore/modules/capability_module/manifest.json\ntest ! -e windows-logoscore/modules/delivery_module\ntest ! -e windows-logoscore/modules/chat_module\ncp -R delivery_module-install-portable/modules/delivery_module windows-logoscore/modules/\ncp -R install-portable/modules/chat_module windows-logoscore/modules/\n\n```"}, {"execs": [{"cmd": "./windows-logoscore/bin/logoscore.exe -D -m ./windows-logoscore/modules --config-dir ./windows-chat-smoke-config > windows-chat-smoke-daemon.log 2>&1 &\n", "exit_code": 0, "kind": "run", "output": "", "status": "pass"}], "md": "### 1.2 Start the Windows daemon\n\n```bash\n./windows-logoscore/bin/logoscore.exe -D -m ./windows-logoscore/modules --config-dir ./windows-chat-smoke-config > windows-chat-smoke-daemon.log 2>&1 &\n\n```"}, {"execs": [{"cmd": "ready=0\nfor attempt in $(seq 1 30); do\n  if run windows-logoscore/bin/logoscore.exe --config-dir ./windows-chat-smoke-config status | grep -qF '\"status\":\"running\"'; then\n    ready=1\n    break\n  fi\n  sleep 1\ndone\nif [ \"$ready\" -eq 1 ]; then echo 'daemon ready'; else cat windows-chat-smoke-daemon.log; false; fi\n", "exit_code": 0, "kind": "run", "output": "daemon ready\n", "status": "pass"}], "md": "### 1.3 Wait for the daemon\n\n```bash\nready=0\nfor attempt in $(seq 1 30); do\n  if run windows-logoscore/bin/logoscore.exe --config-dir ./windows-chat-smoke-config status | grep -qF '\"status\":\"running\"'; then\n    ready=1\n    break\n  fi\n  sleep 1\ndone\nif [ \"$ready\" -eq 1 ]; then echo 'daemon ready'; else cat windows-chat-smoke-daemon.log; false; fi\n\n```"}, {"execs": [{"cmd": "run windows-logoscore/bin/logoscore.exe --config-dir ./windows-chat-smoke-config load-module chat_module", "exit_code": 0, "kind": "run", "output": "{\"dependencies_loaded\":[\"delivery_module\"],\"module\":\"chat_module\",\"optional_skipped\":[{\"module\":\"liblogos_rln_module\",\"named_by\":\"delivery_module\",\"reason\":\"not_installed\"}],\"status\":\"ok\",\"version\":\"0.2.2\"}\n", "status": "pass"}], "md": "### 1.4 Load chat and its delivery dependency\n\n```bash\nrun windows-logoscore/bin/logoscore.exe --config-dir ./windows-chat-smoke-config load-module chat_module\n```"}, {"execs": [{"cmd": "run windows-logoscore/bin/logoscore.exe --config-dir ./windows-chat-smoke-config module-info chat_module", "exit_code": 0, "kind": "run", "output": "{\"dependencies\":[\"delivery_module\"],\"dependents\":[],\"events\":[{\"name\":\"message_received\",\"parameters\":[{\"name\":\"convo_id\",\"type\":\"QString\"},{\"name\":\"content\",\"type\":\"QString\"},{\"name\":\"timestamp_ms\",\"type\":\"int\"},{\"name\":\"sender\",\"type\":\"QString\"}],\"signature\":\"message_received(QString,QString,int,QString)\",\"type\":\"event\"},{\"name\":\"message_sent\",\"parameters\":[{\"name\":\"convo_id\",\"type\":\"QString\"},{\"name\":\"content\",\"type\":\"QString\"},{\"name\":\"timestamp_ms\",\"type\":\"int\"}],\"signature\":\"message_sent(QString,QString,int)\",\"type\":\"event\"},{\"name\":\"conversation_created\",\"parameters\":[{\"name\":\"convo_id\",\"type\":\"QString\"},{\"name\":\"is_outgoing\",\"type\":\"bool\"},{\"name\":\"peer_label\",\"type\":\"QString\"},{\"name\":\"kind\",\"type\":\"QString\"},{\"name\":\"name\",\"type\":\"QString\"},{\"name\":\"desc\",\"type\":\"QString\"}],\"signature\":\"conversation_created(QString,bool,QString,QString,QString,QString)\",\"type\":\"event\"},{\"name\":\"conversation_updated\",\"parameters\":[{\"name\":\"convo_id\",\"type\":\"QString\"}],\"signature\":\"conversation_updated(QString)\",\"type\":\"event\"},{\"name\":\"members_changed\",\"parameters\":[{\"name\":\"convo_id\",\"type\":\"QString\"}],\"signature\":\"members_changed(QString)\",\"type\":\"event\"},{\"name\":\"conversation_deleted\",\"parameters\":[{\"name\":\"convo_id\",\"type\":\"QString\"}],\"signature\":\"conversation_deleted(QString)\",\"type\":\"event\"},{\"name\":\"delivery_state_changed\",\"parameters\":[{\"name\":\"delivery_state\",\"type\":\"QString\"},{\"name\":\"detail\",\"type\":\"QString\"},{\"name\":\"delivery_adopted\",\"type\":\"bool\"}],\"signature\":\"delivery_state_changed(QString,QString,bool)\",\"type\":\"event\"}],\"methods\":[{\"isInvokable\":true,\"name\":\"init\",\"parameters\":[{\"name\":\"config\",\"type\":\"QVariant\"}],\"returnType\":\"LogosResult\",\"signature\":\"init(QVariant)\"},{\"isInvokable\":true,\"name\":\"shutdown\",\"returnType\":\"LogosResult\",\"signature\":\"shutdown()\"},{\"isInvokable\":true,\"name\":\"get_log_path\",\"returnType\":\"QString\",\"signature\":\"get_log_path()\"},{\"isInvokable\":true,\"name\":\"health\",\"returnType\":\"bool\",\"signature\":\"health()\"},{\"isInvokable\":true,\"name\":\"get_installation_name\",\"returnType\":\"QString\",\"signature\":\"get_installation_name()\"},{\"isInvokable\":true,\"name\":\"set_installation_name\",\"parameters\":[{\"name\":\"name\",\"type\":\"QString\"}],\"returnType\":\"LogosResult\",\"signature\":\"set_installation_name(QString)\"},{\"isInvokable\":true,\"name\":\"get_address\",\"returnType\":\"QString\",\"signature\":\"get_address()\"},{\"isInvokable\":true,\"name\":\"create_conversation\",\"parameters\":[{\"name\":\"peer_address\",\"type\":\"QString\"}],\"returnType\":\"LogosResult\",\"signature\":\"create_conversation(QString)\"},{\"isInvokable\":true,\"name\":\"create_group_conversation\",\"parameters\":[{\"name\":\"name\",\"type\":\"QString\"},{\"name\":\"desc\",\"type\":\"QString\"}],\"returnType\":\"LogosResult\",\"signature\":\"create_group_conversation(QString,QString)\"},{\"isInvokable\":true,\"name\":\"add_group_member\",\"parameters\":[{\"name\":\"convo_id\",\"type\":\"QString\"},{\"name\":\"peer_address\",\"type\":\"QString\"}],\"returnType\":\"LogosResult\",\"signature\":\"add_group_member(QString,QString)\"},{\"isInvokable\":true,\"name\":\"list_conversations\",\"returnType\":\"QVariantList\",\"signature\":\"list_conversations()\"},{\"isInvokable\":true,\"name\":\"get_messages\",\"parameters\":[{\"name\":\"convo_id\",\"type\":\"QString\"}],\"returnType\":\"QVariantList\",\"signature\":\"get_messages(QString)\"},{\"isInvokable\":true,\"name\":\"list_group_members\",\"parameters\":[{\"name\":\"convo_id\",\"type\":\"QString\"}],\"returnType\":\"QVariantList\",\"signature\":\"list_group_members(QString)\"},{\"isInvokable\":true,\"name\":\"send_message\",\"parameters\":[{\"name\":\"convo_id\",\"type\":\"QString\"},{\"name\":\"content\",\"type\":\"QString\"}],\"returnType\":\"LogosResult\",\"signature\":\"send_message(QString,QString)\"},{\"isInvokable\":true,\"name\":\"set_conversation_nickname\",\"parameters\":[{\"name\":\"convo_id\",\"type\":\"QString\"},{\"name\":\"nickname\",\"type\":\"QString\"}],\"returnType\":\"LogosResult\",\"signature\":\"set_conversation_nickname(QString,QString)\"},{\"isInvokable\":true,\"name\":\"delete_conversation\",\"parameters\":[{\"name\":\"convo_id\",\"type\":\"QString\"}],\"returnType\":\"LogosResult\",\"signature\":\"delete_conversation(QString)\"},{\"isInvokable\":true,\"name\":\"status\",\"returnType\":\"QVariant\",\"signature\":\"status()\"},{\"description\":\"The module's name, as declared in its metadata.\",\"isInvokable\":true,\"name\":\"name\",\"returnType\":\"QString\",\"signature\":\"name()\"},{\"description\":\"The module's version, as declared in its metadata.\",\"isInvokable\":true,\"name\":\"version\",\"returnType\":\"QString\",\"signature\":\"version()\"},{\"description\":\"The module's canonical LIDL interface document.\",\"isInvokable\":true,\"name\":\"lidl\",\"returnType\":\"QString\",\"signature\":\"lidl()\"}],\"name\":\"chat_module\",\"status\":\"loaded\",\"uptime_seconds\":0,\"version\":\"0.2.2\"}\n", "status": "pass"}], "md": "### 1.5 Inspect the chat API\n\n```bash\nrun windows-logoscore/bin/logoscore.exe --config-dir ./windows-chat-smoke-config module-info chat_module\n```"}, {"execs": [{"cmd": "run windows-logoscore/bin/logoscore.exe --config-dir ./windows-chat-smoke-config call chat_module status", "exit_code": 0, "kind": "run", "output": "{\"method\":\"status\",\"module\":\"chat_module\",\"result\":{\"convo_count\":0,\"delivery_adopted\":false,\"delivery_state\":\"stopped\",\"detail\":\"\"},\"status\":\"ok\"}\n", "status": "pass"}], "md": "### 1.6 Call chat status\n\n```bash\nrun windows-logoscore/bin/logoscore.exe --config-dir ./windows-chat-smoke-config call chat_module status\n```"}, {"execs": [{"cmd": "run windows-logoscore/bin/logoscore.exe --config-dir ./windows-chat-smoke-config stop", "exit_code": 0, "kind": "run", "output": "{\"message\":\"Daemon shutting down.\",\"status\":\"ok\"}\n", "status": "pass"}], "md": "### 1.7 Stop the Windows daemon\n\n```bash\nrun windows-logoscore/bin/logoscore.exe --config-dir ./windows-chat-smoke-config stop\n```"}]}], "version": 1}</script>
+<script>
+  const DATA = JSON.parse(document.getElementById("report-data").textContent);
+  if (window.marked) { marked.setOptions({ gfm: true, breaks: false }); }
+  const mdToHtml = (s) => window.marked ? marked.parse(s || "") : ("<pre>" + (s || "") + "</pre>");
+
+  const sum = DATA.summary;
+  document.getElementById("summary").innerHTML =
+    `<span class="pill pass">${sum.passed} passed</span> ` +
+    (sum.failed ? `<span class="pill fail">${sum.failed} failed</span> ` : "") +
+    (sum.skipped ? `<span class="pill skip">${sum.skipped} skipped</span>` : "");
+
+  const picker = document.getElementById("picker");
+  DATA.tutorials.forEach((t, i) => {
+    const o = document.createElement("option");
+    o.value = i; o.textContent = t.meta.name; picker.appendChild(o);
+  });
+
+  function execHtml(e) {
+    const badge = `<span class="badge ${e.status}">${e.status.toUpperCase()}</span>`;
+    const kind = `<span class="kind">${e.kind}${e.platform ? " · " + e.platform : ""}${e.exit_code !== undefined ? " · exit " + e.exit_code : ""}</span>`;
+    let h = `<div class="exec"><div class="exec-head">${badge}${kind}</div>`;
+    if (e.note) h += `<div class="note">${escapeHtml(e.note)}</div>`;
+    if (e.cmd) h += `<pre class="cmd">${escapeHtml(e.cmd)}</pre>`;
+    const out = (e.output || "").trim();
+    if (out) {
+      const long = out.split("\n").length > 12;
+      if (long) {
+        h += `<details><summary>output (${out.split("\n").length} lines)</summary><pre class="output">${escapeHtml(out)}</pre></details>`;
+      } else {
+        h += `<pre class="output">${escapeHtml(out)}</pre>`;
+      }
+    }
+    h += `</div>`;
+    return h;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  }
+
+  function render(idx) {
+    const t = DATA.tutorials[idx];
+    const main = document.getElementById("main");
+    main.innerHTML = "";
+    const h = document.createElement("div");
+    h.className = "tutorial-title";
+    h.textContent = t.meta.name + "  —  " + t.meta.platform;
+    main.appendChild(h);
+
+    t.rows.forEach(row => {
+      const isStructural = row.execs.length === 0 &&
+        (/^#\s|^##\s/.test(row.md.trim()));
+      const div = document.createElement("div");
+      const hasExec = row.execs.length > 0;
+      const hasFail = row.execs.some(e => e.status === "fail");
+      div.className = "row" + (hasExec ? "" : (isStructural ? " section" : " preamble")) +
+        (hasFail ? " has-fail" : "");
+
+      const left = document.createElement("div");
+      left.className = "col left";
+      left.innerHTML = `<div class="md">${mdToHtml(row.md)}</div>`;
+      div.appendChild(left);
+
+      if (hasExec || !isStructural) {
+        const right = document.createElement("div");
+        right.className = "col right";
+        if (hasExec) {
+          right.innerHTML = `<div class="col-label">Executed</div>` +
+            row.execs.map(execHtml).join("");
+        } else {
+          right.innerHTML = `<div class="col-label">Executed</div>` +
+            `<div class="empty">No commands run for this step.</div>`;
+        }
+        div.appendChild(right);
+      }
+      main.appendChild(div);
+    });
+
+    addAnchors(main, slug(t.meta.name));
+  }
+
+  function slug(s) {
+    return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  }
+
+  // Octicon "link" — the same glyph GitHub puts next to markdown headings.
+  const LINK_ICON =
+    '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d=' +
+    '"M7.775 3.275a.75.75 0 0 0 1.06 1.06l1.25-1.25a2 2 0 1 1 2.83 2.83l-2.5 2.5a2 2 0 0 1-2.83 0 ' +
+    '.75.75 0 0 0-1.06 1.06 3.5 3.5 0 0 0 4.95 0l2.5-2.5a3.5 3.5 0 0 0-4.95-4.95l-1.25 1.25Zm-4.69 ' +
+    '9.64a2 2 0 0 1 0-2.83l2.5-2.5a2 2 0 0 1 2.83 0 .75.75 0 0 0 1.06-1.06 3.5 3.5 0 0 0-4.95 0l-2.5 ' +
+    '2.5a3.5 3.5 0 0 0 4.95 4.95l1.25-1.25a.75.75 0 0 0-1.06-1.06l-1.25 1.25a2 2 0 0 1-2.83 0Z"></path></svg>';
+
+  // Give every heading a stable slug id (deduplicated the way GitHub does, with
+  // -1/-2 suffixes) and a permalink whose href is "#<tutorial>/<heading>".
+  function addAnchors(container, tutSlug) {
+    const used = new Map();
+    const nodes = container.querySelectorAll(
+      ".tutorial-title, .md h1, .md h2, .md h3, .md h4, .md h5, .md h6"
+    );
+    nodes.forEach(node => {
+      const text = node.textContent.trim();
+      const isTitle = node.classList.contains("tutorial-title");
+      let href = "#" + tutSlug;
+      if (!isTitle) {
+        const base = slug(text) || "section";
+        const n = (used.get(base) || 0) + 1;
+        used.set(base, n);
+        node.id = n > 1 ? base + "-" + n : base;
+        href += "/" + node.id;
+      }
+      node.classList.add("heading-anchored");
+      const a = document.createElement("a");
+      a.className = "anchor";
+      a.href = href;
+      a.title = "Copy link to this section";
+      a.setAttribute("aria-label", "Permalink: " + text);
+      a.innerHTML = LINK_ICON;
+      node.insertBefore(a, node.firstChild);
+    });
+  }
+
+  let toastTimer = null;
+  function toast(msg) {
+    const el = document.getElementById("toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("show"), 1600);
+  }
+
+  // navigator.clipboard needs a secure context; reports are often opened over
+  // file://, so fall back to the old execCommand path there.
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(
+        () => toast("Link copied"),
+        () => toast(text)
+      );
+      return;
+    }
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    toast(ok ? "Link copied" : text);
+  }
+
+  function scrollToId(id) {
+    if (!id) { window.scrollTo(0, 0); return; }
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ block: "start" });
+    el.classList.remove("flash");
+    void el.offsetWidth;  // restart the animation on a repeat click
+    el.classList.add("flash");
+  }
+
+  document.addEventListener("click", ev => {
+    const a = ev.target.closest && ev.target.closest("a.anchor");
+    if (!a) return;
+    ev.preventDefault();
+    const href = a.getAttribute("href");
+    copyText(location.href.split("#")[0] + href);
+    if (location.hash === href) scrollToId(a.parentNode.id);
+    else location.hash = href;  // hashchange scrolls
+  });
+
+  // "#<tutorial>" (name, slug, or index) optionally followed by "/<heading>".
+  function parseHash() {
+    const raw = decodeURIComponent(location.hash.replace(/^#/, ""));
+    if (!raw) return { idx: 0, frag: "" };
+    const cut = raw.indexOf("/");
+    const tut = cut >= 0 ? raw.slice(0, cut) : raw;
+    const frag = cut >= 0 ? raw.slice(cut + 1) : "";
+    if (/^\d+$/.test(tut) && +tut < DATA.tutorials.length) return { idx: +tut, frag };
+    const i = DATA.tutorials.findIndex(
+      t => slug(t.meta.name) === tut || t.meta.name === tut
+    );
+    if (i >= 0) return { idx: i, frag };
+    // No tutorial matched: treat a bare hash as a heading in the current one.
+    return { idx: currentIdx >= 0 ? currentIdx : 0, frag: cut >= 0 ? frag : raw };
+  }
+
+  let currentIdx = -1;
+  function show(idx, frag) {
+    if (idx !== currentIdx) {
+      picker.value = idx;
+      render(idx);
+      currentIdx = idx;
+    }
+    if (frag) requestAnimationFrame(() => scrollToId(frag));
+  }
+  picker.addEventListener("change", () => {
+    location.hash = slug(DATA.tutorials[+picker.value].meta.name);
+    show(+picker.value);
+  });
+  window.addEventListener("hashchange", () => {
+    const h = parseHash();
+    show(h.idx, h.frag);
+  });
+  const initial = parseHash();
+  show(initial.idx, initial.frag);
+  // Inlined screenshots have no intrinsic size until decoded, so the first
+  // scroll can land short; re-anchor once everything has loaded.
+  if (initial.frag) {
+    window.addEventListener("load", () => scrollToId(initial.frag), { once: true });
+  }
+</script>
+</body>
+</html>
