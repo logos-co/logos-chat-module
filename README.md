@@ -18,7 +18,9 @@ nix build .#chat_module    # the full Qt plugin
 `nix build` is the entry point and needs no manual hash bookkeeping:
 `logos-module-builder` runs `logos-lidl-gen` to emit the module-impl scaffold,
 fetches the Cargo deps recorded in `rust-lib/Cargo.lock`, and compiles the
-staticlib. Bumping the `libchat` pin is just `cargo metadata` (or `cargo update
+staticlib. It resolves delivery's contract from the pinned flake input, so
+the generated client matches the delivery module at build time. Bumping the
+`libchat` pin is just `cargo metadata` (or `cargo update
 -p`) to refresh `rust-lib/Cargo.lock`; the next `nix build` picks it up.
 
 For a bare `cargo build`, first run `nix run .#generate`. It materialises the two

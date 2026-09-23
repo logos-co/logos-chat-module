@@ -73,8 +73,8 @@
         });
 
       # `nix run .#generate` materialises the two gitignored inputs `rust-lib/`
-      # references into the working tree, both from the rev the builder pins: the
-      # provider scaffold (logos-lidl-gen over chat_module.lidl) at
+      # references into the working tree: the provider scaffold (logos-lidl-gen
+      # over chat_module.lidl and delivery's published contract) at
       # rust-lib/generated/, and the SDK source the crate path-deps as
       # `../logos-rust-sdk-src`. After it, bare `cargo build/test/clippy` works in
       # rust-lib/ directly, with no staged copy.
@@ -83,6 +83,7 @@
           pkgs = import nixpkgs { inherit system; };
           lidlGen = logos-module-builder.inputs.logos-rust-sdk.packages.${system}.lidl-gen;
           sdkSrc = logos-module-builder.packages.${system}.rust-sdk-src;
+          deliveryLidl = logos-delivery-module.packages.${system}.lidl;
           generate = pkgs.writeShellApplication {
             name = "chat-module-generate";
             runtimeInputs = [ lidlGen pkgs.git ];
@@ -91,7 +92,7 @@
               echo "generating rust-lib/generated/provider_gen.rs ..."
               mkdir -p "$root/rust-lib/generated"
               logos-lidl-gen "$root/rust-lib/chat_module.lidl" --provider \
-                --dep delivery_module="$root/rust-lib/deps/delivery_module.lidl" \
+                --dep delivery_module="${deliveryLidl}/delivery_module.lidl" \
                 -o "$root/rust-lib/generated/provider_gen.rs"
               echo "staging the SDK source at logos-rust-sdk-src/ ..."
               rm -rf "''${root:?}/logos-rust-sdk-src"
