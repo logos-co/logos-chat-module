@@ -1,0 +1,76 @@
+name: "Load chat_module on Windows"
+output: chat-module-windows.md
+project_name: logos-chat-module
+release: ""
+
+intro: |
+  This doc-test checks the Windows build of `chat_module` with its matching
+  `delivery_module` dependency. CI stages both modules beside a native
+  `logoscore` host, starts the daemon, loads `chat_module`, inspects its API,
+  and calls `status()`.
+
+  The test uses no network. The Linux doc-tests separately exercise live
+  one-to-one and group message exchanges.
+
+what_you_build: "A Windows chat_module plugin loaded and called through a native logoscore daemon."
+
+what_you_learn:
+  - How to stage chat_module with its delivery_module dependency
+  - How to load chat_module and inspect its methods through logoscore
+  - How to call status() before bringing a delivery node online
+
+sections:
+  - title: "Load and call chat_module on Windows"
+    platform: windows
+    step: true
+    text: |
+      The shared Windows CI stages the cross-built modules and `logoscore`.
+      These commands run on a native Windows runner from that staged directory.
+    steps:
+      - title: "Stage chat and delivery modules"
+        run: |
+          test -f windows-logoscore/modules/capability_module/manifest.json
+          test ! -e windows-logoscore/modules/delivery_module
+          test ! -e windows-logoscore/modules/chat_module
+          cp -R delivery_module-install-portable/modules/delivery_module windows-logoscore/modules/
+          cp -R install-portable/modules/chat_module windows-logoscore/modules/
+        check_file: windows-logoscore/modules/chat_module/manifest.json
+
+      - title: "Start the Windows daemon"
+        run: |
+          ./windows-logoscore/bin/logoscore.exe -D -m ./windows-logoscore/modules --config-dir ./windows-chat-smoke-config > windows-chat-smoke-daemon.log 2>&1 &
+
+      - title: "Wait for the daemon"
+        run: |
+          ready=0
+          for attempt in $(seq 1 30); do
+            if run windows-logoscore/bin/logoscore.exe --config-dir ./windows-chat-smoke-config status | grep -qF '"status":"running"'; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -eq 1 ]; then echo 'daemon ready'; else cat windows-chat-smoke-daemon.log; false; fi
+        expect_contains:
+          - "daemon ready"
+
+      - title: "Load chat and its delivery dependency"
+        run: "run windows-logoscore/bin/logoscore.exe --config-dir ./windows-chat-smoke-config load-module chat_module"
+        expect_contains:
+          - '"module":"chat_module"'
+          - '"delivery_module"'
+
+      - title: "Inspect the chat API"
+        run: "run windows-logoscore/bin/logoscore.exe --config-dir ./windows-chat-smoke-config module-info chat_module"
+        expect_contains:
+          - '"name":"status"'
+
+      - title: "Call chat status"
+        run: "run windows-logoscore/bin/logoscore.exe --config-dir ./windows-chat-smoke-config call chat_module status"
+        expect_contains:
+          - '"delivery_state":"stopped"'
+
+      - title: "Stop the Windows daemon"
+        run: "run windows-logoscore/bin/logoscore.exe --config-dir ./windows-chat-smoke-config stop"
+        expect_contains:
+          - '"status":"ok"'

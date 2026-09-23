@@ -11,13 +11,11 @@
   };
 
   inputs = {
-    logos-module-builder.url = "github:logos-co/logos-module-builder/0.3.0";
+    logos-module-builder.url = "github:logos-co/logos-module-builder/0.3.1";
 
-    # Pinned to the v0.2.1 release tag, the one the module catalog runs. A
-    # start on a running node is a no-op from this tag, which
-    # start_delivery_bootstrap relies on when the node already exists. Kept in
-    # lockstep with logos-chat-ui's pin.
-    logos-delivery-module.url = "github:logos-co/logos-delivery-module/v0.2.1";
+    # Delivery's Windows target is on master after PR #127. The lockfile pins
+    # the merged revision until a release includes it.
+    logos-delivery-module.url = "github:logos-co/logos-delivery-module";
   };
 
   outputs = inputs@{ self, logos-module-builder, logos-delivery-module, ... }:
@@ -25,6 +23,22 @@
       nixpkgs = logos-module-builder.inputs.nixpkgs;
       systems = [ "aarch64-darwin" "x86_64-darwin" "aarch64-linux" "x86_64-linux" ];
       forAllSystems = fn: nixpkgs.lib.genAttrs systems fn;
+
+      # x86_64-windows is a cross PSEUDO-SYSTEM the builder already understands
+      # (logos-module-builder lib/common.nix routes it to
+      # logos-nix.lib.mkWindowsPkgs, and picks the build platform separately).
+      #
+      # `packages` ONLY. `apps` and `devShells` below both do
+      # `import nixpkgs { inherit system; }`, which for this key is a NATIVE
+      # Windows instantiation and dies in cc-wrapper — and neither a dev shell
+      # nor the codegen runner means anything on a cross target anyway.
+      #
+      # chat_ui needs this: a consumer resolves a dependency's headers through
+      # `packages.<system>`, so without a Windows entry here chat_ui's own cross
+      # build has nothing to read (logos-module-builder#199 turns that into a
+      # named error rather than a silent fallback to this source tree).
+      targets = systems ++ [ "x86_64-windows" ];
+      forAllTargets = fn: nixpkgs.lib.genAttrs targets fn;
 
       # The builder runs logos-lidl-gen to emit the module-impl C ABI scaffold
       # (the `ChatModule` trait + logos_module_* exports) at rust-lib/generated/,
@@ -40,7 +54,7 @@
         };
     in
     {
-      packages = forAllSystems (system:
+      packages = forAllTargets (system:
         let m = (module system).packages.${system};
         in m // {
           # CI builds `.#chat_module`; alias it to the plugin package. The full
@@ -48,15 +62,19 @@
           # can consume chat_module's published .lidl contract.
           chat_module = m.default;
 
-          # The matching delivery_module .lgx, re-exported from this flake's
-          # locked delivery input, so the exact delivery_module rev chat_module is
-          # built against can be installed alongside it.
+          # Re-export the matching delivery package for every target, including
+          # Windows, so the two modules can be installed together.
           "delivery_module-lgx" = logos-delivery-module.packages.${system}.lgx;
+        } // nixpkgs.lib.optionalAttrs (system == "x86_64-windows") {
+          # The Windows smoke job stages the exact delivery build this module
+          # uses, along with its installable layout.
+          "delivery_module-default" = logos-delivery-module.packages.${system}.default;
+          "delivery_module-install-portable" = logos-delivery-module.packages.${system}.install-portable;
         });
 
       # `nix run .#generate` materialises the two gitignored inputs `rust-lib/`
-      # references into the working tree, both from the rev the builder pins: the
-      # provider scaffold (logos-lidl-gen over chat_module.lidl) at
+      # references into the working tree: the provider scaffold (logos-lidl-gen
+      # over chat_module.lidl and delivery's published contract) at
       # rust-lib/generated/, and the SDK source the crate path-deps as
       # `../logos-rust-sdk-src`. After it, bare `cargo build/test/clippy` works in
       # rust-lib/ directly, with no staged copy.
@@ -65,6 +83,7 @@
           pkgs = import nixpkgs { inherit system; };
           lidlGen = logos-module-builder.inputs.logos-rust-sdk.packages.${system}.lidl-gen;
           sdkSrc = logos-module-builder.packages.${system}.rust-sdk-src;
+          deliveryLidl = logos-delivery-module.packages.${system}.lidl;
           generate = pkgs.writeShellApplication {
             name = "chat-module-generate";
             runtimeInputs = [ lidlGen pkgs.git ];
@@ -73,7 +92,7 @@
               echo "generating rust-lib/generated/provider_gen.rs ..."
               mkdir -p "$root/rust-lib/generated"
               logos-lidl-gen "$root/rust-lib/chat_module.lidl" --provider \
-                --dep delivery_module="$root/rust-lib/deps/delivery_module.lidl" \
+                --dep delivery_module="${deliveryLidl}/delivery_module.lidl" \
                 -o "$root/rust-lib/generated/provider_gen.rs"
               echo "staging the SDK source at logos-rust-sdk-src/ ..."
               rm -rf "''${root:?}/logos-rust-sdk-src"

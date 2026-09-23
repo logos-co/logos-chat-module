@@ -18,7 +18,9 @@ nix build .#chat_module    # the full Qt plugin
 `nix build` is the entry point and needs no manual hash bookkeeping:
 `logos-module-builder` runs `logos-lidl-gen` to emit the module-impl scaffold,
 fetches the Cargo deps recorded in `rust-lib/Cargo.lock`, and compiles the
-staticlib. Bumping the `libchat` pin is just `cargo metadata` (or `cargo update
+staticlib. It resolves delivery's contract from the pinned flake input, so
+the generated client matches the delivery module at build time. Bumping the
+`libchat` pin is just `cargo metadata` (or `cargo update
 -p`) to refresh `rust-lib/Cargo.lock`; the next `nix build` picks it up.
 
 For a bare `cargo build`, first run `nix run .#generate`. It materialises the two
@@ -55,7 +57,7 @@ See [Documentation](#documentation) below to build the site locally.
 
 End-to-end chat needs a `delivery_module` available to the host at runtime; the
 flake pins [`logos-delivery-module`](https://github.com/logos-co/logos-delivery-module)
-at `v0.2.1`. Load `chat_module` via `logoscore` or Basecamp.
+at a Windows-capable `v0.3.0` revision. Load `chat_module` via `logoscore` or Basecamp.
 
 Bring-up is `init(config)`, taking a `ChatConfig` record whose every field is
 optional: `delivery_preset` (empty or absent → `logos.test`) and `log_level`.

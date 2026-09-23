@@ -152,9 +152,10 @@ sections:
     step: true
     text: |
       `init(config)` returns immediately and kicks off the
-      delivery bootstrap asynchronously; readiness arrives later when the
-      subscribe handshake completes and `status().delivery_state` flips to
-      `online`. Both instances are initialised **first** so their two cold Waku
+      delivery bootstrap asynchronously; `status().delivery_state` flips to
+      `online` when the delivery transport connects. Initial topic subscriptions
+      are dispatched asynchronously after that. Both instances are initialised
+      **first** so their two cold Waku
       bootstraps overlap, then each is polled; the wait is ~the slower of the two,
       not their sum.
     steps:
@@ -190,10 +191,16 @@ sections:
             done
             if [ -z "$online" ]; then echo "$who never came online" >&2; tail -n 40 "${who}-daemon.log" >&2; exit 1; fi
           done
+          # The bridge forwards initial topic subscriptions after observing Online.
+          # Give those asynchronous subscriptions time to reach delivery before
+          # Bob sends Alice a one-shot invite.
+          sleep 5
         code_block: |
           # poll status() until delivery_state == online (fail fast on "error")
           logoscore --config-dir alice call chat_module status
           logoscore --config-dir bob   call chat_module status
+          # wait for the initial delivery topic subscriptions
+          sleep 5
         expect_contains:
           - "alice_ONLINE"
           - "bob_ONLINE"
@@ -201,6 +208,8 @@ sections:
           `status()` returns the `Status` record directly under `result`
           (`{"status":"ok","result":{"delivery_state":"online",...}}`), unlike the
           `result`-bearing methods below, which nest their payload one level deeper.
+          The initial topic subscriptions are asynchronous, so allow a short
+          settling interval before sending the first invite.
 
   - title: "The round-trip"
     step: true
