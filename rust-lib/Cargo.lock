@@ -1272,6 +1272,9 @@ dependencies = [
  "crossbeam-channel",
  "logos-generic-chat",
  "logos-rust-sdk",
+ "message-store",
+ "rusqlite",
+ "rusqlite_migration",
  "serde",
  "serde_json",
  "tempfile",
@@ -3300,6 +3303,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
+name = "message-store"
+version = "0.1.0"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3#0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3"
+dependencies = [
+ "rusqlite",
+]
+
+[[package]]
 name = "mio"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4428,6 +4439,16 @@ dependencies = [
  "hashlink",
  "libsqlite3-sys",
  "smallvec",
+]
+
+[[package]]
+name = "rusqlite_migration"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6bec955369ac93728d3864d56b5d663ec7495f83648c560750a56c50fefcbf8"
+dependencies = [
+ "log",
+ "rusqlite",
 ]
 
 [[package]]

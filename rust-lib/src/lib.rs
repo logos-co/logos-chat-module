@@ -28,9 +28,9 @@
 //! the generated `emit_*` functions (see the included scaffold), which the host
 //! marshals onto the Qt thread and republishes as IPC events.
 //!
-//! Security. The identity store opened by `init` is keyed from the
-//! host-assigned instance persistence path: obfuscated, not protected.
-//! Passphrase UX is planned.
+//! Security. `chat.db`, which `init` opens for the chat list and its messages,
+//! is keyed from the host-assigned instance persistence path: obfuscated, not
+//! protected. Passphrase UX is planned.
 
 mod actions;
 mod delivery;

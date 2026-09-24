@@ -6,8 +6,7 @@
 //! from the `ChatModule` trait implementation.
 
 use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -17,6 +16,7 @@ use logos_generic_chat::{
     ChatClientBuilder, ClientError, ContactRegistry, GroupMetadata, Installation,
     PendingInstallation, RegistryPublishMode, SqliteStore, StorageConfig,
 };
+use message_store::Direction;
 
 use crate::delivery::{delivery_outcome, SdkDelivery};
 use crate::{Conversation, GroupMember, Message, Status};
@@ -30,11 +30,9 @@ const DEFAULT_REGISTRY_URL: &str = "https://devnet.chat-kc.logos.co";
 
 use crate::module::{
     module, now_ms, short_label, with_display, with_display_mut, Client, DeliveryState,
-    DeliveryStateKind, Display, ModuleState, PERSISTENCE_ENABLED,
+    DeliveryStateKind, Display, ModuleState, LIBCHAT_PERSISTENCE_ENABLED,
 };
-use crate::persistence::{
-    load_state, save_state, AppState, ChatSession, ConversationKind, DisplayMessage,
-};
+use crate::persistence::{self, display_message, ChatSession, ConversationKind};
 
 /// Failure modes for the steady-state methods (post-`initialize`).
 #[derive(Debug, thiserror::Error)]
@@ -47,6 +45,10 @@ pub(crate) enum CoreError {
     Delivery(String),
     #[error("{0}")]
     Internal(String),
+    #[error("conversation is from a previous session and kept for its history only")]
+    HistoryOnly,
+    #[error("chat.db: {0}")]
+    Store(#[from] rusqlite::Error),
 }
 
 /// Failure modes for [`initialize`].
@@ -77,18 +79,22 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         InitError::Internal(format!("cannot create instance persistence path: {e}"))
     })?;
 
+    // Static key derived from the persistence path, for `identity.db` and
+    // `chat.db`. Not secret; satisfies SQLCipher's keying requirement. A
+    // user-provided passphrase is a future enhancement.
+    let key = format!("rust-chat-{}", persistence_path.replace('/', "_"));
+
     // Storage backs libchat's identity and MLS/crypto state. Ephemeral by
-    // default (see `PERSISTENCE_ENABLED`): DirectV1 has no reload path yet, so an
-    // in-memory store is honest about chats not surviving a restart. The
+    // default (see `LIBCHAT_PERSISTENCE_ENABLED`): DirectV1 has no reload path yet, so an
+    // in-memory store is honest about conversations not surviving a restart. The
     // SQLCipher path stays here, behind the switch, for when reload lands.
-    let storage = if PERSISTENCE_ENABLED {
+    let storage = if LIBCHAT_PERSISTENCE_ENABLED {
         let db_path = format!("{persistence_path}/identity.db");
-        // Static key derived from the persistence path. Not secret; satisfies
-        // SQLCipher's keying requirement. A user-provided passphrase is a
-        // future enhancement.
-        let key = format!("rust-chat-{}", persistence_path.replace('/', "_"));
-        SqliteStore::new(StorageConfig::Encrypted { path: db_path, key })
-            .map_err(|e| InitError::Internal(format!("open store failed: {e:?}")))?
+        SqliteStore::new(StorageConfig::Encrypted {
+            path: db_path,
+            key: key.clone(),
+        })
+        .map_err(|e| InitError::Internal(format!("open store failed: {e:?}")))?
     } else {
         SqliteStore::in_memory()
     };
@@ -109,11 +115,11 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     // with no workers and no way to stop it. Building the client subscribes the
     // core's inbound addresses, which queue on `subscribe_rx` until the node starts.
     //
-    // Identity is ephemeral (see `PERSISTENCE_ENABLED`): each launch publishes a
-    // fresh account whose log endorses a new installation key, so a peer given
-    // only the account address resolves this installation and opens a DirectV1
-    // conversation. The same server checks every other participant against
-    // their account's log.
+    // Identity is ephemeral (see `LIBCHAT_PERSISTENCE_ENABLED`): each launch
+    // publishes a fresh account whose log endorses a new installation key, so a
+    // peer given only the account address resolves this installation and opens
+    // a DirectV1 conversation. The same server checks every other participant
+    // against their account's log.
     let auth = HttpAuthClient::new(DEFAULT_REGISTRY_URL);
     let installation = register_installation(auth.clone())
         .map_err(|e| InitError::Internal(format!("publish account failed: {e:?}")))?;
@@ -140,8 +146,19 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     // client lock.
     let address = client.addr().to_string();
 
-    let state_path = PathBuf::from(format!("{persistence_path}/history.json"));
-    let state = load_display(&state_path);
+    // The chat list and its messages outlive the client's in-memory state, so a
+    // conversation from a previous session reads back, kept for its history only
+    // unless the client still holds it.
+    let chat_db = persistence::open(&PathBuf::from(format!("{persistence_path}/chat.db")), &key)
+        .map_err(|e| InitError::Internal(format!("open chat.db failed: {e}")))?;
+    let mut state = persistence::load_state(&chat_db)
+        .map_err(|e| InitError::Internal(format!("read chat.db failed: {e}")))?;
+    let live = client
+        .list_all_conversations()
+        .map_err(|e| InitError::Internal(format!("list_all_conversations failed: {e:?}")))?;
+    for session in state.chats.values_mut() {
+        session.history_only = !live.contains(&session.chat_id);
+    }
 
     // Register listeners before the node starts — `connectionStateChanged`
     // fires during start and is not re-emitted, so a late subscribe misses it.
@@ -175,7 +192,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     // its intrinsic name is cached here for get_installation_name).
     with_display_mut(|d| {
         d.state = state;
-        d.state_path = state_path;
+        d.chat_db = Some(chat_db);
         d.delivery_state = DeliveryState::initialising();
         d.intrinsic_name = intrinsic_name;
         d.address = address;
@@ -302,8 +319,8 @@ fn set_delivery_error(detail: String) {
     with_display_mut(|d| set_delivery_state(d, DeliveryStateKind::Error, &detail));
 }
 
-/// Consumes `ms`: signals the inbound worker to stop, joins it, writes final
-/// state, and resets the display so a re-init starts clean. Called by `lib.rs`
+/// Consumes `ms`: signals the inbound worker to stop, joins it, and resets the
+/// display, closing `chat.db`, so a re-init starts clean. Called by `lib.rs`
 /// after taking the singleton out of the module lock so the worker doesn't
 /// deadlock on its own next acquire.
 pub(crate) fn shutdown(mut ms: ModuleState) {
@@ -318,13 +335,7 @@ pub(crate) fn shutdown(mut ms: ModuleState) {
     if let Some(handle) = ms.event_thread.take() {
         let _ = handle.join();
     }
-    with_display_mut(|d| {
-        // Final write; nothing left to propagate to, so log a failure.
-        if let Err(e) = save_display(d) {
-            tracing::error!("save_state failed on shutdown: {e}");
-        }
-        *d = Display::default();
-    });
+    with_display_mut(|d| *d = Display::default());
 }
 
 /// Run `f` with the libchat client under the module lock, mapping "no client"
@@ -337,11 +348,14 @@ fn with_client<R>(f: impl FnOnce(&mut Client) -> R) -> Result<R, CoreError> {
     }
 }
 
-/// Persist the display state, mapping an I/O failure into a steady-state error
-/// so a failed write surfaces to the caller instead of being silently reported
-/// as success and then vanishing on the next `load_state`.
-fn persist(d: &Display) -> Result<(), CoreError> {
-    save_display(d).map_err(|e| CoreError::Internal(format!("save_state failed: {e}")))
+/// Write a chat's row to `chat.db`, so a failed write surfaces to the caller
+/// instead of being reported as success and then vanishing on the next
+/// restart.
+fn persist_chat(d: &Display, chat_id: &str) -> Result<(), CoreError> {
+    let chat_db = d.chat_db.as_ref().ok_or(CoreError::NotInit)?;
+    let session = d.state.chats.get(chat_id).ok_or(CoreError::NotFound)?;
+    persistence::save_chat(chat_db, session)?;
+    Ok(())
 }
 
 /// `None` for an empty string, the empty-means-unset convention shared with
@@ -354,36 +368,65 @@ fn non_empty(s: &str) -> Option<String> {
     }
 }
 
-/// Persist the display state, unless persistence is disabled (ephemeral mode),
-/// in which case this is a no-op reporting success. See
-/// [`module::PERSISTENCE_ENABLED`](crate::module::PERSISTENCE_ENABLED).
-fn save_display(d: &Display) -> io::Result<()> {
-    if !PERSISTENCE_ENABLED {
-        return Ok(());
+/// A message of the conversation `convo_id`, recorded in the chat of the same
+/// id: each conversation is its own chat until a rule bundles several.
+fn chat_message(
+    convo_id: &str,
+    direction: Direction,
+    timestamp_ms: u64,
+    content: &[u8],
+) -> message_store::Message {
+    message_store::Message {
+        chat_id: convo_id.to_owned(),
+        convo_id: convo_id.to_owned(),
+        direction,
+        sender_account: None,
+        sender_installation: None,
+        message_id: None,
+        timestamp_ms: timestamp_ms as i64,
+        content: content.to_vec(),
     }
-    save_state(&d.state, &d.state_path)
 }
 
-/// Load the display state, or start empty when persistence is disabled
-/// (ephemeral mode). See
-/// [`module::PERSISTENCE_ENABLED`](crate::module::PERSISTENCE_ENABLED).
-fn load_display(path: &Path) -> AppState {
-    if !PERSISTENCE_ENABLED {
-        return AppState::default();
+/// Record `message` in `chat.db`, with its chat's row when `chat_changed`, and
+/// append it to the chat's list. The list takes it even when the write fails,
+/// as the message was already sent or decrypted. No-op for a chat that is gone.
+fn record_message(
+    d: &mut Display,
+    message: message_store::Message,
+    chat_changed: bool,
+) -> Result<(), CoreError> {
+    let Some(session) = d.state.chats.get_mut(&message.chat_id) else {
+        return Ok(());
+    };
+    let chat_db = d.chat_db.as_mut().ok_or(CoreError::NotInit)?;
+    let recorded =
+        persistence::record_message(chat_db, chat_changed.then_some(&*session), &message);
+    session.messages.push(display_message(message));
+    recorded?;
+    Ok(())
+}
+
+/// Fails unless `convo_id` is a conversation of this session:
+/// [`CoreError::NotFound`] for an unknown one, [`CoreError::HistoryOnly`] for
+/// one kept from a previous session.
+fn check_live(convo_id: &str) -> Result<(), CoreError> {
+    match with_display(|d| d.state.chats.get(convo_id).map(|s| s.history_only)) {
+        None => Err(CoreError::NotFound),
+        Some(true) => Err(CoreError::HistoryOnly),
+        Some(false) => Ok(()),
     }
-    load_state(path)
 }
 
 // ── Identity ─────────────────────────────────────────────────────────────────
 
 pub(crate) fn set_installation_name(name: &str) -> Result<(), CoreError> {
     with_display_mut(|d| {
-        d.state.installation_name = if name.is_empty() {
-            None
-        } else {
-            Some(name.to_owned())
-        };
-        persist(d)
+        let name = non_empty(name);
+        let chat_db = d.chat_db.as_ref().ok_or(CoreError::NotInit)?;
+        persistence::save_installation_name(chat_db, name.as_deref())?;
+        d.state.installation_name = name;
+        Ok(())
     })
 }
 
@@ -422,10 +465,13 @@ pub(crate) fn create_conversation(peer_address: &str) -> Result<String, CoreErro
                 kind: ConversationKind::Direct,
                 name: None,
                 description: None,
+                peer: Some(peer_address.to_owned()),
                 messages: Vec::new(),
+                older_messages: 0,
+                history_only: false,
             },
         );
-        persist(d)
+        persist_chat(d, &chat_id)
     })?;
     crate::emit_conversation_created(
         &chat_id,
@@ -461,10 +507,13 @@ pub(crate) fn create_group_conversation(name: &str, desc: &str) -> Result<String
                 kind: ConversationKind::Group,
                 name: non_empty(name),
                 description: non_empty(desc),
+                peer: None,
                 messages: Vec::new(),
+                older_messages: 0,
+                history_only: false,
             },
         );
-        persist(d)
+        persist_chat(d, &chat_id)
     })?;
     crate::emit_conversation_created(
         &chat_id,
@@ -483,9 +532,7 @@ pub(crate) fn create_group_conversation(name: &str, desc: &str) -> Result<String
 /// welcome is delivered asynchronously, so the peer joins some time after
 /// this returns.
 pub(crate) fn add_group_member(convo_id: &str, peer_address: &str) -> Result<(), CoreError> {
-    if !with_display(|d| d.state.chats.contains_key(convo_id)) {
-        return Err(CoreError::NotFound);
-    }
+    check_live(convo_id)?;
 
     with_client(|client| client.add_group_participants(convo_id, &[peer_address]))?
         .map_err(|e| CoreError::Internal(format!("add_group_member failed: {e:?}")))?;
@@ -500,7 +547,7 @@ pub(crate) fn add_group_member(convo_id: &str, peer_address: &str) -> Result<(),
 /// conversation, or a client error, yields an empty array (the client error is
 /// logged).
 pub(crate) fn list_group_members(convo_id: &str) -> Vec<GroupMember> {
-    if !with_display(|d| d.state.chats.contains_key(convo_id)) {
+    if check_live(convo_id).is_err() {
         return Vec::new();
     }
     let roster = with_client(|client| {
@@ -535,7 +582,7 @@ pub(crate) fn list_conversations() -> Vec<Conversation> {
             .map(|s| Conversation {
                 convo_id: s.chat_id.clone(),
                 nickname: s.nickname.clone(),
-                message_count: s.messages.len() as i64,
+                message_count: (s.older_messages + s.messages.len()) as i64,
                 last_activity_ms: s.messages.last().map_or(0, |m| m.timestamp_ms as i64),
                 kind: s.kind.as_str().to_string(),
                 name: s.name.clone(),
@@ -544,6 +591,7 @@ pub(crate) fn list_conversations() -> Vec<Conversation> {
                     .messages
                     .last()
                     .map(|m| m.content.chars().take(PREVIEW_MAX_CHARS).collect()),
+                history_only: s.history_only,
             })
             .collect()
     })
@@ -571,9 +619,7 @@ pub(crate) fn send_message(convo_id: &str, content: &str) -> Result<(), CoreErro
     // The convo must exist before we encrypt+send. A concurrent delete between
     // this check and the record below is a benign race (the message goes out but
     // isn't kept for a convo the user just removed).
-    if !with_display(|d| d.state.chats.contains_key(convo_id)) {
-        return Err(CoreError::NotFound);
-    }
+    check_live(convo_id)?;
 
     with_client(|client| client.send_message(convo_id, content.as_bytes()))?
         .map_err(|e| CoreError::Delivery(format!("send_message failed: {e:?}")))?;
@@ -583,19 +629,15 @@ pub(crate) fn send_message(convo_id: &str, content: &str) -> Result<(), CoreErro
     tracing::info!("sent {} bytes to {convo_id}", content.len());
 
     let ts = now_ms();
-    // Persist before emitting: the message is already on the wire, but if the
+    // Record before emitting: the message is already on the wire, but if the
     // local write fails we report failure rather than paint a "sent" bubble
     // the next restart would lose.
     with_display_mut(|d| {
-        if let Some(session) = d.state.chats.get_mut(convo_id) {
-            session.messages.push(DisplayMessage {
-                from_self: true,
-                content: content.to_string(),
-                timestamp_ms: ts,
-                sender: None,
-            });
-        }
-        persist(d)
+        record_message(
+            d,
+            chat_message(convo_id, Direction::Sent, ts, content.as_bytes()),
+            false,
+        )
     })?;
     crate::emit_message_sent(convo_id, content, ts as i64);
     Ok(())
@@ -609,7 +651,7 @@ pub(crate) fn set_conversation_nickname(convo_id: &str, nickname: &str) -> Resul
         } else {
             Some(nickname.to_string())
         };
-        persist(d)
+        persist_chat(d, convo_id)
     })?;
     crate::emit_conversation_updated(convo_id);
     Ok(())
@@ -617,11 +659,14 @@ pub(crate) fn set_conversation_nickname(convo_id: &str, nickname: &str) -> Resul
 
 pub(crate) fn delete_conversation(convo_id: &str) -> Result<(), CoreError> {
     with_display_mut(|d| {
-        if d.state.chats.remove(convo_id).is_none() {
+        if !d.state.chats.contains_key(convo_id) {
             return Err(CoreError::NotFound);
         }
+        let chat_db = d.chat_db.as_mut().ok_or(CoreError::NotInit)?;
+        persistence::delete_chat(chat_db, convo_id)?;
+        d.state.chats.remove(convo_id);
         d.state.deleted.insert(convo_id.to_owned());
-        persist(d)
+        Ok(())
     })?;
     crate::emit_conversation_deleted(convo_id);
     Ok(())
@@ -696,7 +741,10 @@ pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind
                 kind,
                 name: name.clone(),
                 description: description.clone(),
+                peer: None,
                 messages: Vec::new(),
+                older_messages: 0,
+                history_only: false,
             },
         );
         crate::emit_conversation_created(
@@ -709,18 +757,24 @@ pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind
         );
 
         // Event consumer has no caller to return to; log a failed write.
-        if let Err(e) = save_display(d) {
-            tracing::error!("save_state failed after conversation started: {e}");
+        if let Err(e) = persist_chat(d, convo_id) {
+            tracing::error!("saving a conversation failed after it started: {e}");
         }
     });
 }
 
 /// Record an inbound message (the client's `MessageReceived` event) and surface
-/// it. `sender` is the sender's account address.
-/// No-op for a locally-deleted conversation; an unknown conversation is
-/// created defensively (the preceding `ConversationStarted` normally creates it
-/// first). Called from the event consumer thread; takes only the display lock.
-pub(crate) fn record_message_received(convo_id: &str, content: &[u8], sender: &str) {
+/// it. `account` is the sender's account address, `installation` the key of
+/// the installation it sent from. No-op for a locally-deleted conversation; an
+/// unknown conversation is created defensively (the preceding
+/// `ConversationStarted` normally creates it first). Called from the event
+/// consumer thread; takes only the display lock.
+pub(crate) fn record_message_received(
+    convo_id: &str,
+    content: &[u8],
+    account: &str,
+    installation: &str,
+) {
     with_display_mut(|d| {
         if d.state.deleted.contains(convo_id) {
             return;
@@ -728,10 +782,10 @@ pub(crate) fn record_message_received(convo_id: &str, content: &[u8], sender: &s
         tracing::info!(
             "received {} bytes in {convo_id} from {}",
             content.len(),
-            short_label(sender)
+            short_label(account)
         );
-        let text = String::from_utf8_lossy(content).to_string();
         let ts = now_ms();
+        let mut chat_changed = !d.state.chats.contains_key(convo_id);
         let session = d
             .state
             .chats
@@ -745,19 +799,30 @@ pub(crate) fn record_message_received(convo_id: &str, content: &[u8], sender: &s
                 kind: ConversationKind::default(),
                 name: None,
                 description: None,
+                peer: None,
                 messages: Vec::new(),
+                older_messages: 0,
+                history_only: false,
             });
-        session.messages.push(DisplayMessage {
-            from_self: false,
-            content: text.clone(),
-            timestamp_ms: ts,
-            sender: Some(sender.to_owned()),
-        });
-        crate::emit_message_received(convo_id, &text, ts as i64, sender);
-
-        if let Err(e) = save_display(d) {
-            tracing::error!("save_state failed after inbound message: {e}");
+        if session.kind == ConversationKind::Direct && session.peer.is_none() {
+            session.peer = Some(account.to_owned());
+            chat_changed = true;
         }
+        let message = message_store::Message {
+            sender_account: Some(account.to_owned()),
+            sender_installation: Some(installation.to_owned()),
+            ..chat_message(convo_id, Direction::Received, ts, content)
+        };
+        // Event consumer has no caller to return to; log a failed write.
+        if let Err(e) = record_message(d, message, chat_changed) {
+            tracing::error!("recording an inbound message failed: {e}");
+        }
+        crate::emit_message_received(
+            convo_id,
+            &String::from_utf8_lossy(content),
+            ts as i64,
+            account,
+        );
     });
 }
 
@@ -772,4 +837,73 @@ pub(crate) fn record_members_changed(convo_id: &str) {
         }
         crate::emit_members_changed(convo_id);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const KEY: &str = "rust-chat-test";
+
+    fn direct_chat(chat_id: &str) -> ChatSession {
+        ChatSession {
+            chat_id: chat_id.into(),
+            nickname: None,
+            kind: ConversationKind::Direct,
+            name: None,
+            description: None,
+            peer: None,
+            messages: Vec::new(),
+            older_messages: 0,
+            history_only: false,
+        }
+    }
+
+    #[test]
+    fn recorded_messages_read_back_after_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("chat.db");
+        let mut d = Display {
+            chat_db: Some(persistence::open(&path, KEY).unwrap()),
+            ..Display::default()
+        };
+        d.state
+            .chats
+            .insert("convo-1".into(), direct_chat("convo-1"));
+        record_message(
+            &mut d,
+            chat_message("convo-1", Direction::Sent, 1, b"hi raya"),
+            true,
+        )
+        .unwrap();
+        let received = message_store::Message {
+            sender_account: Some("raya-account".into()),
+            sender_installation: Some("raya-device".into()),
+            ..chat_message("convo-1", Direction::Received, 2, b"hi saro")
+        };
+        record_message(&mut d, received, false).unwrap();
+        drop(d);
+
+        let state = persistence::load_state(&persistence::open(&path, KEY).unwrap()).unwrap();
+
+        let read_back: Vec<_> = state.chats["convo-1"]
+            .messages
+            .iter()
+            .map(|m| {
+                (
+                    m.from_self,
+                    m.content.as_str(),
+                    m.timestamp_ms,
+                    m.sender.as_deref(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            read_back,
+            [
+                (true, "hi raya", 1, None),
+                (false, "hi saro", 2, Some("raya-account")),
+            ]
+        );
+    }
 }

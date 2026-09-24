@@ -147,7 +147,12 @@ fn run_events(events: Receiver<Event>) {
                 ..
             } => {
                 // The client delivers only senders their account's log vouches for.
-                record_message_received(&convo_id, &content, &sender.account().to_string());
+                record_message_received(
+                    &convo_id,
+                    &content,
+                    &sender.account().to_string(),
+                    &sender.signer().to_string(),
+                );
             }
             Event::ConversationMembersChanged { convo_id } => {
                 record_members_changed(&convo_id);

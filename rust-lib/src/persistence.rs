@@ -1,51 +1,42 @@
-//! On-disk persistence for chat module state (`history.json`).
+//! On-disk persistence for chat module state (`chat.db`).
 //!
 //! ## File
 //!
-//! Lives at `history.json` inside the instance persistence path the host
-//! assigns (`RustModuleContext::instance_persistence_path`). Format is the
-//! pretty-printed JSON serialisation of [`AppState`].
+//! Lives at `chat.db` inside the instance persistence path the host assigns
+//! (`RustModuleContext::instance_persistence_path`): a SQLCipher database in
+//! WAL mode. It holds the module's own tables, versioned by [`MIGRATIONS`]
+//! through `PRAGMA user_version`, and the `message_store_*` tables of the
+//! `message_store` crate, which keep the messages.
 //!
-//! ## Write triggers
+//! ## Writes
 //!
-//! [`save_state`] is invoked after every mutation that should survive a
-//! restart:
-//! - C ABI calls that mutate state (create_conversation, send_message,
-//!   set_installation_name, set_conversation_nickname, delete_conversation).
-//! - Inbound `messageReceived` handling that lands a decrypted message in
-//!   the history.
-//! - The final write at `chat_module_shutdown`.
-//!
-//! ## Atomicity
-//!
-//! Writes go to `history.json.tmp` first, then POSIX `rename` over the
-//! target. `rename` is atomic on the same filesystem, so a crash mid-write
-//! leaves the prior `history.json` intact rather than truncated.
-//!
-//! ## Recovery
-//!
-//! [`load_state`] returns `AppState::default()` on a missing, unreadable,
-//! or unparseable file and logs to stderr. An unparseable file is renamed
-//! to `history.json.bad.<ts>` so the next save doesn't overwrite it.
+//! Each mutation writes its rows before it returns, so shutdown has nothing
+//! left to write. A message goes in one transaction with its chat's row when it
+//! opens or names the chat, and a deleted chat's row, messages and tombstone
+//! change together.
 //!
 //! ## Privacy
 //!
-//! `history.json` is plaintext on disk. Conversation messages, nicknames,
-//! and the installation-name override are all stored unencrypted. Only the
-//! libchat identity material in `identity.db` (sibling file) is protected
-//! by sqlcipher. Any future change to what's persisted here should weigh
-//! that caveat.
+//! The key is derived from the instance persistence path, so the file is
+//! obfuscated, not protected.
 
 use std::collections::{HashMap, HashSet};
-use std::fs;
-use std::io;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::{Deserialize, Serialize};
+use message_store::{Direction, Message, MessageStore};
+use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
+use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite_migration::{Migrations, M};
+
+/// The module's own tables. A change to them is a new migration appended here.
+const MIGRATION_ARRAY: &[M] = &[M::up(include_str!("migrations/001_app_state.sql"))];
+const MIGRATIONS: Migrations = Migrations::from_slice(MIGRATION_ARRAY);
+
+/// How many of a chat's newest messages [`load_state`] reads back.
+const LOADED_PER_CHAT: usize = 500;
 
 /// A single rendered message in a conversation's local history view.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub(crate) struct DisplayMessage {
     /// `true` if this installation produced the message; `false` for inbound.
     pub from_self: bool,
@@ -59,9 +50,8 @@ pub(crate) struct DisplayMessage {
 }
 
 /// Whether a conversation is pairwise or a group; drives the members-panel
-/// affordance in the UI. Serialised as the contract's `"direct"`/`"group"`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+/// affordance in the UI. Stored as the contract's `"direct"`/`"group"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum ConversationKind {
     #[default]
     Direct,
@@ -78,31 +68,53 @@ impl ConversationKind {
     }
 }
 
+impl ToSql for ConversationKind {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        Ok(ToSqlOutput::from(self.as_str()))
+    }
+}
+
+impl FromSql for ConversationKind {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        match value.as_str()? {
+            "direct" => Ok(ConversationKind::Direct),
+            "group" => Ok(ConversationKind::Group),
+            other => Err(FromSqlError::Other(
+                format!("unknown conversation kind {other:?}").into(),
+            )),
+        }
+    }
+}
+
 /// Per-conversation state held alongside libchat's cryptographic state.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub(crate) struct ChatSession {
     /// libchat conversation ID.
     pub chat_id: String,
     /// User-set display label. `None` falls back to `module::short_label`.
     pub nickname: Option<String>,
-    /// Pairwise vs group. `#[serde(default)]` reads pre-kind history as direct.
-    #[serde(default)]
+    /// Pairwise vs group.
     pub kind: ConversationKind,
     /// Group's shared name, `None` for a direct conversation or unnamed group.
-    #[serde(default)]
     pub name: Option<String>,
     /// Group's shared description, `None` when unset.
-    #[serde(default)]
     pub description: Option<String>,
-    /// Append-only render log of messages exchanged in this conversation.
+    /// A direct conversation's other side: the address it was opened with, or
+    /// the account of its first inbound message. `None` for a group.
+    pub peer: Option<String>,
+    /// Append-only render log of messages exchanged in this conversation. Kept
+    /// in the message store, which fills it at init.
     pub messages: Vec<DisplayMessage>,
+    /// Messages the message store holds for this conversation before
+    /// `messages`, which init did not load.
+    pub older_messages: usize,
+    /// From a previous session, so the client holds no conversation for it and
+    /// it is kept for its history only.
+    pub history_only: bool,
 }
 
-/// Top-level persisted document. `#[serde(default)]` keeps additive
-/// schema changes safe — missing fields default rather than failing
-/// the parse.
-#[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(default)]
+/// Everything the module persists, as read back at init.
+#[derive(Debug, Default)]
 pub(crate) struct AppState {
     pub chats: HashMap<String, ChatSession>,
     /// User-overridden installation name. `None` falls back to
@@ -113,208 +125,285 @@ pub(crate) struct AppState {
     pub deleted: HashSet<String>,
 }
 
-pub(crate) fn load_state(path: &Path) -> AppState {
-    if !path.exists() {
-        return AppState::default();
-    }
-
-    let contents = match fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::warn!(
-                "load_state: cannot read {}: {e}; starting with default state",
-                path.display()
-            );
-            return AppState::default();
-        }
-    };
-
-    match serde_json::from_str::<AppState>(&contents) {
-        Ok(s) => s,
-        Err(e) => {
-            // Move the unparseable file aside so the next save doesn't
-            // overwrite it.
-            let suffix = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-            let bad = path.with_extension(format!("json.bad.{suffix}"));
-            if let Err(rename_err) = fs::rename(path, &bad) {
-                tracing::error!(
-                    "load_state: parse failure on {}: {e}; \
-                     ALSO failed to move corrupt file aside ({rename_err}); \
-                     starting with default state, and the next save overwrites it",
-                    path.display()
-                );
-            } else {
-                tracing::warn!(
-                    "load_state: parse failure on {}: {e}; \
-                     corrupt file moved to {}; starting with default state",
-                    path.display(),
-                    bad.display()
-                );
-            }
-            AppState::default()
-        }
-    }
+/// Open `chat.db`, keyed with `key`, with every table at its latest version.
+pub(crate) fn open(path: &Path, key: &str) -> rusqlite_migration::Result<Connection> {
+    let mut conn = Connection::open(path)?;
+    conn.pragma_update(None, "key", key)?;
+    conn.pragma_update(None, "journal_mode", "WAL")?;
+    MIGRATIONS.to_latest(&mut conn)?;
+    MessageStore::migrate(&mut conn)?;
+    Ok(conn)
 }
 
-/// Persist `state` to `path`. Returns the underlying I/O (or serialisation)
-/// error so callers can surface a failed write rather than silently report
-/// success — a mutation whose `save_state` fails would otherwise vanish on the
-/// next `load_state`.
-pub(crate) fn save_state(state: &AppState, path: &Path) -> io::Result<()> {
-    let json = serde_json::to_string_pretty(state).map_err(io::Error::other)?;
-    // tmp-file + rename gives POSIX-atomic replacement on the same
-    // filesystem; a crash mid-write leaves the prior file intact.
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, json).and_then(|_| fs::rename(&tmp, path))
+/// The persisted state, each chat with its newest [`LOADED_PER_CHAT`] messages.
+pub(crate) fn load_state(conn: &Connection) -> rusqlite::Result<AppState> {
+    let store = MessageStore::new(conn);
+    let mut chats = HashMap::new();
+    let mut stmt =
+        conn.prepare("SELECT chat_id, kind, nickname, name, description, peer FROM chats")?;
+    let rows = stmt.query_map([], |row| {
+        Ok(ChatSession {
+            chat_id: row.get(0)?,
+            kind: row.get(1)?,
+            nickname: row.get(2)?,
+            name: row.get(3)?,
+            description: row.get(4)?,
+            peer: row.get(5)?,
+            messages: Vec::new(),
+            older_messages: 0,
+            history_only: false,
+        })
+    })?;
+    for session in rows {
+        let mut session = session?;
+        session.messages = store
+            .messages(&session.chat_id, None, LOADED_PER_CHAT)?
+            .into_iter()
+            .map(|stored| display_message(stored.message))
+            .collect();
+        session.older_messages = store.count(&session.chat_id)? - session.messages.len();
+        chats.insert(session.chat_id.clone(), session);
+    }
+
+    let deleted = conn
+        .prepare("SELECT chat_id FROM deleted_chats")?
+        .query_map([], |row| row.get(0))?
+        .collect::<rusqlite::Result<HashSet<String>>>()?;
+    let installation_name = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'installation_name'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+
+    Ok(AppState {
+        chats,
+        installation_name,
+        deleted,
+    })
+}
+
+/// Write a chat's row, inserting it or replacing what it held.
+pub(crate) fn save_chat(conn: &Connection, session: &ChatSession) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO chats (chat_id, kind, nickname, name, description, peer)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT (chat_id) DO UPDATE SET
+             kind = excluded.kind,
+             nickname = excluded.nickname,
+             name = excluded.name,
+             description = excluded.description,
+             peer = excluded.peer",
+        params![
+            session.chat_id,
+            session.kind,
+            session.nickname,
+            session.name,
+            session.description,
+            session.peer,
+        ],
+    )?;
+    Ok(())
+}
+
+/// Record a message, and write its chat's row when `session` is given, in one
+/// transaction.
+pub(crate) fn record_message(
+    conn: &mut Connection,
+    session: Option<&ChatSession>,
+    message: &Message,
+) -> rusqlite::Result<()> {
+    let tx = conn.transaction()?;
+    if let Some(session) = session {
+        save_chat(&tx, session)?;
+    }
+    MessageStore::new(&tx).record(message)?;
+    tx.commit()
+}
+
+/// Delete a chat and its messages, and keep its tombstone, in one transaction.
+pub(crate) fn delete_chat(conn: &mut Connection, chat_id: &str) -> rusqlite::Result<()> {
+    let tx = conn.transaction()?;
+    MessageStore::new(&tx).delete_chat(chat_id)?;
+    tx.execute("DELETE FROM chats WHERE chat_id = ?1", [chat_id])?;
+    tx.execute(
+        "INSERT OR IGNORE INTO deleted_chats (chat_id) VALUES (?1)",
+        [chat_id],
+    )?;
+    tx.commit()
+}
+
+/// Write the installation-name override, or clear it with `None`.
+pub(crate) fn save_installation_name(
+    conn: &Connection,
+    name: Option<&str>,
+) -> rusqlite::Result<()> {
+    match name {
+        Some(name) => conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('installation_name', ?1)
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            [name],
+        ),
+        None => conn.execute("DELETE FROM settings WHERE key = 'installation_name'", []),
+    }?;
+    Ok(())
+}
+
+/// A stored message as `get_messages` shows it, its sender named by account.
+pub(crate) fn display_message(message: Message) -> DisplayMessage {
+    DisplayMessage {
+        from_self: message.direction == Direction::Sent,
+        content: String::from_utf8_lossy(&message.content).into_owned(),
+        timestamp_ms: message.timestamp_ms as u64,
+        sender: message.sender_account,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
-    fn fresh_tmp(name: &str) -> PathBuf {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let path = std::env::temp_dir().join(format!(
-            "rust-chat-module-test-{}-{}-{}",
-            name,
-            std::process::id(),
-            nanos
-        ));
-        fs::create_dir_all(&path).unwrap();
-        path
+    const KEY: &str = "rust-chat-test";
+
+    fn chat(chat_id: &str, kind: ConversationKind) -> ChatSession {
+        ChatSession {
+            chat_id: chat_id.into(),
+            nickname: None,
+            kind,
+            name: None,
+            description: None,
+            peer: None,
+            messages: Vec::new(),
+            older_messages: 0,
+            history_only: false,
+        }
+    }
+
+    fn message(chat_id: &str, content: &str) -> Message {
+        Message {
+            chat_id: chat_id.into(),
+            convo_id: chat_id.into(),
+            direction: Direction::Received,
+            sender_account: Some("raya-account".into()),
+            sender_installation: Some("raya-device".into()),
+            message_id: None,
+            timestamp_ms: 42,
+            content: content.as_bytes().to_vec(),
+        }
     }
 
     #[test]
-    fn load_state_returns_default_when_missing() {
-        let dir = fresh_tmp("missing");
-        let p = dir.join("history.json");
-        let s = load_state(&p);
-        assert!(s.chats.is_empty());
-        assert_eq!(s.installation_name, None);
-        let _ = fs::remove_dir_all(&dir);
+    fn migrations_are_valid() {
+        MIGRATIONS.validate().unwrap();
     }
 
     #[test]
-    fn load_state_tolerates_missing_fields() {
-        let dir = fresh_tmp("missing_field");
-        let p = dir.join("history.json");
-        let raw = r#"{"chats":{"abc":{"chat_id":"abc","nickname":null,"messages":[]}}}"#;
-        fs::write(&p, raw).unwrap();
-        let s = load_state(&p);
-        assert_eq!(s.chats.len(), 1);
-        assert!(s.chats.contains_key("abc"));
-        // A pre-kind record defaults to direct rather than failing the parse.
-        assert_eq!(s.chats["abc"].kind, ConversationKind::Direct);
-        // A pre-metadata record defaults its name and description to unset.
-        assert_eq!(s.chats["abc"].name, None);
-        assert_eq!(s.chats["abc"].description, None);
-        assert_eq!(s.installation_name, None);
-        assert!(s.deleted.is_empty());
-        let _ = fs::remove_dir_all(&dir);
+    fn chat_db_is_encrypted_under_its_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("chat.db");
+        drop(open(&path, KEY).unwrap());
+
+        let header = std::fs::read(&path).unwrap();
+        assert!(!header.starts_with(b"SQLite format 3"));
+        assert!(open(&path, "rust-chat-other").is_err());
+        assert!(open(&path, KEY).is_ok());
     }
 
     #[test]
-    fn load_state_moves_corrupt_file_aside() {
-        let dir = fresh_tmp("corrupt");
-        let p = dir.join("history.json");
-        fs::write(&p, "not valid json {{{").unwrap();
-        let s = load_state(&p);
-        assert!(s.chats.is_empty());
-        // Original file is gone — it was renamed, not silently deleted.
-        assert!(!p.exists());
-        let renamed = fs::read_dir(&dir)
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .find(|e| e.file_name().to_string_lossy().contains(".bad."))
-            .expect("expected a .bad.<ts> file");
-        let preserved = fs::read_to_string(renamed.path()).unwrap();
-        assert!(preserved.contains("not valid json"));
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn save_state_reports_write_failure() {
-        // Parent directory does not exist, so the tmp write fails — save_state
-        // must surface it, not swallow it.
-        let p = std::env::temp_dir()
-            .join("rust-chat-module-test-no-such-dir-xyz")
-            .join("history.json");
-        let _ = fs::remove_dir_all(p.parent().unwrap());
-        assert!(save_state(&AppState::default(), &p).is_err());
-    }
-
-    #[test]
-    fn deleted_set_survives_round_trip() {
-        let dir = fresh_tmp("deleted");
-        let p = dir.join("history.json");
-        let mut s = AppState::default();
-        s.deleted.insert("abc".into());
-        s.deleted.insert("xyz".into());
-        save_state(&s, &p).unwrap();
-        let loaded = load_state(&p);
-        assert!(loaded.deleted.contains("abc"));
-        assert!(loaded.deleted.contains("xyz"));
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn load_state_round_trips() {
-        let dir = fresh_tmp("rt");
-        let p = dir.join("history.json");
-        let mut s = AppState {
-            installation_name: Some("alice".into()),
-            ..AppState::default()
-        };
-        s.chats.insert(
-            "convo".into(),
-            ChatSession {
-                chat_id: "convo".into(),
-                nickname: Some("bob".into()),
-                kind: ConversationKind::Group,
+    fn state_reads_back_after_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("chat.db");
+        {
+            let mut conn = open(&path, KEY).unwrap();
+            let group = ChatSession {
+                nickname: Some("club".into()),
                 name: Some("Book Club".into()),
                 description: Some("Weekly reads".into()),
-                messages: vec![DisplayMessage {
-                    from_self: true,
-                    content: "hi".into(),
-                    timestamp_ms: 42,
-                    sender: None,
-                }],
-            },
-        );
-        save_state(&s, &p).unwrap();
+                ..chat("group", ConversationKind::Group)
+            };
+            save_chat(&conn, &group).unwrap();
+            let direct = ChatSession {
+                peer: Some("raya-account".into()),
+                ..chat("direct", ConversationKind::Direct)
+            };
+            record_message(&mut conn, Some(&direct), &message("direct", "hi saro")).unwrap();
+            save_installation_name(&conn, Some("saro-laptop")).unwrap();
+        }
 
-        let loaded = load_state(&p);
-        assert_eq!(loaded.installation_name.as_deref(), Some("alice"));
-        assert_eq!(loaded.chats.len(), 1);
-        let convo = &loaded.chats["convo"];
-        assert_eq!(convo.nickname.as_deref(), Some("bob"));
-        assert_eq!(convo.kind, ConversationKind::Group);
-        assert_eq!(convo.name.as_deref(), Some("Book Club"));
-        assert_eq!(convo.description.as_deref(), Some("Weekly reads"));
-        assert_eq!(convo.messages.len(), 1);
-        assert_eq!(convo.messages[0].content, "hi");
-        let _ = fs::remove_dir_all(&dir);
+        let state = load_state(&open(&path, KEY).unwrap()).unwrap();
+
+        assert_eq!(state.installation_name.as_deref(), Some("saro-laptop"));
+        let group = &state.chats["group"];
+        assert_eq!(group.kind, ConversationKind::Group);
+        assert_eq!(group.nickname.as_deref(), Some("club"));
+        assert_eq!(group.name.as_deref(), Some("Book Club"));
+        assert_eq!(group.description.as_deref(), Some("Weekly reads"));
+        assert!(group.messages.is_empty());
+        let direct = &state.chats["direct"];
+        assert_eq!(direct.kind, ConversationKind::Direct);
+        assert_eq!(direct.peer.as_deref(), Some("raya-account"));
+        let read_back: Vec<_> = direct
+            .messages
+            .iter()
+            .map(|m| (m.from_self, m.content.as_str(), m.sender.as_deref()))
+            .collect();
+        assert_eq!(read_back, [(false, "hi saro", Some("raya-account"))]);
+    }
+
+    #[test]
+    fn a_long_chat_loads_its_newest_page_and_counts_the_rest() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = open(&dir.path().join("chat.db"), KEY).unwrap();
+        let tx = conn.transaction().unwrap();
+        save_chat(&tx, &chat("direct", ConversationKind::Direct)).unwrap();
+        for i in 0..=LOADED_PER_CHAT {
+            MessageStore::new(&tx)
+                .record(&message("direct", &format!("m{i}")))
+                .unwrap();
+        }
+        tx.commit().unwrap();
+
+        let state = load_state(&conn).unwrap();
+
+        let direct = &state.chats["direct"];
+        assert_eq!(direct.messages.len(), LOADED_PER_CHAT);
+        assert_eq!(direct.messages[0].content, "m1");
+        assert_eq!(direct.older_messages, 1);
+    }
+
+    #[test]
+    fn a_deleted_chat_leaves_only_its_tombstone() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = open(&dir.path().join("chat.db"), KEY).unwrap();
+        let direct = chat("direct", ConversationKind::Direct);
+        record_message(&mut conn, Some(&direct), &message("direct", "hi saro")).unwrap();
+
+        delete_chat(&mut conn, "direct").unwrap();
+
+        let state = load_state(&conn).unwrap();
+        assert!(state.chats.is_empty());
+        assert!(state.deleted.contains("direct"));
+        assert!(MessageStore::new(&conn)
+            .messages("direct", None, 10)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn a_cleared_installation_name_falls_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open(&dir.path().join("chat.db"), KEY).unwrap();
+        save_installation_name(&conn, Some("saro-laptop")).unwrap();
+
+        save_installation_name(&conn, None).unwrap();
+
+        assert_eq!(load_state(&conn).unwrap().installation_name, None);
     }
 
     #[test]
     fn conversation_kind_uses_contract_strings() {
         assert_eq!(ConversationKind::Direct.as_str(), "direct");
         assert_eq!(ConversationKind::Group.as_str(), "group");
-        // serde emits the same wire form `as_str` returns.
-        assert_eq!(
-            serde_json::to_value(ConversationKind::Group).unwrap(),
-            serde_json::json!("group")
-        );
-        assert_eq!(
-            serde_json::from_value::<ConversationKind>(serde_json::json!("direct")).unwrap(),
-            ConversationKind::Direct
-        );
     }
 }

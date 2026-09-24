@@ -7,10 +7,11 @@
 //!   for the libchat crypto; they run on the dispatch thread and return without
 //!   blocking on the network (publish is async).
 //! * [`with_display`]/[`with_display_mut`] guard the display history
-//!   ([`Display`]): the conversation log, delivery state, and cached identity
-//!   name. The read methods (`get_messages`/`list_conversations`/`status`/
-//!   `get_installation_name`) lock only this, so they return promptly even while
-//!   the client lock is held for a long send.
+//!   ([`Display`]): the conversation log and `chat.db` behind it, delivery
+//!   state, and cached identity name. The read methods
+//!   (`get_messages`/`list_conversations`/`status`/`get_installation_name`)
+//!   lock only this, so they return promptly even while the client lock is held
+//!   for a long send.
 //!
 //! A mutation locks the client (for the libchat call) then the display (to
 //! record the result) — never the reverse — so the two locks can't deadlock.
@@ -18,7 +19,6 @@
 //! takes only the display lock to record the result, so it never waits on the
 //! client lock either.
 
-use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::JoinHandle;
@@ -26,24 +26,27 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use components::HttpAuthClient;
 use logos_generic_chat::{ChatClient, ContactRegistry, SqliteStore};
+use rusqlite::Connection;
 
 use crate::delivery::{SdkDelivery, SdkPublisher};
 use crate::persistence::AppState;
 
 /// The chat client as this module configures it: an installation of an
 /// ephemeral account, the delivery_module-backed [`SdkDelivery`] transport, the
-/// devnet contact registry and account logs, and an in-memory store. Chats are
-/// ephemeral (see [`PERSISTENCE_ENABLED`]).
+/// devnet contact registry and account logs, and an in-memory store. Its
+/// conversations last one session (see [`LIBCHAT_PERSISTENCE_ENABLED`]).
 pub(crate) type Client =
     ChatClient<SdkDelivery, ContactRegistry<SdkPublisher>, HttpAuthClient, SqliteStore>;
 
-/// Whether chat state persists across restarts. Off: identity, MLS/crypto state,
-/// and the display history are all ephemeral. DirectV1 has no reload path in
-/// libchat yet (a DirectV1 conversation's MLS state is never reloaded), so
-/// persisting would strand crypto state a restart can't resume. The persistence
-/// code (SQLCipher store, `history.json`) is kept behind this switch; flip it on
-/// once libchat can reload DirectV1 state.
-pub(crate) const PERSISTENCE_ENABLED: bool = false;
+/// Whether libchat's state persists across restarts. Off: identity and
+/// MLS/crypto state are ephemeral. DirectV1 has no reload path in libchat yet
+/// (a DirectV1 conversation's MLS state is never reloaded), so persisting would
+/// strand crypto state a restart can't resume. The SQLCipher store
+/// (`identity.db`) is kept behind this switch; flip it on once libchat can
+/// reload DirectV1 state. The module's own state in `chat.db` persists
+/// regardless, so a conversation from a previous session reads back as history
+/// only.
+pub(crate) const LIBCHAT_PERSISTENCE_ENABLED: bool = false;
 
 // ── Delivery state ──────────────────────────────────────────────────────────
 
@@ -188,7 +191,9 @@ pub(crate) fn module() -> &'static ModuleHandle {
 /// libchat op (and by the client-free mutators), reset on shutdown.
 pub(crate) struct Display {
     pub state: AppState,
-    pub state_path: PathBuf,
+    /// `chat.db`, which holds `state` and the messages (see `persistence`).
+    /// `None` until `actions::initialize` opens it.
+    pub chat_db: Option<Connection>,
     pub delivery_state: DeliveryState,
     /// libchat's intrinsic installation name, cached so `get_installation_name`
     /// needn't touch the client (which is behind the other lock).
@@ -203,7 +208,7 @@ impl Default for Display {
     fn default() -> Self {
         Self {
             state: AppState::default(),
-            state_path: PathBuf::new(),
+            chat_db: None,
             delivery_state: DeliveryState::stopped(),
             intrinsic_name: String::new(),
             address: String::new(),
