@@ -31,6 +31,7 @@ what_you_learn:
   - "Bring a `chat_module` instance online with `init()` and poll `status()` for `delivery_state == online`"
   - "Drive the full round-trip over the CLI (share an address, open a conversation, reply) and observe receipt by polling `list_conversations` / `get_messages` instead of events"
   - "How the `result`-bearing methods wrap their payload as `{success, value, error}` while the collection/status getters return their value directly"
+  - "What a restart keeps: the conversation and its messages, but not the installation that could send into it"
 
 prerequisites:
   - |
@@ -254,21 +255,22 @@ sections:
       - title: "Alice joins the conversation"
         run: |
           for i in $(seq 1 50); do
-            cid=$(./logos/bin/logoscore --config-dir alice call chat_module list_conversations 2>/dev/null | jq -r '.result[0].convo_id // empty')
+            cid=$(./logos/bin/logoscore --config-dir alice call chat_module list_conversations 2>/dev/null | jq -r --arg id "$(cat bob-convo.txt)" '.result[]? | select(.convo_id == $id) | .convo_id' || true)
             if [ -n "$cid" ]; then echo "$cid" > alice-convo.txt; echo "ALICE_HAS_CONVO $cid"; break; fi
             sleep 3
           done
           [ -s alice-convo.txt ] || { echo "alice never joined the conversation" >&2; exit 1; }
         code_block: |
           # poll until Alice has processed the invite and joined
-          logoscore --config-dir alice call chat_module list_conversations | jq -r '.result[0].convo_id'
+          logoscore --config-dir alice call chat_module list_conversations | jq -r --arg id "$BOB_CONVO" '.result[] | select(.convo_id == $id) | .convo_id'
         expect_contains:
           - "ALICE_HAS_CONVO"
         post_text: |
           DirectV1 is group-based, so both sides share one conversation id (the
-          group id) — unlike PrivateV1's asymmetric ids. Once the conversation
-          appears, Alice has joined and subscribed to its delivery address, so she
-          is ready to receive messages on it.
+          group id) — unlike PrivateV1's asymmetric ids. So Alice looks for Bob's
+          id among her conversations, which may also hold ones kept from earlier
+          runs. Once it appears, Alice has joined and subscribed to its delivery
+          address, so she is ready to receive messages on it.
       - title: "Bob sends the first message"
         run: |
           cid=$(cat bob-convo.txt)
@@ -322,6 +324,85 @@ sections:
         post_text: |
           The same path in reverse: a real bidirectional, end-to-end-encrypted
           round-trip between two independent headless `chat_module` instances.
+
+  - title: "Alice restarts"
+    step: true
+    text: |
+      `chat_module` keeps its conversations and their messages in its instance
+      directory, which a daemon started again on the same `--config-dir` assigns
+      it again. The chat core's state does not survive: each `init` is a new
+      installation, so the conversation reads back but can no longer be sent
+      into.
+    steps:
+      - title: "Stop Alice's daemon"
+        run: |
+          ./logos/bin/logoscore --config-dir alice stop
+          for i in $(seq 1 30); do
+            if ! ./logos/bin/logoscore --config-dir alice list-modules >/dev/null 2>&1; then
+              echo "ALICE_STOPPED"; exit 0
+            fi
+            sleep 1
+          done
+          echo "alice daemon never stopped" >&2; exit 1
+        code_block: |
+          logoscore --config-dir alice stop
+        expect_contains:
+          - "ALICE_STOPPED"
+      - title: "Start it again on the same config dir"
+        run: "sh -c './logos/bin/logoscore --config-dir alice -D -m ./modules > alice-daemon-restarted.log 2>&1 &'"
+        code_block: "logoscore --config-dir alice -D -m ./modules > alice-daemon.log &"
+      - title: "Load and initialise chat_module"
+        run: |
+          up=""
+          for i in $(seq 1 30); do
+            if ./logos/bin/logoscore --config-dir alice list-modules >/dev/null 2>&1; then up=1; break; fi
+            sleep 1
+          done
+          [ -n "$up" ] || { echo "alice daemon never came back" >&2; tail -n 40 alice-daemon-restarted.log >&2; exit 1; }
+          ./logos/bin/logoscore --config-dir alice load-module chat_module
+          ./logos/bin/logoscore --config-dir alice call chat_module init 'json:{"delivery_preset":"logos.test"}'
+        code_block: |
+          logoscore --config-dir alice load-module chat_module
+          logoscore --config-dir alice call chat_module init 'json:{"delivery_preset":"logos.test"}'
+        expect_contains:
+          - '"status":"ok"'
+      - title: "The conversation and its messages are back"
+        run: |
+          cid=$(cat alice-convo.txt)
+          ./logos/bin/logoscore --config-dir alice call chat_module list_conversations \
+            | jq -e --arg id "$cid" '[.result[] | select(.convo_id == $id) | .history_only] == [true]' >/dev/null \
+            || { echo "alice lost the conversation, or it is not marked history_only" >&2; exit 1; }
+          msgs=$(./logos/bin/logoscore --config-dir alice call chat_module get_messages "$cid")
+          echo "$msgs"
+          echo "$msgs" | jq -e '[.result[] | [.content, .from_self]] == [["hello-from-bob", false], ["hi-bob-got-it", true]]' >/dev/null \
+            || { echo "alice's messages did not read back in order" >&2; exit 1; }
+          echo "ALICE_KEPT_HISTORY"
+        code_block: |
+          logoscore --config-dir alice call chat_module list_conversations
+          logoscore --config-dir alice call chat_module get_messages "$ALICE_CONVO"
+        expect_contains:
+          - "ALICE_KEPT_HISTORY"
+        post_text: |
+          Nothing is polled here: `init` reads the conversation list and each
+          conversation's newest messages back before it returns, with no network.
+          The conversation comes back with `history_only` set.
+      - title: "Sending into it fails"
+        run: |
+          cid=$(cat alice-convo.txt)
+          out=$(./logos/bin/logoscore --config-dir alice call chat_module send_message "$cid" after-restart || true)
+          echo "$out"
+          case "$out" in
+            *'previous session'*) echo "ALICE_SEND_REFUSED";;
+            *) echo "send into a previous session's conversation did not fail as expected" >&2; exit 1;;
+          esac
+        code_block: |
+          logoscore --config-dir alice call chat_module send_message "$ALICE_CONVO" after-restart
+        expect_contains:
+          - "ALICE_SEND_REFUSED"
+        post_text: |
+          The restarted Alice is a new installation that is not a member of the
+          conversation, so `send_message` fails and says why. The conversation
+          stays readable, and can still be labelled or deleted.
 
   - title: "Stop the daemons"
     step: true
