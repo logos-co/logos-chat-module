@@ -13,6 +13,7 @@
 //! so the `connectionStateChanged` emitted during start isn't missed) and the
 //! resulting `EventSubscription`s are moved into the bridge.
 
+use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
 use std::sync::Arc;
@@ -59,9 +60,10 @@ fn run_bridge(
     inbound_tx: Sender<Vec<u8>>,
     subscribe_rx: Receiver<String>,
 ) {
+    let mut seen = SeenMessages::default();
     while !stop.load(Ordering::Relaxed) {
         match messages.receiver().recv_timeout(POLL_INTERVAL) {
-            Ok(evt) => forward_message(&evt, &inbound_tx),
+            Ok(evt) => forward_message(&evt, &inbound_tx, &mut seen),
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => return,
         }
@@ -98,7 +100,7 @@ fn run_bridge(
 /// channel. The loose topic-prefix filter stays: libp2p delivers every message in
 /// the shard regardless of subscribed topic, so non-chat traffic is dropped here
 /// and `Core::handle_payload` (inside the client) discriminates the rest.
-fn forward_message(evt: &EventData, inbound_tx: &Sender<Vec<u8>>) {
+fn forward_message(evt: &EventData, inbound_tx: &Sender<Vec<u8>>, seen: &mut SeenMessages) {
     let Some(msg) = crate::delivery_module::DeliveryModuleClient::decode_message_received(evt)
     else {
         tracing::warn!("inbound: messageReceived payload missing or malformed");
@@ -107,9 +109,43 @@ fn forward_message(evt: &EventData, inbound_tx: &Sender<Vec<u8>>) {
     if !msg.content_topic.starts_with(crate::delivery::TOPIC_PREFIX) {
         return;
     }
+    if !seen.first_sighting(&msg.message_hash) {
+        tracing::debug!(
+            "inbound: dropped a repeat of {} ({})",
+            msg.message_hash,
+            msg.source
+        );
+        return;
+    }
     // The receiver is the client's worker; if it has gone away the client is being
     // dropped and the bridge is about to stop, so a failed send is benign.
     let _ = inbound_tx.send(msg.payload);
+}
+
+const SEEN_CAPACITY: usize = 10_000;
+
+/// Recently forwarded message hashes. delivery_module re-delivers a message
+/// after its own few-minute dedupe window, e.g. on Store catch-up.
+#[derive(Default)]
+struct SeenMessages {
+    hashes: HashSet<String>,
+    order: VecDeque<String>,
+}
+
+impl SeenMessages {
+    fn first_sighting(&mut self, hash: &str) -> bool {
+        if self.hashes.contains(hash) {
+            return false;
+        }
+        if self.order.len() == SEEN_CAPACITY {
+            if let Some(oldest) = self.order.pop_front() {
+                self.hashes.remove(&oldest);
+            }
+        }
+        self.hashes.insert(hash.to_owned());
+        self.order.push_back(hash.to_owned());
+        true
+    }
 }
 
 /// Forward the core's queued subscription requests to delivery_module, but only
@@ -224,9 +260,30 @@ mod tests {
         );
         let (tx, rx) = crossbeam_channel::unbounded();
 
-        forward_message(&event, &tx);
+        forward_message(&event, &tx, &mut SeenMessages::default());
 
         assert_eq!(rx.try_recv().unwrap(), payload);
+    }
+
+    #[test]
+    fn a_message_is_forwarded_once() {
+        let mut seen = SeenMessages::default();
+
+        assert!(seen.first_sighting("0xa"));
+        assert!(seen.first_sighting("0xb"));
+        assert!(!seen.first_sighting("0xa"));
+    }
+
+    #[test]
+    fn the_oldest_hash_is_forgotten_at_capacity() {
+        let mut seen = SeenMessages::default();
+        for i in 0..SEEN_CAPACITY {
+            assert!(seen.first_sighting(&i.to_string()));
+        }
+
+        assert!(seen.first_sighting("one more"));
+        assert!(seen.first_sighting("0"));
+        assert!(!seen.first_sighting(&(SEEN_CAPACITY - 1).to_string()));
     }
 
     #[test]
