@@ -26,15 +26,15 @@ panic = "abort"
 # delivery (logoscore's delivery_module), so it depends on this transport-generic
 # crate, not the `logos-chat` facade that bundles an embedded logos delivery.
 # Every libchat crate is pinned to the same main rev, so their shared types agree.
-logos-generic-chat = { git = "https://github.com/logos-messaging/logos-chat.git", package = "logos-generic-chat", rev = "0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3" }
+logos-generic-chat = { git = "https://github.com/logos-messaging/logos-chat.git", package = "logos-generic-chat", rev = "992084edfd0ca5d13591692190b0078b807078a3" }
 # The account (package `account`, under the name libchat's own crates give it):
 # each launch publishes a fresh one whose log endorses this installation's key.
-logos-account  = { git = "https://github.com/logos-messaging/logos-chat.git", package = "account", rev = "0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3" }
+logos-account  = { git = "https://github.com/logos-messaging/logos-chat.git", package = "account", rev = "992084edfd0ca5d13591692190b0078b807078a3" }
 # `HttpAuthClient`, which publishes the account's log and checks other
 # participants against theirs, on the registry's server.
-components     = { git = "https://github.com/logos-messaging/logos-chat.git", package = "components", rev = "0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3" }
+components     = { git = "https://github.com/logos-messaging/logos-chat.git", package = "components", rev = "992084edfd0ca5d13591692190b0078b807078a3" }
 # The chat history, in `chat.db`.
-message-store  = { git = "https://github.com/logos-messaging/logos-chat.git", package = "message-store", rev = "0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3" }
+message-store  = { git = "https://github.com/logos-messaging/logos-chat.git", package = "message-store", rev = "992084edfd0ca5d13591692190b0078b807078a3" }
 # The connection `message-store` borrows. SQLCipher, so `chat.db` is keyed:
 # without the feature `PRAGMA key` is ignored and the file is written in plain
 # text, so enable it on our own dep rather than rely on libchat's.

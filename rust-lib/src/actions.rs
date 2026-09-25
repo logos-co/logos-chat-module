@@ -42,9 +42,9 @@ pub(crate) enum CoreError {
     #[error("conversation not found")]
     NotFound,
     #[error("{0}")]
-    Delivery(String),
-    #[error("{0}")]
     Internal(String),
+    #[error(transparent)]
+    Client(#[from] ClientError),
     #[error("conversation is from a previous session and kept for its history only")]
     HistoryOnly,
     #[error("chat.db: {0}")]
@@ -94,7 +94,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
             path: db_path,
             key: key.clone(),
         })
-        .map_err(|e| InitError::Internal(format!("open store failed: {e:?}")))?
+        .map_err(|e| InitError::Internal(format!("open store failed: {e}")))?
     } else {
         SqliteStore::in_memory()
     };
@@ -122,7 +122,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     // against their account's log.
     let auth = HttpAuthClient::new(DEFAULT_REGISTRY_URL);
     let installation = register_installation(auth.clone())
-        .map_err(|e| InitError::Internal(format!("publish account failed: {e:?}")))?;
+        .map_err(|e| InitError::Internal(format!("publish account failed: {e}")))?;
     let transport = SdkDelivery::new(inbound_rx, subscribe_tx);
     // Submit over the registry's HTTP API, which acknowledges each bundle. The
     // delivery wire it offers instead is fire-and-forget, so a rejected bundle
@@ -138,7 +138,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         .auth(auth)
         .storage(storage)
         .build()
-        .map_err(|e| InitError::Internal(format!("client build failed: {e:?}")))?;
+        .map_err(|e| InitError::Internal(format!("client build failed: {e}")))?;
 
     let intrinsic_name = client.installation_name();
     // The address a peer needs to open a DirectV1 conversation with us: the
@@ -155,7 +155,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         .map_err(|e| InitError::Internal(format!("read chat.db failed: {e}")))?;
     let live = client
         .list_all_conversations()
-        .map_err(|e| InitError::Internal(format!("list_all_conversations failed: {e:?}")))?;
+        .map_err(|e| InitError::Internal(format!("list_all_conversations failed: {e}")))?;
     for session in state.chats.values_mut() {
         session.history_only = !live.contains(&session.chat_id);
     }
@@ -451,8 +451,7 @@ pub(crate) fn get_address() -> String {
 pub(crate) fn create_conversation(peer_address: &str) -> Result<String, CoreError> {
     // libchat op under the client lock. Publish is async (see SdkDelivery), so
     // this returns without blocking on the network.
-    let chat_id = with_client(|client| client.create_direct_conversation(peer_address))?
-        .map_err(|e| CoreError::Internal(format!("create_conversation failed: {e:?}")))?;
+    let chat_id = with_client(|client| client.create_direct_conversation(peer_address))??;
 
     tracing::info!("created direct conversation {chat_id}");
     let peer_label = short_label(&chat_id).to_owned();
@@ -492,8 +491,7 @@ pub(crate) fn create_conversation(peer_address: &str) -> Result<String, CoreErro
 pub(crate) fn create_group_conversation(name: &str, desc: &str) -> Result<String, CoreError> {
     let chat_id = with_client(|client| {
         client.create_group_conversation(&[], GroupMetadata::new(name, desc))
-    })?
-    .map_err(|e| CoreError::Internal(format!("create_group_conversation failed: {e:?}")))?;
+    })??;
 
     tracing::info!("created group conversation {chat_id}");
 
@@ -534,8 +532,7 @@ pub(crate) fn create_group_conversation(name: &str, desc: &str) -> Result<String
 pub(crate) fn add_group_member(convo_id: &str, peer_address: &str) -> Result<(), CoreError> {
     check_live(convo_id)?;
 
-    with_client(|client| client.add_group_participants(convo_id, &[peer_address]))?
-        .map_err(|e| CoreError::Internal(format!("add_group_member failed: {e:?}")))?;
+    with_client(|client| client.add_group_participants(convo_id, &[peer_address]))??;
     crate::emit_conversation_updated(convo_id);
     Ok(())
 }
@@ -564,7 +561,7 @@ pub(crate) fn list_group_members(convo_id: &str) -> Vec<GroupMember> {
             })
             .collect(),
         Ok(Err(e)) => {
-            tracing::warn!("list_group_members failed: {e:?}");
+            tracing::warn!("list_group_members failed: {e}");
             Vec::new()
         }
         Err(e) => {
@@ -621,8 +618,7 @@ pub(crate) fn send_message(convo_id: &str, content: &str) -> Result<(), CoreErro
     // isn't kept for a convo the user just removed).
     check_live(convo_id)?;
 
-    with_client(|client| client.send_message(convo_id, content.as_bytes()))?
-        .map_err(|e| CoreError::Delivery(format!("send_message failed: {e:?}")))?;
+    with_client(|client| client.send_message(convo_id, content.as_bytes()))??;
 
     // Size, never the text: this file is handed to whoever is diagnosing a run,
     // and the one thing a chat log must not leak is what was said.
@@ -705,9 +701,10 @@ pub(crate) fn set_delivery_state(d: &mut Display, state: DeliveryStateKind, deta
 
 /// Record a newly-observed conversation (the client's `ConversationStarted`
 /// event) and surface it, classed by `kind`. No-op for a locally-deleted or
-/// already-known conversation. Called from the event consumer thread; a group
-/// first reads its shared metadata under the client lock, then records under the
-/// display lock (the two are never held at once).
+/// already-known conversation, except that a history-only one is live again.
+/// Called from the event consumer thread; a group first reads its shared
+/// metadata under the client lock, then records under the display lock (the
+/// two are never held at once).
 pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind) {
     // A joiner learns a group's name and description from the client, not from a
     // local argument; a direct conversation carries none. Read it before taking
@@ -716,7 +713,7 @@ pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind
         match with_client(|client| client.group_metadata(convo_id)) {
             Ok(Ok(meta)) => (non_empty(&meta.name), non_empty(&meta.desc)),
             Ok(Err(e)) => {
-                tracing::warn!("group_metadata failed: {e:?}");
+                tracing::warn!("group_metadata failed: {e}");
                 (None, None)
             }
             Err(e) => {
@@ -730,7 +727,14 @@ pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind
     with_display_mut(|d| {
         // libchat retains crypto state across local deletes, so we still observe
         // events for deleted convos.
-        if d.state.deleted.contains(convo_id) || d.state.chats.contains_key(convo_id) {
+        if d.state.deleted.contains(convo_id) {
+            return;
+        }
+        // Invited back into a conversation from a previous session.
+        if let Some(session) = d.state.chats.get_mut(convo_id) {
+            if std::mem::take(&mut session.history_only) {
+                crate::emit_conversation_updated(convo_id);
+            }
             return;
         }
         d.state.chats.insert(
@@ -904,6 +908,27 @@ mod tests {
                 (true, "hi raya", 1, None),
                 (false, "hi saro", 2, Some("raya-account")),
             ]
+        );
+    }
+
+    #[test]
+    fn a_history_only_conversation_started_again_is_live() {
+        const CONVO: &str = "history-only-convo";
+        with_display_mut(|d| {
+            d.state.chats.insert(
+                CONVO.into(),
+                ChatSession {
+                    history_only: true,
+                    ..direct_chat(CONVO)
+                },
+            )
+        });
+
+        record_conversation_started(CONVO, ConversationKind::Direct);
+
+        assert_eq!(
+            with_display(|d| d.state.chats.get(CONVO).map(|s| s.history_only)),
+            Some(false)
         );
     }
 }
