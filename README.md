@@ -1,7 +1,7 @@
 # logos-chat-module
 
 A Rust [Logos Module](https://github.com/logos-co/logos-liblogos) that wraps
-[libchat](https://github.com/logos-messaging/libchat) and exposes
+[libchat](https://github.com/logos-messaging/logos-chat) and exposes
 e2e-encrypted chat over the Logos IPC bus. Loaded as a `cdylib` module by
 `liblogos_core`; depends on `delivery_module` at runtime (declared in
 `metadata.json`).

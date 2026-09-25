@@ -50,8 +50,7 @@ module chat_module {
     ; When the message was sent (own messages) or recorded (received ones), in
     ; milliseconds since the Unix epoch.
     timestamp_ms: int
-    ; Sender's account address (device id if unassociated); unset on
-    ; messages this installation sent.
+    ; Sender's account address; unset on messages this installation sent.
     ? sender: tstr
   }
   type Status {
@@ -72,8 +71,7 @@ module chat_module {
     delivery_adopted: bool
   }
   type GroupMember {
-    ; The member's directory-verified account address, or empty when the member
-    ; claims no confirmed account (the UI renders these as an unknown account).
+    ; The member's account address.
     address: tstr
     ; True while the group has not committed this member's add, so it cannot
     ; read the conversation yet. Only invites this instance sent are reported, so
@@ -145,7 +143,7 @@ module chat_module {
   ; name and desc are the group's shared metadata, visible to every member;
   ; both may be empty for an unnamed group.
   method create_group_conversation(name: tstr, desc: tstr) -> result
-  ; Invite the peer at peer_address, and every device it has endorsed, into an
+  ; Invite every installation the account at peer_address endorses into an
   ; existing group conversation. The invite is committed and delivered
   ; asynchronously; the peer observes the conversation once its instance has
   ; joined. Raises conversation_updated here, and members_changed once the
@@ -183,8 +181,7 @@ module chat_module {
 
   ; --- events ---
   ; An inbound message was decrypted and recorded.
-  ; sender: the sender's directory-verified account address, or its device id
-  ; when the sender claims no account.
+  ; sender: the sender's account address, which its account's log vouches for.
   event message_received(convo_id: tstr, content: tstr, timestamp_ms: int, sender: tstr)
   ; A message this installation sent was published and recorded.
   event message_sent(convo_id: tstr, content: tstr, timestamp_ms: int)

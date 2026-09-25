@@ -3,6 +3,26 @@
 version = 4
 
 [[package]]
+name = "account"
+version = "0.1.0"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3#0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3"
+dependencies = [
+ "account-log",
+ "thiserror",
+]
+
+[[package]]
+name = "account-log"
+version = "0.1.0"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3#0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3"
+dependencies = [
+ "ed25519-dalek",
+ "hex",
+ "rand_core 0.6.4",
+ "thiserror",
+]
+
+[[package]]
 name = "aead"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1236,24 +1256,20 @@ dependencies = [
 [[package]]
 name = "chat-sqlite"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/libchat.git?rev=5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14#5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3#0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3"
 dependencies = [
- "crypto",
- "hex",
+ "libchat",
  "rusqlite",
- "storage",
- "zeroize",
 ]
 
 [[package]]
 name = "chat_module"
 version = "0.2.2"
 dependencies = [
+ "account",
  "chrono",
+ "components",
  "crossbeam-channel",
- "hex",
- "libchat",
- "logos-account",
  "logos-generic-chat",
  "logos-rust-sdk",
  "serde",
@@ -1311,19 +1327,19 @@ dependencies = [
 [[package]]
 name = "components"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/libchat.git?rev=5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14#5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3#0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3"
 dependencies = [
+ "account",
+ "account-log",
  "base64",
  "chat-proto",
  "crossbeam-channel",
  "crypto",
  "hex",
  "libchat",
- "logos-account",
  "prost",
  "reqwest 0.12.28",
  "serde",
- "storage",
  "thiserror",
  "tracing",
 ]
@@ -1485,7 +1501,7 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 [[package]]
 name = "crypto"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/libchat.git?rev=5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14#5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3#0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3"
 dependencies = [
  "ed25519-dalek",
  "generic-array 1.4.1",
@@ -1618,7 +1634,7 @@ dependencies = [
 [[package]]
 name = "de-mls"
 version = "4.0.0"
-source = "git+https://github.com/vacp2p/de-mls?rev=2c7a8669c1492c749c02efd2c5ac45e93e4926a3#2c7a8669c1492c749c02efd2c5ac45e93e4926a3"
+source = "git+https://github.com/vacp2p/de-mls?rev=4d85a02#4d85a02fbe439b9ceeb1c693f44823318434bbec"
 dependencies = [
  "hashgraph-like-consensus",
  "indexmap 2.14.0",
@@ -1738,23 +1754,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
-]
-
-[[package]]
-name = "double-ratchets"
-version = "0.0.1"
-source = "git+https://github.com/logos-messaging/libchat.git?rev=5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14#5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14"
-dependencies = [
- "blake2",
- "chacha20poly1305",
- "hkdf",
- "rand 0.9.4",
- "rand_core 0.6.4",
- "serde",
- "storage",
- "thiserror",
- "x25519-dalek",
- "zeroize",
 ]
 
 [[package]]
@@ -2903,16 +2902,14 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 [[package]]
 name = "libchat"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/libchat.git?rev=5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14#5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3#0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3"
 dependencies = [
  "alloy",
  "base64",
  "blake2",
  "chat-proto",
- "chat-sqlite",
  "crypto",
  "de-mls",
- "double-ratchets",
  "hashgraph-like-consensus",
  "hex",
  "openmls",
@@ -2922,8 +2919,7 @@ dependencies = [
  "prost",
  "rand 0.9.4",
  "rand_core 0.6.4",
- "shared-traits",
- "storage",
+ "serde",
  "thiserror",
  "tracing",
  "x25519-dalek",
@@ -3238,31 +3234,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
-name = "logos-account"
-version = "0.1.0"
-source = "git+https://github.com/logos-messaging/libchat.git?rev=5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14#5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14"
-dependencies = [
- "crypto",
- "hex",
- "shared-traits",
- "thiserror",
-]
-
-[[package]]
 name = "logos-generic-chat"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/libchat.git?rev=5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14#5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3#0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3"
 dependencies = [
+ "account",
  "chat-sqlite",
  "components",
  "crossbeam-channel",
  "crypto",
  "hex",
  "libchat",
- "logos-account",
  "parking_lot",
- "shared-traits",
- "storage",
  "thiserror",
  "tracing",
 ]
@@ -4900,14 +4883,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "shared-traits"
-version = "0.1.0"
-source = "git+https://github.com/logos-messaging/libchat.git?rev=5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14#5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14"
-dependencies = [
- "crypto",
-]
-
-[[package]]
 name = "shlex"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4985,15 +4960,6 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
-
-[[package]]
-name = "storage"
-version = "0.1.0"
-source = "git+https://github.com/logos-messaging/libchat.git?rev=5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14#5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14"
-dependencies = [
- "crypto",
- "thiserror",
-]
 
 [[package]]
 name = "strsim"

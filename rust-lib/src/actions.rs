@@ -11,20 +11,21 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use libchat::ChatStorage;
-use logos_account::TestLogosAccount;
+use components::HttpAuthClient;
+use logos_account::{Account, AccountError, Ed25519VerifyingKey, CHATSIGNER_CONTEXT};
 use logos_generic_chat::{
-    ChatClientBuilder, ContactRegistry, DelegateSigner, GroupMetadata, RegistryPublishMode,
-    StorageConfig,
+    ChatClientBuilder, ClientError, ContactRegistry, GroupMetadata, Installation,
+    PendingInstallation, RegistryPublishMode, SqliteStore, StorageConfig,
 };
 
 use crate::delivery::{delivery_outcome, SdkDelivery};
 use crate::{Conversation, GroupMember, Message, Status};
 
-/// The devnet KeyPackage registry DirectV1 uses to publish this installation's
-/// key package and fetch a peer's. Hardcoded for now; a configurable endpoint is
-/// a future enhancement (the wiring is behind libchat's `RegistrationService`,
-/// so swapping it later is localized).
+/// The devnet registry: DirectV1 publishes this installation's key package there
+/// and fetches a peer's, and every account's log lives there too. Hardcoded for
+/// now; a configurable endpoint is a future enhancement (the wiring is behind
+/// libchat's `RegistrationService` and `AuthService`, so swapping it later is
+/// localized).
 const DEFAULT_REGISTRY_URL: &str = "https://devnet.chat-kc.logos.co";
 
 use crate::module::{
@@ -86,10 +87,10 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         // SQLCipher's keying requirement. A user-provided passphrase is a
         // future enhancement.
         let key = format!("rust-chat-{}", persistence_path.replace('/', "_"));
-        ChatStorage::new(StorageConfig::Encrypted { path: db_path, key })
+        SqliteStore::new(StorageConfig::Encrypted { path: db_path, key })
             .map_err(|e| InitError::Internal(format!("open store failed: {e:?}")))?
     } else {
-        ChatStorage::in_memory()
+        SqliteStore::in_memory()
     };
 
     // The transport's inbound channel: the bridge worker feeds `inbound_tx` from
@@ -108,19 +109,14 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     // with no workers and no way to stop it. Building the client subscribes the
     // core's inbound addresses, which queue on `subscribe_rx` until the node starts.
     //
-    // Identity is ephemeral (see `PERSISTENCE_ENABLED`): a fresh account and
-    // delegate are minted each launch. `TestLogosAccount` holds the account key;
-    // the `DelegateSigner` is a pure device keypair, and the client composes
-    // the account claim into its wire credential from the builder's account
-    // address. The account signs a bundle endorsing the delegate's device key,
-    // published to the registry's account directory below, so a peer given only
-    // the account address resolves this device's key package and opens a
-    // DirectV1 conversation. account != device: the client routes on the
-    // delegate's signer id; the account address is what we share.
-    let account = TestLogosAccount::new();
-    let account_addr = account.address();
-    let delegate = DelegateSigner::random();
-    let device_key = delegate.public_key().clone();
+    // Identity is ephemeral (see `PERSISTENCE_ENABLED`): each launch publishes a
+    // fresh account whose log endorses a new installation key, so a peer given
+    // only the account address resolves this installation and opens a DirectV1
+    // conversation. The same server checks every other participant against
+    // their account's log.
+    let auth = HttpAuthClient::new(DEFAULT_REGISTRY_URL);
+    let installation = register_installation(auth.clone())
+        .map_err(|e| InitError::Internal(format!("publish account failed: {e:?}")))?;
     let transport = SdkDelivery::new(inbound_rx, subscribe_tx);
     // Submit over the registry's HTTP API, which acknowledges each bundle. The
     // delivery wire it offers instead is fire-and-forget, so a rejected bundle
@@ -130,26 +126,19 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         DEFAULT_REGISTRY_URL,
         RegistryPublishMode::Http,
     );
-    let (client, events) = ChatClientBuilder::new(account_addr.clone())
-        .ident(delegate)
+    let (client, events) = ChatClientBuilder::new(installation)
         .transport(transport)
-        .registration(registry.clone())
+        .registration(registry)
+        .auth(auth)
         .storage(storage)
         .build()
         .map_err(|e| InitError::Internal(format!("client build failed: {e:?}")))?;
 
-    // Endorse the delegate's device key in the registry's account directory so
-    // a peer holding only the account address resolves this device's key package.
-    // (The client registers its own key package during build.)
-    let mut directory = registry;
-    account
-        .add_delegate_signer(&mut directory, &device_key)
-        .map_err(|e| InitError::Internal(format!("publish device bundle failed: {e:?}")))?;
     let intrinsic_name = client.installation_name();
     // The address a peer needs to open a DirectV1 conversation with us: the
-    // account address (what `client.addr()` returns). Cached in the display
-    // so `get_address` needn't take the client lock.
-    let address = account_addr;
+    // account address. Cached in the display so `get_address` needn't take the
+    // client lock.
+    let address = client.addr().to_string();
 
     let state_path = PathBuf::from(format!("{persistence_path}/history.json"));
     let state = load_display(&state_path);
@@ -198,6 +187,19 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         inbound_thread: Some(inbound_thread),
         event_thread: Some(event_thread),
     })
+}
+
+/// A new installation of a new account, whose published log endorses it. The
+/// account's key goes out of scope here, so no other installation can join it.
+fn register_installation(auth: HttpAuthClient) -> Result<Installation, AccountError> {
+    let pending = PendingInstallation::generate();
+    let key = Ed25519VerifyingKey::from_canonical_slice(&pending.endorsement_request())?;
+    let mut account = Account::new(auth);
+    account
+        .update()
+        .endorse_ed25519_key(CHATSIGNER_CONTEXT.clone(), &key)
+        .publish()?;
+    Ok(pending.complete(account.addr()))
 }
 
 /// The preset this process last created delivery_module's node with. This module
@@ -476,7 +478,7 @@ pub(crate) fn create_group_conversation(name: &str, desc: &str) -> Result<String
     Ok(chat_id)
 }
 
-/// Invite the peer at `peer_address` (all its endorsed devices) into an
+/// Invite every installation the account at `peer_address` endorses into an
 /// existing group conversation. The group's steward commits the add and the
 /// welcome is delivered asynchronously, so the peer joins some time after
 /// this returns.
@@ -485,25 +487,15 @@ pub(crate) fn add_group_member(convo_id: &str, peer_address: &str) -> Result<(),
         return Err(CoreError::NotFound);
     }
 
-    with_client(|client| client.add_group_members(convo_id, &[peer_address]))?
+    with_client(|client| client.add_group_participants(convo_id, &[peer_address]))?
         .map_err(|e| CoreError::Internal(format!("add_group_member failed: {e:?}")))?;
     crate::emit_conversation_updated(convo_id);
     Ok(())
 }
 
-/// A group member's directory-verified account address, or an empty string when
-/// no account is confirmed (an unassociated or unconfirmable member). The empty
-/// string is the roster's "no account" signal, which the UI renders as an
-/// unknown-account placeholder.
-fn member_address(member: logos_generic_chat::GroupMember) -> String {
-    member
-        .account
-        .map(|account| account.as_str().to_string())
-        .unwrap_or_default()
-}
-
 /// The roster of the conversation `convo_id`, one [`GroupMember`] per
-/// element; a direct conversation reports both participants. This is a plain
+/// installation: its committed members, then the invites whose commit has not
+/// landed; a direct conversation reports both participants. This is a plain
 /// list with no error channel, mirroring `get_messages`: an unknown
 /// conversation, or a client error, yields an empty array (the client error is
 /// logged).
@@ -511,12 +503,17 @@ pub(crate) fn list_group_members(convo_id: &str) -> Vec<GroupMember> {
     if !with_display(|d| d.state.chats.contains_key(convo_id)) {
         return Vec::new();
     }
-    match with_client(|client| client.group_members(convo_id)) {
-        Ok(Ok(members)) => members
+    let roster = with_client(|client| {
+        Ok::<_, ClientError>((client.members(convo_id)?, client.pending_members(convo_id)?))
+    });
+    match roster {
+        Ok(Ok((committed, invited))) => committed
             .into_iter()
-            .map(|m| GroupMember {
-                pending: m.pending,
-                address: member_address(m),
+            .map(|member| (member, false))
+            .chain(invited.into_iter().map(|member| (member, true)))
+            .map(|(member, pending)| GroupMember {
+                address: member.account.to_string(),
+                pending,
             })
             .collect(),
         Ok(Err(e)) => {
@@ -719,7 +716,7 @@ pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind
 }
 
 /// Record an inbound message (the client's `MessageReceived` event) and surface
-/// it. `sender` is the sender's account address (device id if unassociated).
+/// it. `sender` is the sender's account address.
 /// No-op for a locally-deleted conversation; an unknown conversation is
 /// created defensively (the preceding `ConversationStarted` normally creates it
 /// first). Called from the event consumer thread; takes only the display lock.
@@ -775,30 +772,4 @@ pub(crate) fn record_members_changed(convo_id: &str) {
         }
         crate::emit_members_changed(convo_id);
     });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::member_address;
-    use libchat::IdentId;
-    use logos_generic_chat::GroupMember;
-
-    /// A verified account surfaces its address; a member with no confirmed
-    /// account surfaces the empty "no account" signal, not its device id.
-    #[test]
-    fn member_address_is_account_or_empty() {
-        let verified = GroupMember {
-            account: Some(IdentId::new("acct-addr")),
-            local_identity: IdentId::new("device-id"),
-            pending: false,
-        };
-        assert_eq!(member_address(verified), "acct-addr");
-
-        let no_account = GroupMember {
-            account: None,
-            local_identity: IdentId::new("device-id"),
-            pending: false,
-        };
-        assert_eq!(member_address(no_account), "");
-    }
 }

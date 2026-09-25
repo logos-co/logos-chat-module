@@ -25,22 +25,14 @@ panic = "abort"
 # observations as `Event`s on a channel the module drains. The module brings its own
 # delivery (logoscore's delivery_module), so it depends on this transport-generic
 # crate, not the `logos-chat` facade that bundles an embedded logos delivery.
-# rev-pinned to libchat's unreleased group name/description client surface: it
-# adds a name and description to create_group_conversation and a group_metadata
-# getter, which this module stores and surfaces as each conversation's name and
-# description, on top of the GroupV2 group ops it already needs (add_group_members,
-# the `group_members` roster, the Event::ConversationMembersChanged behind the
-# `members_changed` contract event, injectable GroupV2 timing, the honest DirectV1
-# display class). Not yet in a released libchat version.
-logos-generic-chat = { git = "https://github.com/logos-messaging/libchat.git", package = "logos-generic-chat", rev = "5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14" }
-# The umbrella `libchat` crate, for `ChatStorage`: the builder's
-# `storage_config` panics on a bad DB, so we build the store fallibly and pass it in.
-libchat        = { git = "https://github.com/logos-messaging/libchat.git", package = "libchat", rev = "5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14" }
-# `TestLogosAccount` (gated behind logos-account's `dev` feature): the ephemeral
-# account identity that signs this installation's device bundle and whose key is
-# the shared account address. Enable `dev` on our own dep so its availability
-# doesn't hinge on another crate happening to turn the feature on.
-logos-account  = { git = "https://github.com/logos-messaging/libchat.git", package = "logos-account", features = ["dev"], rev = "5c55c2ee76bebd1dbd5eb4bfa95d9e71acd0fa14" }
+# Every libchat crate is pinned to the same main rev, so their shared types agree.
+logos-generic-chat = { git = "https://github.com/logos-messaging/logos-chat.git", package = "logos-generic-chat", rev = "0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3" }
+# The account (package `account`, under the name libchat's own crates give it):
+# each launch publishes a fresh one whose log endorses this installation's key.
+logos-account  = { git = "https://github.com/logos-messaging/logos-chat.git", package = "account", rev = "0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3" }
+# `HttpAuthClient`, which publishes the account's log and checks other
+# participants against theirs, on the registry's server.
+components     = { git = "https://github.com/logos-messaging/logos-chat.git", package = "components", rev = "0ef1a5ed65110035ac1cedee1248b7ef7bbc6fa3" }
 # The client hands back a `Receiver<Event>` and drains a `Receiver<Vec<u8>>`
 # through its `Transport`, so the module's plumbing speaks the same channel type.
 crossbeam-channel = "0.5"
@@ -52,9 +44,6 @@ logos-rust-sdk = { path = "../logos-rust-sdk-src" }
 serde          = { version = "1", features = ["derive"] }
 serde_json     = "1"
 thiserror      = "2"
-# Hex-encodes the account verifying key as this installation's shared address,
-# and the delegate device key into the account's signed device bundle.
-hex            = "0.4"
 # This module's own account of a run, raised on the same channel libchat uses so
 # one subscriber and one filter cover both.
 tracing            = "0.1"

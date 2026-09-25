@@ -22,7 +22,7 @@ from libs.helpers import (
 
 
 @pytest.mark.xfail(
-    reason="https://github.com/logos-messaging/libchat/issues/121",
+    reason="https://github.com/logos-messaging/logos-chat/issues/121",
     strict=True,
 )
 def test_delivery_ack_received(saro: ChatUser, raya: ChatUser) -> None:
