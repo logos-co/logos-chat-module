@@ -9,8 +9,7 @@ intro: |
   one peer at a time: the creator (or any existing member) invites a peer by
   address, the group's steward commits the add, and the invited instance joins
   once the welcome reaches it. Every member sees the **same** conversation id,
-  and each received message carries the sender's directory-verified account
-  address.
+  and each received message carries the sender's account address.
 
   So the tutorial runs three headless [`logoscore`](https://github.com/logos-co/logos-logoscore-cli)
   daemons (Alice, Bob, and Carol), each loading `chat_module` and its runtime
@@ -336,7 +335,7 @@ sections:
           - "CAROL_ROSTER_COMPLETE"
         post_text: |
           `list_group_members` reports the group's roster from libchat's MLS
-          state, each member as its directory-verified account address. An
+          state, each member as its account address. An
           invite the instance has sent but the group has not committed yet is
           listed too, flagged `pending`, so this poll skips those. All three
           converge on the same three-member set once the adds have committed

@@ -144,11 +144,10 @@ fn run_events(events: Receiver<Event>) {
                 convo_id,
                 content,
                 sender,
+                ..
             } => {
-                // The account is directory-verified by the client; a sender
-                // that claims none surfaces as its device id.
-                let sender_addr = sender.account.as_ref().unwrap_or(&sender.local_identity);
-                record_message_received(&convo_id, &content, sender_addr.as_str());
+                // The client delivers only senders their account's log vouches for.
+                record_message_received(&convo_id, &content, &sender.account().to_string());
             }
             Event::ConversationMembersChanged { convo_id } => {
                 record_members_changed(&convo_id);
@@ -163,10 +162,10 @@ fn run_events(events: Receiver<Event>) {
 }
 
 /// Map libchat's display class to the module's contract kind: the pairwise
-/// shape (PrivateV1 / DirectV1) is `direct`, GroupV2 is `group`.
+/// shape (DirectV1) is `direct`, GroupV2 is `group`.
 fn kind_for_class(class: ConversationClass) -> ConversationKind {
     match class {
-        ConversationClass::Private => ConversationKind::Direct,
+        ConversationClass::Dm => ConversationKind::Direct,
         ConversationClass::Group => ConversationKind::Group,
     }
 }
@@ -279,7 +278,7 @@ mod tests {
     #[test]
     fn class_maps_to_contract_kind() {
         assert_eq!(
-            kind_for_class(ConversationClass::Private),
+            kind_for_class(ConversationClass::Dm),
             ConversationKind::Direct
         );
         assert_eq!(
