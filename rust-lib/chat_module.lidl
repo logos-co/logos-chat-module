@@ -23,8 +23,9 @@ module chat_module {
     ; A label for this conversation, set with set_conversation_nickname. Local
     ; to this installation; no other member sees it.
     ? nickname: tstr
-    ; How many messages this installation holds for the conversation. It counts
-    ; what was received here, not everything ever sent to the conversation.
+    ; How many messages are kept for the conversation, across restarts,
+    ; including any older than get_messages returns. It counts what was sent and
+    ; received here, not everything ever sent to the conversation.
     message_count: int
     ; When the most recent held message arrived, in milliseconds since the Unix
     ; epoch. Zero when the conversation has no messages.
@@ -41,6 +42,9 @@ module chat_module {
     ; The last message's content, truncated to 160 characters, for a
     ; conversation-list preview. Absent when the conversation has no messages.
     ? preview: tstr
+    ; True for a conversation from a previous session, kept for its history
+    ; only (see init).
+    history_only: bool
   }
   type Message {
     ; True for a message this installation sent, false for one it received.
@@ -108,9 +112,15 @@ module chat_module {
   ; the host assigned none. Two instances therefore run side by side by giving
   ; each host its own session directory, and need no port coordination: the
   ; delivery node picks its own.
+  ;
+  ; Conversations persist across restarts purely as history. Each init is a new
+  ; installation with a new address, so a conversation from a previous session
+  ; reads back with its messages and history_only set: it can be labelled and
+  ; deleted, but it cannot be sent into or invited to, and it has no roster.
+  ; Restoring such conversations is being worked on.
   method init(config: ChatConfig) -> result
-  ; Stop the module: end the inbound worker, drop the chat client, and write
-  ; conversation state out. Succeeds when the module was never initialised.
+  ; Stop the module: end the inbound worker, drop the chat client, and close its
+  ; storage. Succeeds when the module was never initialised.
   ; A later init() starts a fresh session from the persisted state.
   method shutdown() -> result
   ; The file this module is writing its log to, in the instance directory the
@@ -152,8 +162,9 @@ module chat_module {
   ; Every conversation this installation holds, in no particular order — sort
   ; by last_activity_ms for a conversation list.
   method list_conversations() -> [Conversation]
-  ; The messages this installation holds for a conversation, oldest first. An
-  ; unknown conversation reports an empty list rather than failing.
+  ; The messages this installation holds for a conversation, oldest first. They
+  ; survive a restart, which reads back a conversation's newest 500. An unknown
+  ; conversation reports an empty list rather than failing.
   method get_messages(convo_id: tstr) -> [Message]
   ; The roster of a conversation, one GroupMember per element: committed members
   ; first, then invites still awaiting the group's commit. A direct conversation
