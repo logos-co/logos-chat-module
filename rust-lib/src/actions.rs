@@ -701,9 +701,10 @@ pub(crate) fn set_delivery_state(d: &mut Display, state: DeliveryStateKind, deta
 
 /// Record a newly-observed conversation (the client's `ConversationStarted`
 /// event) and surface it, classed by `kind`. No-op for a locally-deleted or
-/// already-known conversation. Called from the event consumer thread; a group
-/// first reads its shared metadata under the client lock, then records under the
-/// display lock (the two are never held at once).
+/// already-known conversation, except that a history-only one is live again.
+/// Called from the event consumer thread; a group first reads its shared
+/// metadata under the client lock, then records under the display lock (the
+/// two are never held at once).
 pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind) {
     // A joiner learns a group's name and description from the client, not from a
     // local argument; a direct conversation carries none. Read it before taking
@@ -726,7 +727,14 @@ pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind
     with_display_mut(|d| {
         // libchat retains crypto state across local deletes, so we still observe
         // events for deleted convos.
-        if d.state.deleted.contains(convo_id) || d.state.chats.contains_key(convo_id) {
+        if d.state.deleted.contains(convo_id) {
+            return;
+        }
+        // Invited back into a conversation from a previous session.
+        if let Some(session) = d.state.chats.get_mut(convo_id) {
+            if std::mem::take(&mut session.history_only) {
+                crate::emit_conversation_updated(convo_id);
+            }
             return;
         }
         d.state.chats.insert(
@@ -900,6 +908,27 @@ mod tests {
                 (true, "hi raya", 1, None),
                 (false, "hi saro", 2, Some("raya-account")),
             ]
+        );
+    }
+
+    #[test]
+    fn a_history_only_conversation_started_again_is_live() {
+        const CONVO: &str = "history-only-convo";
+        with_display_mut(|d| {
+            d.state.chats.insert(
+                CONVO.into(),
+                ChatSession {
+                    history_only: true,
+                    ..direct_chat(CONVO)
+                },
+            )
+        });
+
+        record_conversation_started(CONVO, ConversationKind::Direct);
+
+        assert_eq!(
+            with_display(|d| d.state.chats.get(CONVO).map(|s| s.history_only)),
+            Some(false)
         );
     }
 }
