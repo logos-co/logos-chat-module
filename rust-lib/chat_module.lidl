@@ -116,7 +116,8 @@ module chat_module {
   ; Conversations persist across restarts purely as history. Each init is a new
   ; installation with a new address, so a conversation from a previous session
   ; reads back with its messages and history_only set: it can be labelled and
-  ; deleted, but it cannot be sent into or invited to, and it has no roster.
+  ; deleted, but it cannot be sent into or invited to, and it has no roster,
+  ; until a member invites this installation back into the group.
   ; Restoring such conversations is being worked on.
   method init(config: ChatConfig) -> result
   ; Stop the module: end the inbound worker, drop the chat client, and close its
@@ -202,8 +203,9 @@ module chat_module {
   ; name, desc: the group's shared metadata, empty for direct conversations and
   ; unnamed groups.
   event conversation_created(convo_id: tstr, is_outgoing: bool, peer_label: tstr, kind: tstr, name: tstr, desc: tstr)
-  ; A conversation's local metadata changed here: a nickname was set, or a
-  ; member was invited. Re-read it with list_conversations.
+  ; A conversation's local metadata changed here: a nickname was set, a member
+  ; was invited, or an invite back into a history_only conversation cleared
+  ; the flag. Re-read it with list_conversations.
   event conversation_updated(convo_id: tstr)
   ; The group committed a roster change. Call list_group_members for the roster
   ; it committed.
