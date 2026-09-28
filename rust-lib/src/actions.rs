@@ -319,6 +319,18 @@ fn set_delivery_error(detail: String) {
     with_display_mut(|d| set_delivery_state(d, DeliveryStateKind::Error, &detail));
 }
 
+/// Whether to run the bootstrap again: true once for a bootstrap that failed
+/// before the node started, which moves delivery_state back to initialising.
+pub(crate) fn claim_delivery_retry() -> bool {
+    with_display_mut(|d| {
+        if d.delivery_state.state != DeliveryStateKind::Error || d.delivery_state.started {
+            return false;
+        }
+        set_delivery_state(d, DeliveryStateKind::Initialising, "");
+        true
+    })
+}
+
 /// Consumes `ms`: signals the inbound worker to stop, joins it, and resets the
 /// display, closing `chat.db`, so a re-init starts clean. Called by `lib.rs`
 /// after taking the singleton out of the module lock so the worker doesn't
@@ -930,6 +942,33 @@ mod tests {
         assert_eq!(
             with_display(|d| d.state.chats.get(CONVO).map(|s| s.history_only)),
             Some(false)
+        );
+    }
+
+    #[test]
+    fn only_a_delivery_that_never_started_is_retried() {
+        with_display_mut(|d| {
+            d.delivery_state = DeliveryState::initialising();
+            set_delivery_state(d, DeliveryStateKind::Error, "createNode failed");
+        });
+
+        assert!(claim_delivery_retry());
+        assert_eq!(
+            with_display(|d| d.delivery_state.state),
+            DeliveryStateKind::Initialising
+        );
+        assert!(
+            !claim_delivery_retry(),
+            "a retry in flight is not claimed twice"
+        );
+
+        with_display_mut(|d| {
+            d.delivery_state.started = true;
+            set_delivery_state(d, DeliveryStateKind::Error, "connection lost");
+        });
+        assert!(
+            !claim_delivery_retry(),
+            "a started node reconnects on its own"
         );
     }
 }

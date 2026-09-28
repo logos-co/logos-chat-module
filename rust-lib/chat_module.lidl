@@ -104,9 +104,11 @@ module chat_module {
   ; equivalent. Subscribe to the events before calling this, or the early ones
   ; are missed.
   ;
-  ; Calling it again while initialised succeeds without doing anything, and the
-  ; new config is ignored — call shutdown() first to reconfigure. The delivery
-  ; node outlives shutdown(), so a new delivery_preset does not reach it.
+  ; Calling it again while initialised succeeds and ignores the new config, so
+  ; call shutdown() first to reconfigure. The one exception is a delivery that
+  ; failed before its node started: the call then starts delivery again, on its
+  ; own delivery_preset. The delivery node outlives shutdown(), so a new
+  ; delivery_preset does not reach it.
   ;
   ; Storage lives under the instance directory the host assigns; init fails when
   ; the host assigned none. Two instances therefore run side by side by giving

@@ -92,10 +92,17 @@ impl ChatModule for ChatModuleImpl {
                 Ok(Value::Null)
             }
             Ok(Ok(InstallOutcome::AlreadyInstalled)) => {
-                tracing::warn!(
-                    "init: already initialised; any new arguments are ignored, \
-                     call shutdown() first to reconfigure"
-                );
+                if actions::claim_delivery_retry() {
+                    tracing::info!(
+                        "init: delivery never started, joining delivery preset {preset}"
+                    );
+                    actions::start_delivery_bootstrap(preset);
+                } else {
+                    tracing::warn!(
+                        "init: already initialised; any new arguments are ignored, \
+                         call shutdown() first to reconfigure"
+                    );
+                }
                 Ok(Value::Null)
             }
             Ok(Err(e)) => {
