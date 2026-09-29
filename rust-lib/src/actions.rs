@@ -160,14 +160,18 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         session.history_only = !live.contains(&session.chat_id);
     }
 
-    // Register listeners before the node starts — `connectionStateChanged`
-    // fires during start and is not re-emitted, so a late subscribe misses it.
+    // Register listeners before the node starts — `connectionStateChanged` and
+    // `nodeStarted` fire during start and are not re-emitted, so a late
+    // subscribe misses them.
     // The subscriptions are handed to the bridge worker, which polls them; nothing
     // arrives until `start_delivery_bootstrap` starts the node.
     let mut dm = crate::modules().delivery_module;
     let messages_sub = dm
         .on_message_received()
         .map_err(|e| InitError::Delivery(format!("subscribe(messageReceived) failed: {e}")))?;
+    let started_sub = dm
+        .on_node_started()
+        .map_err(|e| InitError::Delivery(format!("subscribe(nodeStarted) failed: {e}")))?;
     let conn_sub = match dm.on_connection_state_changed() {
         Ok(sub) => Some(sub),
         Err(e) => {
@@ -182,6 +186,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     let inbound_thread = crate::inbound::spawn_bridge(
         stop.clone(),
         messages_sub,
+        started_sub,
         conn_sub,
         inbound_tx,
         subscribe_rx,
@@ -237,7 +242,8 @@ fn own_node_preset() -> MutexGuard<'static, Option<String>> {
 /// every step runs off the dispatch (Qt event-loop) thread, so bootstrap, which
 /// can take tens of seconds, never blocks it.
 ///
-/// Readiness (`online`) is reported once the node has started; the bridge worker
+/// Readiness (`online`) is reported on delivery's `nodeStarted`, not on `start`'s
+/// answer, which comes seconds before the node can send; the bridge worker
 /// then forwards the core's queued inbound-address subscriptions to delivery_module
 /// (see `inbound::forward_subscriptions`). We do NOT use delivery's earlier
 /// `connectionStateChanged=Connected`, which fires mid-bootstrap ~tens of seconds
@@ -299,19 +305,24 @@ fn join_existing_node(preset: String, reason: String) {
         });
 }
 
-/// Bootstrap step 2 of 2: start the node and report readiness. Once online, the
-/// bridge worker forwards the core's queued subscriptions (see
-/// `inbound::forward_subscriptions`).
+/// Bootstrap step 2 of 2: start the node. Its outcome arrives as `nodeStarted`
+/// (see `record_node_started`).
 fn start_node() {
-    crate::modules()
-        .delivery_module
-        .start_async(move |res| match delivery_outcome(res) {
-            Ok(_) => with_display_mut(|d| {
-                d.delivery_state.started = true;
-                set_delivery_state(d, DeliveryStateKind::Online, "");
-            }),
-            Err(e) => set_delivery_error(format!("delivery_module.start failed: {e}")),
-        });
+    // Before the dispatch: on a running node `nodeStarted` can arrive before
+    // `start`'s own answer.
+    with_display_mut(|d| d.delivery_state.starting = true);
+    crate::modules().delivery_module.start_async(|res| {
+        if let Err(e) = delivery_outcome(res) {
+            with_display_mut(|d| {
+                d.delivery_state.starting = false;
+                set_delivery_state(
+                    d,
+                    DeliveryStateKind::Error,
+                    &format!("delivery_module.start failed: {e}"),
+                );
+            });
+        }
+    });
 }
 
 /// Record an async-bootstrap failure in delivery_state, which is what logs it.
@@ -711,6 +722,26 @@ pub(crate) fn set_delivery_state(d: &mut Display, state: DeliveryStateKind, deta
     crate::emit_delivery_state_changed(state.as_str(), detail, d.delivery_state.adopted);
 }
 
+/// Record delivery's `nodeStarted` as the outcome of the start this init
+/// dispatched. Every consumer's start reports to every subscriber, so one this
+/// init is not waiting for is ignored.
+pub(crate) fn record_node_started(d: &mut Display, success: bool, message: &str) {
+    if !d.delivery_state.starting {
+        return;
+    }
+    d.delivery_state.starting = false;
+    if success {
+        d.delivery_state.started = true;
+        set_delivery_state(d, DeliveryStateKind::Online, "");
+    } else {
+        set_delivery_state(
+            d,
+            DeliveryStateKind::Error,
+            &format!("delivery_module.start failed: {message}"),
+        );
+    }
+}
+
 /// Record a newly-observed conversation (the client's `ConversationStarted`
 /// event) and surface it, classed by `kind`. No-op for a locally-deleted or
 /// already-known conversation, except that a history-only one is live again.
@@ -970,5 +1001,57 @@ mod tests {
             !claim_delivery_retry(),
             "a started node reconnects on its own"
         );
+    }
+
+    fn display_starting() -> Display {
+        Display {
+            delivery_state: DeliveryState {
+                starting: true,
+                ..DeliveryState::initialising()
+            },
+            ..Display::default()
+        }
+    }
+
+    #[test]
+    fn online_comes_with_the_node_started() {
+        let mut d = display_starting();
+
+        record_node_started(&mut d, true, "");
+
+        assert_eq!(d.delivery_state.state, DeliveryStateKind::Online);
+        assert!(d.delivery_state.started);
+        assert!(!d.delivery_state.starting);
+    }
+
+    #[test]
+    fn a_failed_start_is_an_error_before_the_node_started() {
+        let mut d = display_starting();
+
+        record_node_started(&mut d, false, "relay unavailable");
+
+        assert_eq!(
+            (d.delivery_state.state, d.delivery_state.detail.as_str()),
+            (
+                DeliveryStateKind::Error,
+                "delivery_module.start failed: relay unavailable"
+            )
+        );
+        assert!(!d.delivery_state.started, "so the next init retries it");
+    }
+
+    #[test]
+    fn a_start_this_init_does_not_wait_for_is_ignored() {
+        let mut d = Display {
+            delivery_state: DeliveryState::initialising(),
+            ..Display::default()
+        };
+        record_node_started(&mut d, true, "");
+        assert_eq!(d.delivery_state.state, DeliveryStateKind::Initialising);
+
+        d.delivery_state.starting = true;
+        record_node_started(&mut d, true, "");
+        record_node_started(&mut d, false, "another consumer's start failed");
+        assert_eq!(d.delivery_state.state, DeliveryStateKind::Online);
     }
 }

@@ -2,16 +2,16 @@
 //!
 //! Two workers run alongside the client's own inbound worker:
 //! * The bridge ([`run_bridge`]) drains delivery_module's events: `messageReceived`
-//!   payloads are pushed to the client's inbound channel; `connectionStateChanged`
-//!   drives local `delivery_state`; and the core's queued subscription requests are
-//!   forwarded to delivery_module once its node is started.
+//!   payloads are pushed to the client's inbound channel; `nodeStarted` and
+//!   `connectionStateChanged` drive local `delivery_state`; and the core's queued
+//!   subscription requests are forwarded to delivery_module once its node is started.
 //! * The event consumer ([`run_events`]) drains the client's `Event` stream and
 //!   records each observation in the display history, emitting the matching plugin
 //!   events.
 //!
 //! The delivery_module subscriptions are set up in `init` (before the node starts,
-//! so the `connectionStateChanged` emitted during start isn't missed) and the
-//! resulting `EventSubscription`s are moved into the bridge.
+//! so the events emitted during start aren't missed) and the resulting
+//! `EventSubscription`s are moved into the bridge.
 
 use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -26,7 +26,7 @@ use logos_rust_sdk::{EventData, EventSubscription};
 
 use crate::actions::{
     record_conversation_started, record_members_changed, record_message_received,
-    set_delivery_state,
+    record_node_started, set_delivery_state,
 };
 use crate::module::{with_display, with_display_mut, DeliveryStateKind};
 use crate::persistence::ConversationKind;
@@ -36,13 +36,14 @@ const POLL_INTERVAL: Duration = Duration::from_millis(50);
 pub(crate) fn spawn_bridge(
     stop: Arc<AtomicBool>,
     messages: EventSubscription,
+    node_started: EventSubscription,
     conn: Option<EventSubscription>,
     inbound_tx: Sender<Vec<u8>>,
     subscribe_rx: Receiver<String>,
 ) -> JoinHandle<()> {
     thread::Builder::new()
         .name("rust-chat-bridge".into())
-        .spawn(move || run_bridge(stop, messages, conn, inbound_tx, subscribe_rx))
+        .spawn(move || run_bridge(stop, messages, node_started, conn, inbound_tx, subscribe_rx))
         .expect("failed to spawn bridge thread")
 }
 
@@ -56,10 +57,12 @@ pub(crate) fn spawn_events(events: Receiver<Event>) -> JoinHandle<()> {
 fn run_bridge(
     stop: Arc<AtomicBool>,
     messages: EventSubscription,
+    node_started: EventSubscription,
     mut conn: Option<EventSubscription>,
     inbound_tx: Sender<Vec<u8>>,
     subscribe_rx: Receiver<String>,
 ) {
+    let mut node_started = Some(node_started);
     let mut seen = SeenMessages::default();
     while !stop.load(Ordering::Relaxed) {
         match messages.receiver().recv_timeout(POLL_INTERVAL) {
@@ -68,31 +71,40 @@ fn run_bridge(
             Err(RecvTimeoutError::Disconnected) => return,
         }
 
-        // On Disconnected, drop the subscription so we stop re-polling a dead one.
-        let mut disconnected = false;
-        if let Some(events) = conn.as_ref() {
-            loop {
-                match events.receiver().try_recv() {
-                    Ok(evt) => {
-                        if let Some(state) =
-                            crate::delivery_module::DeliveryModuleClient::decode_connection_state_changed(&evt)
-                        {
-                            handle_connection_state(&state.connection_status);
-                        }
-                    }
-                    Err(TryRecvError::Empty) => break,
-                    Err(TryRecvError::Disconnected) => {
-                        disconnected = true;
-                        break;
-                    }
-                }
+        drain(&mut node_started, |evt| {
+            if let Some(started) =
+                crate::delivery_module::DeliveryModuleClient::decode_node_started(evt)
+            {
+                with_display_mut(|d| record_node_started(d, started.success, &started.message));
             }
-        }
-        if disconnected {
-            conn = None;
-        }
+        });
+        drain(&mut conn, |evt| {
+            if let Some(state) =
+                crate::delivery_module::DeliveryModuleClient::decode_connection_state_changed(evt)
+            {
+                handle_connection_state(&state.connection_status);
+            }
+        });
 
         forward_subscriptions(&subscribe_rx);
+    }
+}
+
+/// Hand each pending event of `sub` to `handle`. On Disconnected, drop the
+/// subscription so we stop re-polling a dead one.
+fn drain(sub: &mut Option<EventSubscription>, mut handle: impl FnMut(&EventData)) {
+    let Some(events) = sub else {
+        return;
+    };
+    let disconnected = loop {
+        match events.receiver().try_recv() {
+            Ok(evt) => handle(&evt),
+            Err(TryRecvError::Empty) => break false,
+            Err(TryRecvError::Disconnected) => break true,
+        }
+    };
+    if disconnected {
+        *sub = None;
     }
 }
 
