@@ -13,9 +13,7 @@
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder/0.3.1";
 
-    # Delivery's Windows target is on master after PR #127. The lockfile pins
-    # the merged revision until a release includes it.
-    logos-delivery-module.url = "github:logos-co/logos-delivery-module";
+    logos-delivery-module.url = "github:logos-co/logos-delivery-module/v0.3.0-rc.3";
   };
 
   outputs = inputs@{ self, logos-module-builder, logos-delivery-module, ... }:
