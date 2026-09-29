@@ -14,7 +14,7 @@ Logos Chat Module
 The Logos Chat Module gives your application end-to-end-encrypted
 conversations -- one-to-one and group -- without implementing any of the
 cryptography or the transport. It is a Logos Core ``core`` module: it wraps
-`libchat <https://github.com/logos-messaging/libchat>`_ and reaches the network
+`libchat <https://github.com/logos-messaging/logos-chat>`_ and reaches the network
 through
 `delivery_module <https://github.com/logos-co/logos-delivery-module>`_, so any
 other module -- or a UI -- can open a conversation and exchange messages by

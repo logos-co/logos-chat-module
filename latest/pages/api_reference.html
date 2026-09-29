@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>API reference &#8212; Logos Chat Module 0.2.2 documentation</title>
+    <title>API reference &#8212; Logos Chat Module 0.3.0 documentation</title>
   
   
   
@@ -39,14 +39,14 @@
   <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=55c26ed414f5f8a31ebb" />
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=55c26ed414f5f8a31ebb" />
 
-    <script src="../_static/documentation_options.js?v=000c92bf"></script>
+    <script src="../_static/documentation_options.js?v=e259d695"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'pages/api_reference';</script>
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.17.1';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://logos-co.github.io/logos-chat-module/switcher.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.2.2';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.3.0';
         DOCUMENTATION_OPTIONS.show_version_warning_banner =
             false;
         </script>
@@ -58,7 +58,7 @@
     <link rel="prev" title="Logos Chat Module" href="../index.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.2.2" />
+  <meta name="docsearch:version" content="0.3.0" />
   
     
     <script src="../_static/searchtools.js"></script>
@@ -134,7 +134,7 @@
     <img src="../_static/logos-logo-dark.png" class="logo__image only-dark pst-js-only" alt=""/>
   
   
-    <p class="title logo__title">Chat Module 0.2.2</p>
+    <p class="title logo__title">Chat Module 0.3.0</p>
   
 </a></div>
     
@@ -437,23 +437,34 @@ module has not been initialised.</p>
 <dd><p>Bring the module up and join the delivery network.</p>
 <p>Delivery starts asynchronously and this returns without waiting for it, so
 the module is not yet reachable when it succeeds. Readiness arrives as a
-delivery_state_changed event reaching “online”; there is no polling
-equivalent. Subscribe to the events before calling this, or the early ones
-are missed.</p>
-<p>Calling it again while initialised succeeds without doing anything, and the
-new config is ignored — call shutdown() first to reconfigure.</p>
+delivery_state_changed event reaching “online”, and status() reports the
+state at any time. Subscribe to the events before calling this, or the early
+ones are missed.</p>
+<p>Calling it again while initialised succeeds and ignores the new config, so
+call shutdown() first to reconfigure. The one exception is a delivery that
+failed before its node started: the call then starts delivery again, on its
+own delivery_preset. The delivery node outlives shutdown(), so a new
+delivery_preset does not reach it.</p>
 <p>Storage lives under the instance directory the host assigns; init fails when
 the host assigned none. Two instances therefore run side by side by giving
 each host its own session directory, and need no port coordination: the
 delivery node picks its own.</p>
+<p>Conversations persist across restarts purely as history. Each init is a new
+installation with a new address, so a conversation from a previous session
+reads back with its messages and history_only set: it can be labelled and
+deleted, but it cannot be sent into or invited to, and it has no roster,
+until a member invites this installation back into the group. Restoring such
+conversations is being worked on.</p>
 </dd></dl>
 
 <dl class="lidl method">
 <dt class="sig sig-object lidl" id="shutdown">
 <span class="sig-name descname"><span class="pre">shutdown</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">result</span></span></span><a class="headerlink" href="#shutdown" title="Link to this definition">#</a></dt>
-<dd><p>Stop the module: end the inbound worker, drop the chat client, and write
-conversation state out. Succeeds when the module was never initialised. A
-later init() starts a fresh session from the persisted state.</p>
+<dd><p>Stop the module: end the inbound worker, drop the chat client, and close its
+storage. Succeeds when the module was never initialised. A later init()
+starts a fresh session from the persisted state. The installation ends here:
+the next one has a new address, and this one’s conversations read back
+history_only.</p>
 </dd></dl>
 
 <dl class="lidl method">
@@ -513,7 +524,7 @@ be empty for an unnamed group.</p>
 <dl class="lidl method">
 <dt class="sig sig-object lidl" id="add_group_member">
 <span class="sig-name descname"><span class="pre">add_group_member</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">convo_id:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">peer_address:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">result</span></span></span><a class="headerlink" href="#add_group_member" title="Link to this definition">#</a></dt>
-<dd><p>Invite the peer at peer_address, and every device it has endorsed, into an
+<dd><p>Invite every installation the account at peer_address endorses into an
 existing group conversation. The invite is committed and delivered
 asynchronously; the peer observes the conversation once its instance has
 joined. Raises conversation_updated here, and members_changed once the
@@ -530,8 +541,9 @@ last_activity_ms for a conversation list.</p>
 <dl class="lidl method">
 <dt class="sig sig-object lidl" id="get_messages">
 <span class="sig-name descname"><span class="pre">get_messages</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">convo_id:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">[Message]</span></span></span><a class="headerlink" href="#get_messages" title="Link to this definition">#</a></dt>
-<dd><p>The messages this installation holds for a conversation, oldest first. An
-unknown conversation reports an empty list rather than failing.</p>
+<dd><p>The messages this installation holds for a conversation, oldest first. They
+survive a restart, which reads back a conversation’s newest 500. An unknown
+conversation reports an empty list rather than failing.</p>
 </dd></dl>
 
 <dl class="lidl method">
@@ -547,8 +559,9 @@ reports an empty roster.</p>
 <dt class="sig sig-object lidl" id="send_message">
 <span class="sig-name descname"><span class="pre">send_message</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">convo_id:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">content:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">result</span></span></span><a class="headerlink" href="#send_message" title="Link to this definition">#</a></dt>
 <dd><p>Encrypt content and publish it to the conversation, then record it here and
-raise message_sent. Success means the message reached delivery, not that
-any peer received it. Fails on an unknown convo_id.</p>
+raise message_sent. Success means the message was handed to
+delivery_module, not that delivery sent it or that any peer received it.
+Fails on an unknown convo_id.</p>
 </dd></dl>
 
 <dl class="lidl method">
@@ -589,9 +602,8 @@ ones are missed.</p>
 <dl class="lidl event">
 <dt class="sig sig-object lidl" id="message_received">
 <span class="sig-name descname"><span class="pre">message_received</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">convo_id:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">content:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">timestamp_ms:</span> <span class="pre">int</span></em>, <em class="sig-param"><span class="pre">sender:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span><a class="headerlink" href="#message_received" title="Link to this definition">#</a></dt>
-<dd><p>An inbound message was decrypted and recorded. sender: the sender’s
-directory-verified account address, or its device id when the sender claims
-no account.</p>
+<dd><p>An inbound message was decrypted and recorded. sender: the sender’s account
+address, which its account’s log vouches for.</p>
 </dd></dl>
 
 <dl class="lidl event">
@@ -612,8 +624,9 @@ empty for direct conversations and unnamed groups.</p>
 <dl class="lidl event">
 <dt class="sig sig-object lidl" id="conversation_updated">
 <span class="sig-name descname"><span class="pre">conversation_updated</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">convo_id:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span><a class="headerlink" href="#conversation_updated" title="Link to this definition">#</a></dt>
-<dd><p>A conversation’s local metadata changed here: a nickname was set, or a
-member was invited. Re-read it with list_conversations.</p>
+<dd><p>A conversation’s local metadata changed here: a nickname was set, a member
+was invited, or an invite back into a history_only conversation cleared the
+flag. Re-read it with list_conversations.</p>
 </dd></dl>
 
 <dl class="lidl event">
@@ -631,11 +644,12 @@ roster it committed.</p>
 
 <dl class="lidl event">
 <dt class="sig sig-object lidl" id="delivery_state_changed">
-<span class="sig-name descname"><span class="pre">delivery_state_changed</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">delivery_state:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">detail:</span> <span class="pre">tstr</span></em><span class="sig-paren">)</span><a class="headerlink" href="#delivery_state_changed" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">delivery_state_changed</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">delivery_state:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">detail:</span> <span class="pre">tstr</span></em>, <em class="sig-param"><span class="pre">delivery_adopted:</span> <span class="pre">bool</span></em><span class="sig-paren">)</span><a class="headerlink" href="#delivery_state_changed" title="Link to this definition">#</a></dt>
 <dd><p>The delivery node’s state changed: “initialising”, “online”, “error” or
 “stopped”, with detail carrying a human-readable reason where there is one.
 Reaching “online” is how a caller learns init() has finished bringing the
-network up.</p>
+network up. delivery_adopted is as in the Status record, and settled by the
+time the state reaches “online”.</p>
 </dd></dl>
 
 </section>
@@ -652,9 +666,10 @@ call. Returned by create_conversation and create_group_conversation.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">nickname</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>, optional) – A label for this conversation, set
 with set_conversation_nickname. Local to this installation; no other
 member sees it.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">message_count</span></code> (<code class="docutils literal notranslate"><span class="pre">int</span></code>) – How many messages this installation holds
-for the conversation. It counts what was received here, not everything
-ever sent to the conversation.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">message_count</span></code> (<code class="docutils literal notranslate"><span class="pre">int</span></code>) – How many messages are kept for the
+conversation, across restarts, including any older than get_messages
+returns. It counts what was sent and received here, not everything ever
+sent to the conversation.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">last_activity_ms</span></code> (<code class="docutils literal notranslate"><span class="pre">int</span></code>) – When the most recent held message
 arrived, in milliseconds since the Unix epoch. Zero when the conversation
 has no messages.</p></li>
@@ -669,6 +684,8 @@ Absent on the same terms.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">preview</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>, optional) – The last message’s content, truncated
 to 160 characters, for a conversation-list preview. Absent when the
 conversation has no messages.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">history_only</span></code> (<code class="docutils literal notranslate"><span class="pre">bool</span></code>) – True for a conversation from a previous
+session, kept for its history only (see init).</p></li>
 </ul>
 </dd></dl>
 
@@ -681,8 +698,8 @@ false for one it received.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">content</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>) – The message text, decrypted.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">timestamp_ms</span></code> (<code class="docutils literal notranslate"><span class="pre">int</span></code>) – When the message was sent (own messages) or
 recorded (received ones), in milliseconds since the Unix epoch.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">sender</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>, optional) – Sender’s account address (device id if
-unassociated); unset on messages this installation sent.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">sender</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>, optional) – Sender’s account address; unset on
+messages this installation sent.</p></li>
 </ul>
 </dd></dl>
 
@@ -697,6 +714,12 @@ vocabulary as the delivery_state_changed event: “initialising”,
 “online”, “error” or “stopped”.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">detail</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>) – A human-readable reason for that state, empty
 when there is none.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">delivery_adopted</span></code> (<code class="docutils literal notranslate"><span class="pre">bool</span></code>) – True when delivery_module already had
+a node this module did not create, in its current process, with its
+delivery_preset; a node it created before its process restarted counts.
+delivery_module runs one node for every module that uses it, configured
+by whichever asked first, so this node keeps the settings it was created
+with, and they may differ from delivery_preset.</p></li>
 </ul>
 </dd></dl>
 
@@ -704,9 +727,7 @@ when there is none.</p></li>
 <dt class="sig sig-object lidl" id="record-GroupMember">
 <span class="property"><span class="pre">type</span> </span><span class="sig-name descname"><span class="pre">GroupMember</span></span><a class="headerlink" href="#record-GroupMember" title="Link to this definition">#</a></dt>
 <dd><ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">address</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>) – The member’s directory-verified account address,
-or empty when the member claims no confirmed account (the UI renders these
-as an unknown account).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">address</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>) – The member’s account address.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">pending</span></code> (<code class="docutils literal notranslate"><span class="pre">bool</span></code>) – True while the group has not committed this
 member’s add, so it cannot read the conversation yet. Only invites this
 instance sent are reported, so a member another instance invited appears
@@ -720,8 +741,10 @@ conversation.</p></li>
 <dt class="sig sig-object lidl" id="record-ChatConfig">
 <span class="property"><span class="pre">type</span> </span><span class="sig-name descname"><span class="pre">ChatConfig</span></span><a class="headerlink" href="#record-ChatConfig" title="Link to this definition">#</a></dt>
 <dd><ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">delivery_preset</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>, optional) – The delivery network to join.
-Empty or absent means “logos.dev”.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">delivery_preset</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>, optional) – The delivery network to create
+delivery_module’s node on. A node that already exists keeps its own,
+which Status.delivery_adopted reports. Empty or absent means
+“logos.test”.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">log_level</span></code> (<code class="docutils literal notranslate"><span class="pre">tstr</span></code>, optional) – How much of the chat core’s own
 account of a run to log: “error” | “warn” | “info” | “debug” |
 “trace”. Absent or unrecognised means “info”. Read once, at init: a later
