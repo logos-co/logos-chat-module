@@ -10,7 +10,7 @@
 ;
 ; The record types below are the contract's source of truth for wire shapes.
 module chat_module {
-  version "0.2.2"
+  version "0.3.0"
   description "Chat module for Logos: e2e-encrypted conversations over delivery_module."
   category "chat"
   depends [delivery_module]
