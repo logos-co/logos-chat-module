@@ -100,13 +100,15 @@ module chat_module {
   ;
   ; Delivery starts asynchronously and this returns without waiting for it, so
   ; the module is not yet reachable when it succeeds. Readiness arrives as a
-  ; delivery_state_changed event reaching "online"; there is no polling
-  ; equivalent. Subscribe to the events before calling this, or the early ones
-  ; are missed.
+  ; delivery_state_changed event reaching "online", and status() reports the
+  ; state at any time. Subscribe to the events before calling this, or the early
+  ; ones are missed.
   ;
-  ; Calling it again while initialised succeeds without doing anything, and the
-  ; new config is ignored — call shutdown() first to reconfigure. The delivery
-  ; node outlives shutdown(), so a new delivery_preset does not reach it.
+  ; Calling it again while initialised succeeds and ignores the new config, so
+  ; call shutdown() first to reconfigure. The one exception is a delivery that
+  ; failed before its node started: the call then starts delivery again, on its
+  ; own delivery_preset. The delivery node outlives shutdown(), so a new
+  ; delivery_preset does not reach it.
   ;
   ; Storage lives under the instance directory the host assigns; init fails when
   ; the host assigned none. Two instances therefore run side by side by giving
@@ -122,7 +124,9 @@ module chat_module {
   method init(config: ChatConfig) -> result
   ; Stop the module: end the inbound worker, drop the chat client, and close its
   ; storage. Succeeds when the module was never initialised.
-  ; A later init() starts a fresh session from the persisted state.
+  ; A later init() starts a fresh session from the persisted state. The
+  ; installation ends here: the next one has a new address, and this one's
+  ; conversations read back history_only.
   method shutdown() -> result
   ; The file this module is writing its log to, in the instance directory the
   ; host assigned. Empty before init, and on a host that assigned none.
@@ -173,8 +177,9 @@ module chat_module {
   ; reports an empty roster.
   method list_group_members(convo_id: tstr) -> [GroupMember]
   ; Encrypt content and publish it to the conversation, then record it here and
-  ; raise message_sent. Success means the message reached delivery, not that any
-  ; peer received it. Fails on an unknown convo_id.
+  ; raise message_sent. Success means the message was handed to delivery_module,
+  ; not that delivery sent it or that any peer received it. Fails on an unknown
+  ; convo_id.
   method send_message(convo_id: tstr, content: tstr) -> result
   ; Label a conversation for this installation; empty clears the label. Local
   ; only — unlike a group's name, no other member sees it. Raises
