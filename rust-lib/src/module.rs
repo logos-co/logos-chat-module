@@ -51,8 +51,8 @@ pub(crate) const LIBCHAT_PERSISTENCE_ENABLED: bool = false;
 // ── Delivery state ──────────────────────────────────────────────────────────
 
 /// `Initialising` covers the gap between a successful init and delivery
-/// finishing startup (the start/subscribe handshake in `actions::initialize`),
-/// at which point we report `Online` — distinct from `Stopped`, which means not
+/// reporting its node started (see `actions::start_delivery_bootstrap`), at
+/// which point we report `Online` — distinct from `Stopped`, which means not
 /// initialised.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DeliveryStateKind {
@@ -76,11 +76,14 @@ impl DeliveryStateKind {
 }
 
 /// Mirrors the payload of the `delivery_state_changed` event and the same
-/// fields in `status`, except `started`, which only this module reads.
+/// fields in `status`, except `starting` and `started`, which only this module
+/// reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DeliveryState {
     pub state: DeliveryStateKind,
     pub detail: String,
+    /// This init dispatched `start` and waits for delivery's `nodeStarted`.
+    pub starting: bool,
     /// This init's bootstrap started the node, so connectivity is this module's.
     pub started: bool,
     /// The node already existed and was not created by this process with its
@@ -93,6 +96,7 @@ impl DeliveryState {
         Self {
             state: DeliveryStateKind::Initialising,
             detail: String::new(),
+            starting: false,
             started: false,
             adopted: false,
         }
@@ -102,6 +106,7 @@ impl DeliveryState {
         Self {
             state: DeliveryStateKind::Stopped,
             detail: String::new(),
+            starting: false,
             started: false,
             adopted: false,
         }

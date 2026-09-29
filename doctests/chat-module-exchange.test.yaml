@@ -154,7 +154,7 @@ sections:
     text: |
       `init(config)` returns immediately and kicks off the
       delivery bootstrap asynchronously; `status().delivery_state` flips to
-      `online` when the delivery transport connects. Initial topic subscriptions
+      `online` when delivery reports its node started. Initial topic subscriptions
       are dispatched asynchronously after that. Both instances are initialised
       **first** so their two cold Waku
       bootstraps overlap, then each is polled; the wait is ~the slower of the two,
