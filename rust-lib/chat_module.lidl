@@ -118,8 +118,9 @@ module chat_module {
   ; Conversations persist across restarts purely as history. Each init is a new
   ; installation with a new address, so a conversation from a previous session
   ; reads back with its messages and history_only set: it can be labelled and
-  ; deleted, but it cannot be sent into or invited to, and it has no roster,
-  ; until a member invites this installation back into the group.
+  ; deleted, but it cannot be sent into or have its membership changed, and
+  ; it has no roster, until a member invites this installation back into
+  ; the group.
   ; Restoring such conversations is being worked on.
   method init(config: ChatConfig) -> result
   ; Stop the module: end the inbound worker, drop the chat client, and close its
@@ -164,6 +165,15 @@ module chat_module {
   ; joined. Raises conversation_updated here, and members_changed once the
   ; group commits the add. Fails on an unknown convo_id.
   method add_group_member(convo_id: tstr, peer_address: tstr) -> result
+  ; Remove every installation of the account at peer_address from a group
+  ; conversation. The group votes on the removal and, if it approves, the
+  ; member leaves the roster when the commit lands, usually a minute or more
+  ; later: members_changed reports it then, and this call raises nothing.
+  ; Fails on an unknown convo_id, on this installation's own address, on an
+  ; address with no committed member in the group, including one whose
+  ; invite is still pending, and while the group is committing a change or
+  ; re-electing its stewards.
+  method remove_group_member(convo_id: tstr, peer_address: tstr) -> result
   ; Every conversation this installation holds, in no particular order — sort
   ; by last_activity_ms for a conversation list.
   method list_conversations() -> [Conversation]
