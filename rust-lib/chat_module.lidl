@@ -80,9 +80,14 @@ module chat_module {
     ; True while the group has not committed this member's add, so it cannot
     ; read the conversation yet. Only invites this instance sent are reported, so
     ; a member another instance invited appears once the group commits it. The
-    ; flag clears when that commit lands; an invite the group never commits stays
+    ; flag clears when that commit lands, or moves to rejected when the group
+    ; votes the add down; an add the group approves but never commits stays
     ; pending for the life of the conversation.
     pending: bool
+    ; True when the group voted down this member's add, which it does to every
+    ; add in a group of two whose other member no longer runs. The member stays
+    ; out until add_group_member invites it again.
+    rejected: bool
   }
 
   ; --- lifecycle ---
@@ -162,7 +167,7 @@ module chat_module {
   ; existing group conversation. The invite is committed and delivered
   ; asynchronously; the peer observes the conversation once its instance has
   ; joined. Raises conversation_updated here, and members_changed once the
-  ; group commits the add. Fails on an unknown convo_id.
+  ; group commits the add or votes it down. Fails on an unknown convo_id.
   method add_group_member(convo_id: tstr, peer_address: tstr) -> result
   ; Every conversation this installation holds, in no particular order — sort
   ; by last_activity_ms for a conversation list.
@@ -172,9 +177,9 @@ module chat_module {
   ; conversation reports an empty list rather than failing.
   method get_messages(convo_id: tstr) -> [Message]
   ; The roster of a conversation, one GroupMember per element: committed members
-  ; first, then invites still awaiting the group's commit. A direct conversation
-  ; reports both participants and never a pending one; an unknown conversation
-  ; reports an empty roster.
+  ; first, then invites still awaiting the group's commit, then invites the group
+  ; voted down. A direct conversation reports both participants and never a
+  ; pending or rejected one; an unknown conversation reports an empty roster.
   method list_group_members(convo_id: tstr) -> [GroupMember]
   ; Encrypt content and publish it to the conversation, then record it here and
   ; raise message_sent. Success means the message was handed to delivery_module,
@@ -212,8 +217,8 @@ module chat_module {
   ; was invited, or an invite back into a history_only conversation cleared
   ; the flag. Re-read it with list_conversations.
   event conversation_updated(convo_id: tstr)
-  ; The group committed a roster change. Call list_group_members for the roster
-  ; it committed.
+  ; The group committed a roster change, or voted down an invite this
+  ; installation sent. Call list_group_members for the roster as it now stands.
   event members_changed(convo_id: tstr)
   ; A conversation was deleted on this installation.
   event conversation_deleted(convo_id: tstr)

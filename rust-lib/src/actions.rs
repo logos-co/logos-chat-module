@@ -562,25 +562,31 @@ pub(crate) fn add_group_member(convo_id: &str, peer_address: &str) -> Result<(),
 
 /// The roster of the conversation `convo_id`, one [`GroupMember`] per
 /// installation: its committed members, then the invites whose commit has not
-/// landed; a direct conversation reports both participants. This is a plain
-/// list with no error channel, mirroring `get_messages`: an unknown
-/// conversation, or a client error, yields an empty array (the client error is
-/// logged).
+/// landed, then the invites the group voted down; a direct conversation reports
+/// both participants. This is a plain list with no error channel, mirroring
+/// `get_messages`: an unknown conversation, or a client error, yields an empty
+/// array (the client error is logged).
 pub(crate) fn list_group_members(convo_id: &str) -> Vec<GroupMember> {
     if check_live(convo_id).is_err() {
         return Vec::new();
     }
     let roster = with_client(|client| {
-        Ok::<_, ClientError>((client.members(convo_id)?, client.pending_members(convo_id)?))
+        Ok::<_, ClientError>((
+            client.members(convo_id)?,
+            client.pending_members(convo_id)?,
+            client.rejected_members(convo_id)?,
+        ))
     });
     match roster {
-        Ok(Ok((committed, invited))) => committed
+        Ok(Ok((committed, invited, rejected))) => committed
             .into_iter()
-            .map(|member| (member, false))
-            .chain(invited.into_iter().map(|member| (member, true)))
-            .map(|(member, pending)| GroupMember {
+            .map(|member| (member, false, false))
+            .chain(invited.into_iter().map(|member| (member, true, false)))
+            .chain(rejected.into_iter().map(|member| (member, false, true)))
+            .map(|(member, pending, rejected)| GroupMember {
                 address: member.account.to_string(),
                 pending,
+                rejected,
             })
             .collect(),
         Ok(Err(e)) => {
