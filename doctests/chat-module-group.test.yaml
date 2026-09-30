@@ -33,6 +33,7 @@ what_you_learn:
   - "Why a group join lands asynchronously (consensus + steward commit + welcome), and how to observe it by polling `list_conversations`"
   - "How every member shares one conversation id, and how `get_messages` attributes each inbound message to its sender's account address"
   - "Remove a member with `remove_group_member`, and why the roster changes only once the group commits the removal"
+  - "How the removed member's instance flags the group `removed` and refuses a send into it"
 
 prerequisites:
   - |
@@ -491,6 +492,80 @@ sections:
           and raises `members_changed` then, so a UI should refresh its roster
           on that event, not on the call's return. Both converge on the same
           two members.
+
+  - title: "The removed member keeps the conversation, read only"
+    step: true
+    text: |
+      Carol's instance applies the same commit and learns from it that she is
+      no longer a member. It keeps the conversation and its messages, and
+      flags it `removed`.
+    steps:
+      - title: "Carol's conversation reads removed"
+        run: |
+          gid=$(cat group-id.txt)
+          # Alice and Bob have applied the commit, so the candidates carrying
+          # it are out. Carol applies it at the latest 30 s (the freeze) after
+          # one reaches her, plus 540 s for a message logos.test delivers
+          # 9 min late: 570 s, or 143 polls 4 s apart.
+          row=""
+          for i in $(seq 1 143); do
+            row=$(./logos/bin/logoscore --config-dir carol call chat_module list_conversations 2>/dev/null | jq -c --arg id "$gid" '.result[]? | select(.convo_id == $id and .removed)' || true)
+            if [ -n "$row" ]; then break; fi
+            sleep 4
+          done
+          [ -n "$row" ] || { echo "carol's conversation never read removed" >&2; tail -n 40 carol-daemon.log >&2; exit 1; }
+          echo "$row" | jq -e '.history_only == false' >/dev/null \
+            || { echo "carol's removed conversation reads history_only: $row" >&2; exit 1; }
+          echo "CAROL_SEES_REMOVED $gid"
+        code_block: |
+          # poll until Carol's row for the group reads "removed": true, then
+          # check that it reads "history_only": false
+          logoscore --config-dir carol call chat_module list_conversations
+        expect_contains:
+          - "CAROL_SEES_REMOVED"
+        post_text: |
+          The instance sets `removed` when it applies the commit, and raises
+          `conversation_updated` then, so a UI re-reads the conversation on
+          that event. `history_only` stays false, since the conversation is
+          from this session. The flag is stored with the conversation: after a
+          restart it still reads `removed`, with `history_only` set as well.
+      - title: "Carol's send is refused"
+        run: |
+          gid=$(cat group-id.txt)
+          out=$(./logos/bin/logoscore --config-dir carol call chat_module send_message "str:$gid" still-here || true)
+          echo "$out"
+          case "$out" in
+            *'removed from'*) echo "CAROL_SEND_REFUSED";;
+            *) echo "carol's send into the group did not fail as expected" >&2; exit 1;;
+          esac
+        code_block: |
+          logoscore --config-dir carol call chat_module send_message "str:$GROUP_ID" still-here
+        expect_contains:
+          - "CAROL_SEND_REFUSED"
+        post_text: |
+          The send fails before anything is encrypted or published, and says
+          why. The conversation stays readable, and can still be labelled or
+          deleted.
+      - title: "Carol keeps the messages, without a roster"
+        run: |
+          gid=$(cat group-id.txt)
+          addr=$(cat alice-addr.txt)
+          ./logos/bin/logoscore --config-dir carol call chat_module get_messages "str:$gid" \
+            | jq -e --arg a "$addr" 'any(.result[]; .content == "hello-group" and .sender == $a)' >/dev/null \
+            || { echo "carol lost alice's message after the removal" >&2; exit 1; }
+          ./logos/bin/logoscore --config-dir carol call chat_module list_group_members "str:$gid" \
+            | jq -e '.status == "ok" and ((.result // []) | length == 0)' >/dev/null \
+            || { echo "carol's removed group still lists a roster" >&2; exit 1; }
+          echo "CAROL_KEEPS_MESSAGES_WITHOUT_ROSTER"
+        code_block: |
+          # Alice's message is still there, and the roster is empty
+          logoscore --config-dir carol call chat_module get_messages "str:$GROUP_ID"
+          logoscore --config-dir carol call chat_module list_group_members "str:$GROUP_ID"
+        expect_contains:
+          - "CAROL_KEEPS_MESSAGES_WITHOUT_ROSTER"
+        post_text: |
+          Nothing is polled here: both are local reads. The roster reads empty,
+          as it does for a conversation from a previous session.
 
   - title: "Stop the daemons"
     step: true
