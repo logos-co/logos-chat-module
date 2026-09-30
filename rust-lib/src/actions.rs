@@ -47,6 +47,8 @@ pub(crate) enum CoreError {
     Client(#[from] ClientError),
     #[error("conversation is from a previous session and kept for its history only")]
     HistoryOnly,
+    #[error("this installation was removed from the group")]
+    Removed,
     #[error("chat.db: {0}")]
     Store(#[from] rusqlite::Error),
 }
@@ -430,14 +432,22 @@ fn record_message(
     Ok(())
 }
 
-/// Fails unless `convo_id` is a conversation of this session:
-/// [`CoreError::NotFound`] for an unknown one, [`CoreError::HistoryOnly`] for
-/// one kept from a previous session.
+/// Fails unless `convo_id` is a conversation of this session that this
+/// installation still belongs to: [`CoreError::NotFound`] for an unknown one,
+/// [`CoreError::Removed`] for a group that removed it, in this session or an
+/// earlier one, and [`CoreError::HistoryOnly`] for any other kept from a
+/// previous session.
 fn check_live(convo_id: &str) -> Result<(), CoreError> {
-    match with_display(|d| d.state.chats.get(convo_id).map(|s| s.history_only)) {
+    match with_display(|d| {
+        d.state
+            .chats
+            .get(convo_id)
+            .map(|s| (s.removed, s.history_only))
+    }) {
         None => Err(CoreError::NotFound),
-        Some(true) => Err(CoreError::HistoryOnly),
-        Some(false) => Ok(()),
+        Some((true, _)) => Err(CoreError::Removed),
+        Some((false, true)) => Err(CoreError::HistoryOnly),
+        Some((false, false)) => Ok(()),
     }
 }
 
@@ -491,6 +501,7 @@ pub(crate) fn create_conversation(peer_address: &str) -> Result<String, CoreErro
                 messages: Vec::new(),
                 older_messages: 0,
                 history_only: false,
+                removed: false,
             },
         );
         persist_chat(d, &chat_id)
@@ -532,6 +543,7 @@ pub(crate) fn create_group_conversation(name: &str, desc: &str) -> Result<String
                 messages: Vec::new(),
                 older_messages: 0,
                 history_only: false,
+                removed: false,
             },
         );
         persist_chat(d, &chat_id)
@@ -623,6 +635,7 @@ pub(crate) fn list_conversations() -> Vec<Conversation> {
                     .last()
                     .map(|m| m.content.chars().take(PREVIEW_MAX_CHARS).collect()),
                 history_only: s.history_only,
+                removed: s.removed,
             })
             .collect()
     })
@@ -755,7 +768,8 @@ pub(crate) fn record_node_started(d: &mut Display, success: bool, message: &str)
 
 /// Record a newly-observed conversation (the client's `ConversationStarted`
 /// event) and surface it, classed by `kind`. No-op for a locally-deleted or
-/// already-known conversation, except that a history-only one is live again.
+/// already-known conversation, except that a history-only or removed one is
+/// live again.
 /// Called from the event consumer thread; a group first reads its shared
 /// metadata under the client lock, then records under the display lock (the
 /// two are never held at once).
@@ -784,9 +798,17 @@ pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind
         if d.state.deleted.contains(convo_id) {
             return;
         }
-        // Invited back into a conversation from a previous session.
+        // Invited back into a conversation from a previous session, or into a
+        // group that removed this installation.
         if let Some(session) = d.state.chats.get_mut(convo_id) {
-            if std::mem::take(&mut session.history_only) {
+            let history_only = std::mem::take(&mut session.history_only);
+            let removed = std::mem::take(&mut session.removed);
+            if removed {
+                if let Err(e) = persist_chat(d, convo_id) {
+                    tracing::error!("saving a group rejoined after a removal failed: {e}");
+                }
+            }
+            if history_only || removed {
                 crate::emit_conversation_updated(convo_id);
             }
             return;
@@ -803,6 +825,7 @@ pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind
                 messages: Vec::new(),
                 older_messages: 0,
                 history_only: false,
+                removed: false,
             },
         );
         crate::emit_conversation_created(
@@ -861,6 +884,7 @@ pub(crate) fn record_message_received(
                 messages: Vec::new(),
                 older_messages: 0,
                 history_only: false,
+                removed: false,
             });
         if session.kind == ConversationKind::Direct && session.peer.is_none() {
             session.peer = Some(account.to_owned());
@@ -897,6 +921,25 @@ pub(crate) fn record_members_changed(convo_id: &str) {
     });
 }
 
+/// Mark a group this installation was removed from (the client's
+/// `ConversationLeft` event), store the mark and surface it. No-op for a
+/// locally-deleted, unknown or already removed conversation.
+pub(crate) fn record_conversation_left(d: &mut Display, convo_id: &str) {
+    if d.state.deleted.contains(convo_id) {
+        return;
+    }
+    let Some(session) = d.state.chats.get_mut(convo_id) else {
+        return;
+    };
+    if std::mem::replace(&mut session.removed, true) {
+        return;
+    }
+    if let Err(e) = persist_chat(d, convo_id) {
+        tracing::error!("saving a group's removal failed: {e}");
+    }
+    crate::emit_conversation_updated(convo_id);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -914,6 +957,7 @@ mod tests {
             messages: Vec::new(),
             older_messages: 0,
             history_only: false,
+            removed: false,
         }
     }
 
@@ -985,6 +1029,103 @@ mod tests {
             with_display(|d| d.state.chats.get(CONVO).map(|s| s.history_only)),
             Some(false)
         );
+    }
+
+    #[test]
+    fn a_removal_is_marked_and_survives_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("chat.db");
+        let mut d = Display {
+            chat_db: Some(persistence::open(&path, KEY).unwrap()),
+            ..Display::default()
+        };
+        d.state.chats.insert(
+            "group".into(),
+            ChatSession {
+                kind: ConversationKind::Group,
+                ..direct_chat("group")
+            },
+        );
+
+        record_conversation_left(&mut d, "group");
+
+        assert!(d.state.chats["group"].removed);
+        drop(d);
+        let state = persistence::load_state(&persistence::open(&path, KEY).unwrap()).unwrap();
+        assert!(state.chats["group"].removed);
+    }
+
+    #[test]
+    fn a_deleted_or_unknown_group_is_not_marked_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut d = Display {
+            chat_db: Some(persistence::open(&dir.path().join("chat.db"), KEY).unwrap()),
+            ..Display::default()
+        };
+        d.state.deleted.insert("deleted-group".into());
+
+        record_conversation_left(&mut d, "deleted-group");
+        record_conversation_left(&mut d, "unknown-group");
+
+        assert!(d.state.chats.is_empty());
+        let stored = persistence::load_state(d.chat_db.as_ref().unwrap()).unwrap();
+        assert!(stored.chats.is_empty());
+    }
+
+    #[test]
+    fn a_removed_group_invited_back_is_live() {
+        const CONVO: &str = "removed-group";
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("chat.db");
+        let group = ChatSession {
+            kind: ConversationKind::Group,
+            removed: true,
+            ..direct_chat(CONVO)
+        };
+        let chat_db = persistence::open(&path, KEY).unwrap();
+        persistence::save_chat(&chat_db, &group).unwrap();
+        // The display is process-wide: no other test gives it a chat.db.
+        with_display_mut(|d| {
+            d.chat_db = Some(chat_db);
+            d.state.chats.insert(CONVO.into(), group);
+        });
+
+        record_conversation_started(CONVO, ConversationKind::Group);
+
+        let removed = with_display_mut(|d| {
+            d.chat_db = None;
+            d.state.chats.get(CONVO).map(|s| s.removed)
+        });
+        assert_eq!(removed, Some(false));
+        let state = persistence::load_state(&persistence::open(&path, KEY).unwrap()).unwrap();
+        assert!(!state.chats[CONVO].removed);
+    }
+
+    #[test]
+    fn a_removed_group_is_refused_as_removed_even_after_a_restart() {
+        const CONVO: &str = "refusing-removed-group";
+        const RESTARTED: &str = "refusing-removed-group-after-a-restart";
+        with_display_mut(|d| {
+            for (convo, history_only) in [(CONVO, false), (RESTARTED, true)] {
+                d.state.chats.insert(
+                    convo.into(),
+                    ChatSession {
+                        kind: ConversationKind::Group,
+                        history_only,
+                        removed: true,
+                        ..direct_chat(convo)
+                    },
+                );
+            }
+        });
+
+        for convo in [CONVO, RESTARTED] {
+            let refusal = check_live(convo);
+            assert!(
+                matches!(refusal, Err(CoreError::Removed)),
+                "{convo}: {refusal:?}"
+            );
+        }
     }
 
     #[test]

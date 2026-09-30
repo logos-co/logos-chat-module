@@ -29,7 +29,10 @@ use rusqlite::{params, Connection, OptionalExtension};
 use rusqlite_migration::{Migrations, M};
 
 /// The module's own tables. A change to them is a new migration appended here.
-const MIGRATION_ARRAY: &[M] = &[M::up(include_str!("migrations/001_app_state.sql"))];
+const MIGRATION_ARRAY: &[M] = &[
+    M::up(include_str!("migrations/001_app_state.sql")),
+    M::up(include_str!("migrations/002_removed_groups.sql")),
+];
 const MIGRATIONS: Migrations = Migrations::from_slice(MIGRATION_ARRAY);
 
 /// How many of a chat's newest messages [`load_state`] reads back.
@@ -111,6 +114,9 @@ pub(crate) struct ChatSession {
     /// From a previous session, so the client holds no conversation for it and
     /// it is kept for its history only.
     pub history_only: bool,
+    /// A commit removed this installation from the group. Stored, unlike
+    /// `history_only`, so it outlives the session that saw the removal.
+    pub removed: bool,
 }
 
 /// Everything the module persists, as read back at init.
@@ -139,8 +145,8 @@ pub(crate) fn open(path: &Path, key: &str) -> rusqlite_migration::Result<Connect
 pub(crate) fn load_state(conn: &Connection) -> rusqlite::Result<AppState> {
     let store = MessageStore::new(conn);
     let mut chats = HashMap::new();
-    let mut stmt =
-        conn.prepare("SELECT chat_id, kind, nickname, name, description, peer FROM chats")?;
+    let mut stmt = conn
+        .prepare("SELECT chat_id, kind, nickname, name, description, peer, removed FROM chats")?;
     let rows = stmt.query_map([], |row| {
         Ok(ChatSession {
             chat_id: row.get(0)?,
@@ -152,6 +158,7 @@ pub(crate) fn load_state(conn: &Connection) -> rusqlite::Result<AppState> {
             messages: Vec::new(),
             older_messages: 0,
             history_only: false,
+            removed: row.get(6)?,
         })
     })?;
     for session in rows {
@@ -187,14 +194,15 @@ pub(crate) fn load_state(conn: &Connection) -> rusqlite::Result<AppState> {
 /// Write a chat's row, inserting it or replacing what it held.
 pub(crate) fn save_chat(conn: &Connection, session: &ChatSession) -> rusqlite::Result<()> {
     conn.execute(
-        "INSERT INTO chats (chat_id, kind, nickname, name, description, peer)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "INSERT INTO chats (chat_id, kind, nickname, name, description, peer, removed)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
          ON CONFLICT (chat_id) DO UPDATE SET
              kind = excluded.kind,
              nickname = excluded.nickname,
              name = excluded.name,
              description = excluded.description,
-             peer = excluded.peer",
+             peer = excluded.peer,
+             removed = excluded.removed",
         params![
             session.chat_id,
             session.kind,
@@ -202,6 +210,7 @@ pub(crate) fn save_chat(conn: &Connection, session: &ChatSession) -> rusqlite::R
             session.name,
             session.description,
             session.peer,
+            session.removed,
         ],
     )?;
     Ok(())
@@ -277,6 +286,7 @@ mod tests {
             messages: Vec::new(),
             older_messages: 0,
             history_only: false,
+            removed: false,
         }
     }
 
@@ -349,6 +359,26 @@ mod tests {
             .map(|m| (m.from_self, m.content.as_str(), m.sender.as_deref()))
             .collect();
         assert_eq!(read_back, [(false, "hi saro", Some("raya-account"))]);
+    }
+
+    #[test]
+    fn a_chat_stored_before_the_removed_mark_is_not_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("chat.db");
+        {
+            let mut conn = Connection::open(&path).unwrap();
+            conn.pragma_update(None, "key", KEY).unwrap();
+            MIGRATIONS.to_version(&mut conn, 1).unwrap();
+            conn.execute(
+                "INSERT INTO chats (chat_id, kind) VALUES ('group', 'group')",
+                [],
+            )
+            .unwrap();
+        }
+
+        let state = load_state(&open(&path, KEY).unwrap()).unwrap();
+
+        assert!(!state.chats["group"].removed);
     }
 
     #[test]
