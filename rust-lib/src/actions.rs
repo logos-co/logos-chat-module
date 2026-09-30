@@ -560,6 +560,17 @@ pub(crate) fn add_group_member(convo_id: &str, peer_address: &str) -> Result<(),
     Ok(())
 }
 
+/// Propose removing every installation of the account at `peer_address` from
+/// a group conversation. The member stays on the roster until the group has
+/// voted and committed the removal, so nothing is emitted here: the commit
+/// surfaces as `members_changed`.
+pub(crate) fn remove_group_member(convo_id: &str, peer_address: &str) -> Result<(), CoreError> {
+    check_live(convo_id)?;
+
+    with_client(|client| client.remove_group_participants(convo_id, &[peer_address]))??;
+    Ok(())
+}
+
 /// The roster of the conversation `convo_id`, one [`GroupMember`] per
 /// installation: its committed members, then the invites whose commit has not
 /// landed; a direct conversation reports both participants. This is a plain

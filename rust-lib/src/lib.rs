@@ -170,6 +170,16 @@ impl ChatModule for ChatModuleImpl {
             .map_err(|e| e.to_string())
     }
 
+    fn remove_group_member(
+        &mut self,
+        convo_id: String,
+        peer_address: String,
+    ) -> Result<Value, String> {
+        actions::remove_group_member(&convo_id, &peer_address)
+            .map(|()| Value::Null)
+            .map_err(|e| e.to_string())
+    }
+
     fn list_conversations(&mut self) -> Vec<Conversation> {
         actions::list_conversations()
     }

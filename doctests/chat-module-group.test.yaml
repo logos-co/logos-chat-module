@@ -15,8 +15,8 @@ intro: |
   daemons (Alice, Bob, and Carol), each loading `chat_module` and its runtime
   dependency `delivery_module`, and drives them through the `logoscore call`
   CLI: `init`, `get_address`, `create_group_conversation`, `add_group_member`,
-  `send_message`, and reading the shared thread back with
-  `list_conversations` / `get_messages`.
+  `remove_group_member`, `send_message`, and reading the shared thread back
+  with `list_conversations` / `get_messages`.
 
   Group membership changes are **asynchronous by design**: an add is first
   agreed by the group (a consensus proposal), then batched into an MLS commit
@@ -25,13 +25,14 @@ intro: |
   expect a join to land minutes after the `add_group_member` call over the
   live network — the poll loops below are budgeted for that.
 
-what_you_build: "A verified three-member, end-to-end-encrypted group conversation across three headless chat_module instances, grown member by member, with sender-attributed message fan-out."
+what_you_build: "A verified three-member, end-to-end-encrypted group conversation across three headless chat_module instances, grown member by member, with sender-attributed message fan-out, then shrunk to two by a removal."
 
 what_you_learn:
   - "Run three isolated `logoscore` daemons on one host, selected by `--config-dir`"
   - "Create a named group with `create_group_conversation` and grow it with `add_group_member` — including an add proposed by a non-creator member"
   - "Why a group join lands asynchronously (consensus + steward commit + welcome), and how to observe it by polling `list_conversations`"
   - "How every member shares one conversation id, and how `get_messages` attributes each inbound message to its sender's account address"
+  - "Remove a member with `remove_group_member`, and why the roster changes only once the group commits the removal"
 
 prerequisites:
   - |
@@ -427,6 +428,69 @@ sections:
           The newest member's messages reach the founding members and vice
           versa: all three instances share one MLS group at one epoch, and
           every message is end-to-end encrypted and sender-attributed.
+
+  - title: "Remove a member from the group"
+    step: true
+    text: |
+      Alice removes Carol by her address. A removal goes through the group as
+      an add does: the members vote on it, the steward commits it after the
+      commit-inactivity window, and Carol leaves the roster only when that
+      commit lands. So Alice's call returns at once, and the rosters change a
+      minute or more later.
+    steps:
+      - title: "Alice removes Carol"
+        run: |
+          gid=$(cat group-id.txt)
+          removed=""
+          # 120 s on de-mls's defaults, 24 tries 5 s apart: a 30 s freeze that
+          # lands no commit, then a re-election of up to three 30 s rounds.
+          for i in $(seq 1 24); do
+            out=$(./logos/bin/logoscore --config-dir alice call chat_module remove_group_member "str:$gid" @carol-addr.txt 2>/dev/null || true)
+            if echo "$out" | jq -e '.result.success == true' >/dev/null 2>&1; then removed=1; echo "CAROL_REMOVAL_PROPOSED"; break; fi
+            sleep 5
+          done
+          [ -n "$removed" ] || { echo "alice could not remove carol: $out" >&2; exit 1; }
+        code_block: |
+          logoscore --config-dir alice call chat_module remove_group_member "str:$GROUP_ID" @carol-addr.txt
+        expect_contains:
+          - "CAROL_REMOVAL_PROPOSED"
+        post_text: |
+          The call returns as soon as the removal is proposed, and raises no
+          event: nothing on the roster changes until the commit lands. The
+          group refuses a membership change while it is committing one or
+          re-electing its stewards; this step retries the call through such a
+          window.
+      - title: "Alice's and Bob's rosters drop Carol"
+        run: |
+          gid=$(cat group-id.txt)
+          a=$(cat alice-addr.txt); b=$(cat bob-addr.txt); c=$(cat carol-addr.txt)
+          # 110 s on de-mls's defaults (10 s vote, 10 s steward election vote
+          # if Carol is a steward, 60 s batch window, up to 30 s freeze) plus
+          # 540 s for a message logos.test delivers 9 min late: 650 s, or 163
+          # polls 4 s apart.
+          for who in alice bob; do
+            ok=""
+            for i in $(seq 1 163); do
+              roster=$(./logos/bin/logoscore --config-dir "$who" call chat_module list_group_members "str:$gid" 2>/dev/null | jq -r '.result[]? | select(.pending | not) | .address' || true)
+              if printf '%s\n' "$roster" | grep -qF "$a" && printf '%s\n' "$roster" | grep -qF "$b" && ! printf '%s\n' "$roster" | grep -qF "$c"; then
+                ok=1; echo "$(echo "$who" | tr a-z A-Z)_ROSTER_WITHOUT_CAROL"; break
+              fi
+              sleep 4
+            done
+            [ -n "$ok" ] || { echo "$who roster never dropped carol: $roster" >&2; tail -n 40 "${who}-daemon.log" >&2; exit 1; }
+          done
+        code_block: |
+          # each roster lists Alice's and Bob's addresses, and no longer Carol's
+          logoscore --config-dir alice call chat_module list_group_members "str:$GROUP_ID"
+          logoscore --config-dir bob   call chat_module list_group_members "str:$GROUP_ID"
+        expect_contains:
+          - "ALICE_ROSTER_WITHOUT_CAROL"
+          - "BOB_ROSTER_WITHOUT_CAROL"
+        post_text: |
+          Each instance drops Carol from its roster when it applies the commit,
+          and raises `members_changed` then, so a UI should refresh its roster
+          on that event, not on the call's return. Both converge on the same
+          two members.
 
   - title: "Stop the daemons"
     step: true
