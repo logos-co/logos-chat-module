@@ -45,6 +45,12 @@ module chat_module {
     ; True for a conversation from a previous session, kept for its history
     ; only (see init).
     history_only: bool
+    ; True for a group this installation was removed from. Its messages still
+    ; read back, but send_message, add_group_member and remove_group_member fail
+    ; on it and list_group_members reports an empty roster, until this
+    ; installation joins the group again. The flag outlives a restart, after
+    ; which history_only is set as well.
+    removed: bool
   }
   type Message {
     ; True for a message this installation sent, false for one it received.
@@ -219,8 +225,9 @@ module chat_module {
   ; unnamed groups.
   event conversation_created(convo_id: tstr, is_outgoing: bool, peer_label: tstr, kind: tstr, name: tstr, desc: tstr)
   ; A conversation's local metadata changed here: a nickname was set, a member
-  ; was invited, or an invite back into a history_only conversation cleared
-  ; the flag. Re-read it with list_conversations.
+  ; was invited, the group removed this installation, or an invite back into a
+  ; history_only or removed conversation cleared those flags. Re-read it with
+  ; list_conversations.
   event conversation_updated(convo_id: tstr)
   ; The group committed a roster change. Call list_group_members for the roster
   ; it committed.
