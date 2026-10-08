@@ -178,7 +178,8 @@ module chat_module {
   method list_group_members(convo_id: tstr) -> [GroupMember]
   ; Encrypt content and publish it to the conversation, then record it here and
   ; raise message_sent. Success means the message was handed to delivery_module,
-  ; not that delivery sent it or that any peer received it. Fails on an unknown
+  ; not that it reached the network or that any peer received it;
+  ; delivery_send_failed follows when it never does. Fails on an unknown
   ; convo_id.
   method send_message(convo_id: tstr, content: tstr) -> result
   ; Label a conversation for this installation; empty clears the label. Local
@@ -223,4 +224,9 @@ module chat_module {
   ; network up. delivery_adopted is as in the Status record, and settled by the
   ; time the state reaches "online".
   event delivery_state_changed(delivery_state: tstr, detail: tstr, delivery_adopted: bool)
+  ; delivery_module could not put on the network something this installation
+  ; handed it: a message, an invite or a group's commit. Which one is not
+  ; reported. reason is delivery_module's own. Not raised for what did reach the
+  ; network and no store node then confirmed.
+  event delivery_send_failed(reason: tstr)
 }
