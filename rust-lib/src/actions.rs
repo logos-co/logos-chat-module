@@ -19,6 +19,7 @@ use logos_generic_chat::{
 use message_store::Direction;
 
 use crate::delivery::{delivery_outcome, SdkDelivery};
+use crate::inbound::SendEvents;
 use crate::{Conversation, GroupMember, Message, Status};
 
 /// The devnet registry: DirectV1 publishes this installation's key package there
@@ -103,9 +104,12 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     // delivery_module's `messageReceived`, the client's worker drains the rx (via
     // `Transport::inbound`). The subscribe channel carries the core's inbound-address
     // subscriptions to the bridge, which forwards them to delivery_module once the
-    // node is started.
+    // node is started. The accepted channel carries the request id of each send
+    // delivery_module accepted, which the bridge matches against the outcomes
+    // delivery_module reports.
     let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded();
     let (subscribe_tx, subscribe_rx) = crossbeam_channel::unbounded();
+    let (accepted_tx, accepted_rx) = crossbeam_channel::unbounded();
 
     // Do the fallible *local* setup (store open, client build) before touching
     // delivery_module. The node's lifecycle is irreversible — createNode rejects
@@ -123,7 +127,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     let auth = HttpAuthClient::new(DEFAULT_REGISTRY_URL);
     let installation = register_installation(auth.clone())
         .map_err(|e| InitError::Internal(format!("publish account failed: {e}")))?;
-    let transport = SdkDelivery::new(inbound_rx, subscribe_tx);
+    let transport = SdkDelivery::new(inbound_rx, subscribe_tx, accepted_tx);
     // Submit over the registry's HTTP API, which acknowledges each bundle. The
     // delivery wire it offers instead is fire-and-forget, so a rejected bundle
     // would surface only as a peer failing to resolve us much later.
@@ -181,6 +185,15 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
             None
         }
     };
+    let sends = SendEvents {
+        accepted: accepted_rx,
+        propagated: dm.on_message_propagated().map_err(|e| {
+            InitError::Delivery(format!("subscribe(messagePropagated) failed: {e}"))
+        })?,
+        failed: dm
+            .on_message_error()
+            .map_err(|e| InitError::Delivery(format!("subscribe(messageError) failed: {e}")))?,
+    };
 
     let stop = Arc::new(AtomicBool::new(false));
     let inbound_thread = crate::inbound::spawn_bridge(
@@ -190,6 +203,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         conn_sub,
         inbound_tx,
         subscribe_rx,
+        sends,
     );
     let event_thread = crate::inbound::spawn_events(events);
 
