@@ -11,9 +11,9 @@ intro: |
   once the welcome reaches it. Every member sees the **same** conversation id,
   and each received message carries the sender's account address.
 
-  So the tutorial runs three headless [`logoscore`](https://github.com/logos-co/logos-logoscore-cli)
+  So the tutorial runs three headless [`logosctl`](https://github.com/logos-co/logos-logoscore-cli)
   daemons (Alice, Bob, and Carol), each loading `chat_module` and its runtime
-  dependency `delivery_module`, and drives them through the `logoscore call`
+  dependency `delivery_module`, and drives them through the `logosctl call`
   CLI: `init`, `get_address`, `create_group_conversation`, `add_group_member`,
   `send_message`, and reading the shared thread back with
   `list_conversations` / `get_messages`.
@@ -28,7 +28,7 @@ intro: |
 what_you_build: "A verified three-member, end-to-end-encrypted group conversation across three headless chat_module instances, grown member by member, with sender-attributed message fan-out."
 
 what_you_learn:
-  - "Run three isolated `logoscore` daemons on one host, selected by `--config-dir`"
+  - "Run three isolated `logosctl` daemons on one host, selected by `--config-dir`"
   - "Create a named group with `create_group_conversation` and grow it with `add_group_member` — including an add proposed by a non-creator member"
   - "Why a group join lands asynchronously (consensus + steward commit + welcome), and how to observe it by polling `list_conversations`"
   - "How every member shares one conversation id, and how `get_messages` attributes each inbound message to its sender's account address"
@@ -46,20 +46,17 @@ prerequisites:
   - "**Network access.** The three delivery nodes discover each other over the `logos.test` Waku fleet; an isolated sandbox won't complete the exchange. Expect ~5-40s to reach Online, minutes per membership change, and up to ~2 min for messages to propagate."
 
 sections:
-  - title: "Build the tools and the two modules"
+  - title: "Build logosctl and the two modules"
     step: true
     text: |
-      Two tools drive the exchange: `logoscore` (the headless module runtime,
-      which also bundles `capability_module` under `logos/modules/`) and `lgpm`
-      (the package installer). Then the two modules the daemons load:
-      `chat_module`, and its runtime dependency `delivery_module`.
+      One tool drives the exchange: `logosctl`, the headless module runtime,
+      which also installs packages and bundles `capability_module` under
+      `logos/modules/`. Then the two modules the daemons load: `chat_module`,
+      and its runtime dependency `delivery_module`.
     steps:
-      - title: "Build logoscore"
-        run: "nix build 'github:logos-co/logos-logoscore-cli' --out-link ./logos"
-        check_file: "logos/bin/logoscore"
-      - title: "Build lgpm"
-        run: "nix build 'github:logos-co/logos-package-manager#cli' -o lgpm"
-        check_file: "lgpm/bin/lgpm"
+      - title: "Build logosctl"
+        run: "nix build 'github:logos-co/logos-logoscore-cli#ctl' --out-link ./logos"
+        check_file: "logos/bin/logosctl"
       - title: "Build chat_module (the commit under test)"
         run: "nix build \"github:logos-co/logos-chat-module{release}#lgx\" -o chat-lgx"
         code_block: "nix build 'github:logos-co/logos-chat-module#lgx' -o chat-lgx"
@@ -72,75 +69,70 @@ sections:
           Built from `chat_module`'s own flake, so the running `delivery_module`
           is the exact rev `chat_module` is built against.
 
-  - title: "Assemble the modules directory"
-    step: true
-    text: |
-      All three daemons load from one shared modules directory: the
-      `capability_module` that ships with `logoscore`, plus the two `.lgx`s
-      installed on top.
-    steps:
-      - title: "Install the bundled and built modules"
-        run: |
-          mkdir -p modules
-          cp -RL ./logos/modules/. ./modules/
-          ./lgpm/bin/lgpm --modules-dir ./modules --allow-unsigned install --file delivery-lgx/*.lgx
-          ./lgpm/bin/lgpm --modules-dir ./modules --allow-unsigned install --file chat-lgx/*.lgx
-        code_block: |
-          mkdir -p modules
-          cp -RL ./logos/modules/. ./modules/                       # bundled capability_module
-          lgpm --modules-dir ./modules --allow-unsigned install --file delivery-lgx/*.lgx
-          lgpm --modules-dir ./modules --allow-unsigned install --file chat-lgx/*.lgx
-        expect_contains:
-          - "Installed to:"
-
   - title: "Start three isolated daemons"
     step: true
     text: |
       One module is a per-host singleton inside a daemon, so Alice, Bob, and
       Carol are **separate daemons**, kept apart by `--config-dir` (control
-      socket, client token, persistence, and the per-instance directory each daemon
-      assigns its `chat_module`). Their delivery nodes need no such scoping: each
-      picks its own listening ports.
+      socket, client token, installed modules, persistence, and the
+      per-instance directory each daemon assigns its `chat_module`). Their
+      delivery nodes need no such scoping: each picks its own listening ports.
     steps:
       - title: "Start the three daemons"
+        text: |
+          `--detach` returns once the daemon accepts commands. Each logs to its
+          own `logs/daemon.log`, e.g. `alice/logs/daemon.log`.
+        # Each daemon gets its own HOME: the bundled package downloader starts a
+        # storage node in $HOME/.logos_storage, and two would fight over its lock.
         run: |
-          sh -c './logos/bin/logoscore --config-dir alice -D -m ./modules > alice-daemon.log 2>&1 &'
-          sh -c './logos/bin/logoscore --config-dir bob   -D -m ./modules > bob-daemon.log 2>&1 &'
-          sh -c './logos/bin/logoscore --config-dir carol -D -m ./modules > carol-daemon.log 2>&1 &'
+          set -e
+          mkdir -p home-alice home-bob home-carol
+          HOME="$PWD/home-alice" ./logos/bin/logosctl --config-dir alice daemon start --detach
+          HOME="$PWD/home-bob"   ./logos/bin/logosctl --config-dir bob   daemon start --detach
+          HOME="$PWD/home-carol" ./logos/bin/logosctl --config-dir carol daemon start --detach
         code_block: |
-          logoscore --config-dir alice -D -m ./modules > alice-daemon.log &
-          logoscore --config-dir bob   -D -m ./modules > bob-daemon.log &
-          logoscore --config-dir carol -D -m ./modules > carol-daemon.log &
-      - title: "Wait for the three control planes to come up"
+          logosctl --config-dir alice daemon start --detach
+          logosctl --config-dir bob   daemon start --detach
+          logosctl --config-dir carol daemon start --detach
+        expect_contains:
+          - "Daemon started"
+
+  - title: "Install and load the modules"
+    step: true
+    text: |
+      Each daemon installs into its own session, so both `.lgx`s go into each
+      of the three.
+    steps:
+      - title: "Install both modules into each session"
+        text: |
+          A path ending in `.lgx` installs from disk, with no catalog involved, and
+          one command takes both. Local builds are unsigned, which the session's
+          default policy accepts with a warning. `-y` confirms, since there is no
+          terminal to ask on.
         run: |
+          set -e
           for who in alice bob carol; do
-            up=""
-            for i in $(seq 1 30); do
-              if ./logos/bin/logoscore --config-dir "$who" list-modules >/dev/null 2>&1; then
-                up=1; echo "${who}_DAEMON_UP"; break
-              fi
-              sleep 1
-            done
-            if [ -z "$up" ]; then echo "$who daemon never came up" >&2; tail -n 40 "${who}-daemon.log" >&2; exit 1; fi
+            ./logos/bin/logosctl --config-dir "$who" install delivery-lgx/*.lgx chat-lgx/*.lgx -y
+            test -f "$who/modules/delivery_module/manifest.json"
+            test -f "$who/modules/chat_module/manifest.json"
           done
         code_block: |
-          # poll each daemon's control plane until it answers
-          logoscore --config-dir alice list-modules
-          logoscore --config-dir bob   list-modules
-          logoscore --config-dir carol list-modules
+          logosctl --config-dir alice install delivery-lgx/*.lgx chat-lgx/*.lgx -y
+          logosctl --config-dir bob   install delivery-lgx/*.lgx chat-lgx/*.lgx -y
+          logosctl --config-dir carol install delivery-lgx/*.lgx chat-lgx/*.lgx -y
         expect_contains:
-          - "alice_DAEMON_UP"
-          - "bob_DAEMON_UP"
-          - "carol_DAEMON_UP"
+          - '"status":"ok"'
+          - "delivery_module"
+          - "chat_module"
       - title: "Load chat_module on each (delivery_module auto-resolves)"
         run: |
-          ./logos/bin/logoscore --config-dir alice load-module chat_module
-          ./logos/bin/logoscore --config-dir bob   load-module chat_module
-          ./logos/bin/logoscore --config-dir carol load-module chat_module
+          ./logos/bin/logosctl --config-dir alice module load chat_module
+          ./logos/bin/logosctl --config-dir bob   module load chat_module
+          ./logos/bin/logosctl --config-dir carol module load chat_module
         code_block: |
-          logoscore --config-dir alice load-module chat_module
-          logoscore --config-dir bob   load-module chat_module
-          logoscore --config-dir carol load-module chat_module
+          logosctl --config-dir alice module load chat_module
+          logosctl --config-dir bob   module load chat_module
+          logosctl --config-dir carol module load chat_module
         expect_contains:
           - "delivery_module"
 
@@ -156,15 +148,15 @@ sections:
       - title: "Initialise Alice, Bob, and Carol"
         run: |
           for who in alice bob carol; do
-            out=$(./logos/bin/logoscore --config-dir "$who" call chat_module init 'json:{"delivery_preset":"logos.test"}')
+            out=$(./logos/bin/logosctl --config-dir "$who" call chat_module init 'json:{"delivery_preset":"logos.test"}')
             echo "$out"
             echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "$who init failed: $out" >&2; exit 1; }
             echo "${who}_INIT_OK"
           done
         code_block: |
-          logoscore --config-dir alice call chat_module init 'json:{"delivery_preset":"logos.test"}'
-          logoscore --config-dir bob   call chat_module init 'json:{"delivery_preset":"logos.test"}'
-          logoscore --config-dir carol call chat_module init 'json:{"delivery_preset":"logos.test"}'
+          logosctl --config-dir alice call chat_module init 'json:{"delivery_preset":"logos.test"}'
+          logosctl --config-dir bob   call chat_module init 'json:{"delivery_preset":"logos.test"}'
+          logosctl --config-dir carol call chat_module init 'json:{"delivery_preset":"logos.test"}'
         expect_contains:
           - "alice_INIT_OK"
           - "bob_INIT_OK"
@@ -172,7 +164,7 @@ sections:
         post_text: |
           `init` takes a `ChatConfig` record, and every field of it is optional:
           `log_level` is left out here, so the chat core logs at its default. The
-          `json:` prefix makes `logoscore call` send the record as an object;
+          `json:` prefix makes `logosctl call` send the record as an object;
           without it the record would arrive as a string, which `init` refuses.
 
           Neither storage nor ports need an argument: each instance uses the
@@ -183,20 +175,20 @@ sections:
           for who in alice bob carol; do
             online=""
             for i in $(seq 1 60); do
-              out=$(./logos/bin/logoscore --config-dir "$who" call chat_module status 2>/dev/null || true)
+              out=$(./logos/bin/logosctl --config-dir "$who" call chat_module status 2>/dev/null || true)
               case "$out" in
                 *'"delivery_state":"online"'*) online=1; echo "${who}_ONLINE"; break;;
-                *'"delivery_state":"error"'*) echo "$who delivery error: $out" >&2; tail -n 40 "${who}-daemon.log" >&2; exit 1;;
+                *'"delivery_state":"error"'*) echo "$who delivery error: $out" >&2; tail -n 40 "$who/logs/daemon.log" >&2; exit 1;;
               esac
               sleep 2
             done
-            if [ -z "$online" ]; then echo "$who never came online" >&2; tail -n 40 "${who}-daemon.log" >&2; exit 1; fi
+            if [ -z "$online" ]; then echo "$who never came online" >&2; tail -n 40 "$who/logs/daemon.log" >&2; exit 1; fi
           done
         code_block: |
           # poll status() until delivery_state == online (fail fast on "error")
-          logoscore --config-dir alice call chat_module status
-          logoscore --config-dir bob   call chat_module status
-          logoscore --config-dir carol call chat_module status
+          logosctl --config-dir alice call chat_module status
+          logosctl --config-dir bob   call chat_module status
+          logosctl --config-dir carol call chat_module status
         expect_contains:
           - "alice_ONLINE"
           - "bob_ONLINE"
@@ -215,14 +207,14 @@ sections:
       - title: "Everyone publishes an address"
         run: |
           for who in alice bob carol; do
-            out=$(./logos/bin/logoscore --config-dir "$who" call chat_module get_address)
+            out=$(./logos/bin/logosctl --config-dir "$who" call chat_module get_address)
             echo "$out" | jq -j '.result' > "${who}-addr.txt"
             echo "${who} address: $(cat ${who}-addr.txt)"
           done
         code_block: |
-          logoscore --config-dir alice call chat_module get_address | jq -j '.result' > alice-addr.txt
-          logoscore --config-dir bob   call chat_module get_address | jq -j '.result' > bob-addr.txt
-          logoscore --config-dir carol call chat_module get_address | jq -j '.result' > carol-addr.txt
+          logosctl --config-dir alice call chat_module get_address | jq -j '.result' > alice-addr.txt
+          logosctl --config-dir bob   call chat_module get_address | jq -j '.result' > bob-addr.txt
+          logosctl --config-dir carol call chat_module get_address | jq -j '.result' > carol-addr.txt
         expect_contains:
           - "alice address:"
           - "bob address:"
@@ -233,13 +225,13 @@ sections:
           key material behind it was published to the registry during `init`.
       - title: "Alice creates the group"
         run: |
-          out=$(./logos/bin/logoscore --config-dir alice call chat_module create_group_conversation "Book Club" "Weekly sci-fi picks")
+          out=$(./logos/bin/logosctl --config-dir alice call chat_module create_group_conversation "Book Club" "Weekly sci-fi picks")
           echo "$out"
           echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "create_group_conversation failed: $out" >&2; exit 1; }
           echo "$out" | jq -j '.result.value' > group-id.txt
           echo "group id: $(cat group-id.txt)"
         code_block: |
-          logoscore --config-dir alice call chat_module create_group_conversation "Book Club" "Weekly sci-fi picks"
+          logosctl --config-dir alice call chat_module create_group_conversation "Book Club" "Weekly sci-fi picks"
         expect_contains:
           - '"status":"ok"'
           - "group id:"
@@ -251,12 +243,12 @@ sections:
       - title: "Alice invites Bob"
         run: |
           gid=$(cat group-id.txt)
-          out=$(./logos/bin/logoscore --config-dir alice call chat_module add_group_member "$gid" @bob-addr.txt)
+          out=$(./logos/bin/logosctl --config-dir alice call chat_module add_group_member "$gid" @bob-addr.txt)
           echo "$out"
           echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "add_group_member failed: $out" >&2; exit 1; }
           echo "BOB_INVITED"
         code_block: |
-          logoscore --config-dir alice call chat_module add_group_member "$GROUP_ID" @bob-addr.txt
+          logosctl --config-dir alice call chat_module add_group_member "$GROUP_ID" @bob-addr.txt
         expect_contains:
           - "BOB_INVITED"
         post_text: |
@@ -266,14 +258,14 @@ sections:
         run: |
           gid=$(cat group-id.txt)
           for i in $(seq 1 150); do
-            row=$(./logos/bin/logoscore --config-dir bob call chat_module list_conversations 2>/dev/null | jq -c --arg id "$gid" '.result[]? | select(.convo_id == $id)' || true)
+            row=$(./logos/bin/logosctl --config-dir bob call chat_module list_conversations 2>/dev/null | jq -c --arg id "$gid" '.result[]? | select(.convo_id == $id)' || true)
             if [ -n "$row" ]; then echo "BOB_IN_GROUP name=$(echo "$row" | jq -r '.name // ""')"; break; fi
             sleep 4
           done
-          [ -n "$row" ] || { echo "bob never joined the group" >&2; tail -n 40 bob-daemon.log >&2; exit 1; }
+          [ -n "$row" ] || { echo "bob never joined the group" >&2; tail -n 40 bob/logs/daemon.log >&2; exit 1; }
         code_block: |
           # poll until the group appears in Bob's conversations, carrying its name
-          logoscore --config-dir bob call chat_module list_conversations
+          logosctl --config-dir bob call chat_module list_conversations
         expect_contains:
           - "BOB_IN_GROUP name=Book Club"
         post_text: |
@@ -283,12 +275,12 @@ sections:
       - title: "Bob invites Carol (a non-creator add)"
         run: |
           gid=$(cat group-id.txt)
-          out=$(./logos/bin/logoscore --config-dir bob call chat_module add_group_member "$gid" @carol-addr.txt)
+          out=$(./logos/bin/logosctl --config-dir bob call chat_module add_group_member "$gid" @carol-addr.txt)
           echo "$out"
           echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "add_group_member failed: $out" >&2; exit 1; }
           echo "CAROL_INVITED"
         code_block: |
-          logoscore --config-dir bob call chat_module add_group_member "$GROUP_ID" @carol-addr.txt
+          logosctl --config-dir bob call chat_module add_group_member "$GROUP_ID" @carol-addr.txt
         expect_contains:
           - "CAROL_INVITED"
         post_text: |
@@ -299,14 +291,14 @@ sections:
         run: |
           gid=$(cat group-id.txt)
           for i in $(seq 1 150); do
-            got=$(./logos/bin/logoscore --config-dir carol call chat_module list_conversations 2>/dev/null | jq -r --arg id "$gid" '.result[]? | select(.convo_id == $id) | .convo_id' || true)
+            got=$(./logos/bin/logosctl --config-dir carol call chat_module list_conversations 2>/dev/null | jq -r --arg id "$gid" '.result[]? | select(.convo_id == $id) | .convo_id' || true)
             if [ -n "$got" ]; then echo "CAROL_IN_GROUP $got"; break; fi
             sleep 4
           done
-          [ -n "$got" ] || { echo "carol never joined the group" >&2; tail -n 40 carol-daemon.log >&2; exit 1; }
+          [ -n "$got" ] || { echo "carol never joined the group" >&2; tail -n 40 carol/logs/daemon.log >&2; exit 1; }
         code_block: |
           # poll until the group id appears in Carol's conversations
-          logoscore --config-dir carol call chat_module list_conversations
+          logosctl --config-dir carol call chat_module list_conversations
         expect_contains:
           - "CAROL_IN_GROUP"
       - title: "Every member sees the full three-member roster"
@@ -316,7 +308,7 @@ sections:
           for who in alice bob carol; do
             ok=""
             for i in $(seq 1 60); do
-              roster=$(./logos/bin/logoscore --config-dir "$who" call chat_module list_group_members "$gid" 2>/dev/null | jq -r '.result[]? | select(.pending | not) | .address' || true)
+              roster=$(./logos/bin/logosctl --config-dir "$who" call chat_module list_group_members "$gid" 2>/dev/null | jq -r '.result[]? | select(.pending | not) | .address' || true)
               if printf '%s\n' "$roster" | grep -qF "$a" && printf '%s\n' "$roster" | grep -qF "$b" && printf '%s\n' "$roster" | grep -qF "$c"; then
                 ok=1; echo "$(echo "$who" | tr a-z A-Z)_ROSTER_COMPLETE"; break
               fi
@@ -326,9 +318,9 @@ sections:
           done
         code_block: |
           # each member's roster lists all three account addresses
-          logoscore --config-dir alice call chat_module list_group_members "$GROUP_ID"
-          logoscore --config-dir bob   call chat_module list_group_members "$GROUP_ID"
-          logoscore --config-dir carol call chat_module list_group_members "$GROUP_ID"
+          logosctl --config-dir alice call chat_module list_group_members "$GROUP_ID"
+          logosctl --config-dir bob   call chat_module list_group_members "$GROUP_ID"
+          logosctl --config-dir carol call chat_module list_group_members "$GROUP_ID"
         expect_contains:
           - "ALICE_ROSTER_COMPLETE"
           - "BOB_ROSTER_COMPLETE"
@@ -354,13 +346,13 @@ sections:
           gid=$(cat group-id.txt)
           sent=""
           for i in $(seq 1 20); do
-            out=$(./logos/bin/logoscore --config-dir alice call chat_module send_message "$gid" hello-group 2>/dev/null || true)
+            out=$(./logos/bin/logosctl --config-dir alice call chat_module send_message "$gid" hello-group 2>/dev/null || true)
             if echo "$out" | jq -e '.result.success == true' >/dev/null 2>&1; then sent=1; echo "ALICE_SENT"; break; fi
             sleep 5
           done
           [ -n "$sent" ] || { echo "alice could not send: $out" >&2; exit 1; }
         code_block: |
-          logoscore --config-dir alice call chat_module send_message "$GROUP_ID" hello-group
+          logosctl --config-dir alice call chat_module send_message "$GROUP_ID" hello-group
         expect_contains:
           - "ALICE_SENT"
         post_text: |
@@ -374,16 +366,16 @@ sections:
           for who in bob carol; do
             got=""
             for i in $(seq 1 60); do
-              ok=$(./logos/bin/logoscore --config-dir "$who" call chat_module get_messages "$gid" 2>/dev/null | jq -r --arg a "$addr" '.result[]? | select(.content == "hello-group") | select(.sender == $a) | .content' || true)
+              ok=$(./logos/bin/logosctl --config-dir "$who" call chat_module get_messages "$gid" 2>/dev/null | jq -r --arg a "$addr" '.result[]? | select(.content == "hello-group") | select(.sender == $a) | .content' || true)
               if [ -n "$ok" ]; then got=1; echo "$(echo "$who" | tr a-z A-Z)_GOT_HELLO_FROM_ALICE"; break; fi
               sleep 4
             done
-            [ -n "$got" ] || { echo "$who never received alice's message" >&2; tail -n 40 "${who}-daemon.log" >&2; exit 1; }
+            [ -n "$got" ] || { echo "$who never received alice's message" >&2; tail -n 40 "$who/logs/daemon.log" >&2; exit 1; }
           done
         code_block: |
           # each member sees the message with sender == Alice's address
-          logoscore --config-dir bob   call chat_module get_messages "$GROUP_ID"
-          logoscore --config-dir carol call chat_module get_messages "$GROUP_ID"
+          logosctl --config-dir bob   call chat_module get_messages "$GROUP_ID"
+          logosctl --config-dir carol call chat_module get_messages "$GROUP_ID"
         expect_contains:
           - "BOB_GOT_HELLO_FROM_ALICE"
           - "CAROL_GOT_HELLO_FROM_ALICE"
@@ -392,13 +384,13 @@ sections:
           gid=$(cat group-id.txt)
           sent=""
           for i in $(seq 1 20); do
-            out=$(./logos/bin/logoscore --config-dir carol call chat_module send_message "$gid" carol-checking-in 2>/dev/null || true)
+            out=$(./logos/bin/logosctl --config-dir carol call chat_module send_message "$gid" carol-checking-in 2>/dev/null || true)
             if echo "$out" | jq -e '.result.success == true' >/dev/null 2>&1; then sent=1; echo "CAROL_SENT"; break; fi
             sleep 5
           done
           [ -n "$sent" ] || { echo "carol could not send: $out" >&2; exit 1; }
         code_block: |
-          logoscore --config-dir carol call chat_module send_message "$GROUP_ID" carol-checking-in
+          logosctl --config-dir carol call chat_module send_message "$GROUP_ID" carol-checking-in
         expect_contains:
           - "CAROL_SENT"
       - title: "Alice and Bob both receive Carol's reply"
@@ -408,15 +400,15 @@ sections:
           for who in alice bob; do
             got=""
             for i in $(seq 1 60); do
-              ok=$(./logos/bin/logoscore --config-dir "$who" call chat_module get_messages "$gid" 2>/dev/null | jq -r --arg a "$addr" '.result[]? | select(.content == "carol-checking-in") | select(.sender == $a) | .content' || true)
+              ok=$(./logos/bin/logosctl --config-dir "$who" call chat_module get_messages "$gid" 2>/dev/null | jq -r --arg a "$addr" '.result[]? | select(.content == "carol-checking-in") | select(.sender == $a) | .content' || true)
               if [ -n "$ok" ]; then got=1; echo "$(echo "$who" | tr a-z A-Z)_GOT_CAROL_REPLY"; break; fi
               sleep 4
             done
-            [ -n "$got" ] || { echo "$who never received carol's reply" >&2; tail -n 40 "${who}-daemon.log" >&2; exit 1; }
+            [ -n "$got" ] || { echo "$who never received carol's reply" >&2; tail -n 40 "$who/logs/daemon.log" >&2; exit 1; }
           done
         code_block: |
-          logoscore --config-dir alice call chat_module get_messages "$GROUP_ID"
-          logoscore --config-dir bob   call chat_module get_messages "$GROUP_ID"
+          logosctl --config-dir alice call chat_module get_messages "$GROUP_ID"
+          logosctl --config-dir bob   call chat_module get_messages "$GROUP_ID"
         expect_contains:
           - "ALICE_GOT_CAROL_REPLY"
           - "BOB_GOT_CAROL_REPLY"
@@ -430,11 +422,11 @@ sections:
     steps:
       - title: "Shut all three down gracefully"
         run: |
-          ./logos/bin/logoscore --config-dir alice stop || true
-          ./logos/bin/logoscore --config-dir bob   stop || true
-          ./logos/bin/logoscore --config-dir carol stop || true
+          ./logos/bin/logosctl --config-dir alice daemon stop || true
+          ./logos/bin/logosctl --config-dir bob   daemon stop || true
+          ./logos/bin/logosctl --config-dir carol daemon stop || true
         code_block: |
-          logoscore --config-dir alice stop
-          logoscore --config-dir bob   stop
-          logoscore --config-dir carol stop
-        post_text: "Always stop through the control socket rather than killing the process group: three daemons share one shell here."
+          logosctl --config-dir alice daemon stop
+          logosctl --config-dir bob   daemon stop
+          logosctl --config-dir carol daemon stop
+        post_text: "Always stop through the control socket rather than killing processes: `daemon stop` unloads the daemon's modules and returns once it has exited."

@@ -2,7 +2,7 @@ name: Doc-Tests
 
 # Runs chat_module's usage doc-tests via the shared doctest CLI, against the
 # commit under test. Each spec is an executable tutorial that builds this
-# module's `.lgx`, loads it into headless `logoscore` daemons, and drives a real
+# module's `.lgx`, installs it into headless `logosctl` daemons, and drives a real
 # exchange over the live delivery network: the two-instance 1:1 round-trip and
 # the three-instance GroupV2 conversation. Because they exercise the module end
 # to end, the job also serves as an integration check and fails if an exchange
@@ -10,7 +10,7 @@ name: Doc-Tests
 #
 # The Linux leg runs several real delivery instances on one host (distinct data
 # dirs) and needs outbound network to reach the logos.test Waku fleet. The
-# Windows leg loads chat and delivery in a staged native logoscore host, calls
+# Windows leg loads chat and delivery in a native logosctl session, calls
 # status(), and publishes its own offline execution report.
 
 on:
@@ -56,16 +56,14 @@ jobs:
       # Pre-build the closures the spec builds inline, so its bash steps hit the
       # nix store instead of compiling under the run (and inside its poll budgets).
       # chat_module#lgx (libchat + openssl from source) is the heavy, uncached one
-      # (it's the commit under test); logoscore / delivery / lgpm should be attic
-      # hits.
+      # (it's the commit under test); logosctl / delivery should be attic hits.
       - name: Pre-build doc-test closures
         shell: bash
         run: |
           ref="github:logos-co/logos-chat-module/${{ steps.commit.outputs.sha }}"
           nix build --no-link "$ref#lgx" -L
           nix build --no-link "$ref#delivery_module-lgx" -L
-          nix build --no-link 'github:logos-co/logos-logoscore-cli' -L
-          nix build --no-link 'github:logos-co/logos-package-manager#cli' -L
+          nix build --no-link 'github:logos-co/logos-logoscore-cli#ctl' -L
 
       # The runner is the shared `doctest` CLI invoked via its flake. --release-for
       # pins the {release} placeholder for logos-chat-module to the commit under
@@ -123,13 +121,13 @@ jobs:
         default lgx-portable install-portable
         delivery_module-default delivery_module-install-portable
       extra-targets: >-
-        {"windows-logoscore": {
-          "ref": "github:logos-co/logos-logoscore-cli#packages.x86_64-windows.cli-bundle-dir",
+        {"windows-logosctl": {
+          "ref": "github:logos-co/logos-logoscore-cli#packages.x86_64-windows.ctl-bundle-dir",
           "omit": ["lib/qt-6/plugins"]
         }}
       assemble: >-
-        {"install-portable": ["default/lib", "windows-logoscore/bin"],
-         "delivery_module-install-portable": ["delivery_module-default/lib", "windows-logoscore/bin"]}
+        {"install-portable": ["default/lib", "windows-logosctl/bin"],
+         "delivery_module-install-portable": ["delivery_module-default/lib", "windows-logosctl/bin"]}
       doctest-spec: doctests/chat-module-windows.test.yaml
       doctest-artifact: chat-module-doctest-report
       lgx-variant: true
