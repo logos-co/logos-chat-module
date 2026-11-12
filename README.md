@@ -60,7 +60,8 @@ flake pins [`logos-delivery-module`](https://github.com/logos-co/logos-delivery-
 at `v0.3.0-rc.3`. Load `chat_module` via `logoscore` or Basecamp.
 
 Bring-up is `init(config)`, taking a `ChatConfig` record whose every field is
-optional: `delivery_preset` (empty or absent → `logos.test`) and `log_level`.
+optional: `delivery_preset` (empty or absent → `logos.test`), `log_level`, and
+`registry_url` (empty or absent → `https://devnet.chat-kc.logos.co`).
 What it does, and how you learn the module is ready, is on
 [`init`](https://logos-co.github.io/logos-chat-module/latest/pages/api_reference.html#init)
 in the API reference.

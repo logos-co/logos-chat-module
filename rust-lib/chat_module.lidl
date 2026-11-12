@@ -95,6 +95,12 @@ module chat_module {
     ; "error" | "warn" | "info" | "debug" | "trace". Absent or unrecognised
     ; means "info". Read once, at init: a later init leaves it as it was.
     ? log_level: tstr
+    ; The registry server: init publishes this installation's account log and
+    ; key package there, and a direct conversation fetches the peer's. Empty or
+    ; absent means "https://devnet.chat-kc.logos.co". Peers must share a
+    ; registry to reach each other. Bundles are verified on retrieval, so a
+    ; registry can withhold one but not forge it. Read once, at init.
+    ? registry_url: tstr
   }
   ; Bring the module up and join the delivery network.
   ;
