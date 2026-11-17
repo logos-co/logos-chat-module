@@ -3,8 +3,10 @@
 //! Two workers run alongside the client's own inbound worker:
 //! * The bridge ([`run_bridge`]) drains delivery_module's events: `messageReceived`
 //!   payloads are pushed to the client's inbound channel; `nodeStarted` and
-//!   `connectionStateChanged` drive local `delivery_state`; and the core's queued
-//!   subscription requests are forwarded to delivery_module once its node is started.
+//!   `connectionStateChanged` drive local `delivery_state`; `messagePropagated` and
+//!   `messageError` for this module's sends are reported to the client; and the
+//!   core's queued subscription requests are forwarded to delivery_module once its
+//!   node is started.
 //! * The event consumer ([`run_events`]) drains the client's `Event` stream and
 //!   records each observation in the display history, emitting the matching plugin
 //!   events.
@@ -13,7 +15,7 @@
 //! so the events emitted during start aren't missed) and the resulting
 //! `EventSubscription`s are moved into the bridge.
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
 use std::sync::Arc;
@@ -21,7 +23,9 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender};
-use logos_generic_chat::{ConversationClass, Event, InboundPayload};
+use logos_generic_chat::{
+    ConversationClass, DeliveryReport, Event, InboundPayload, PublishReceipt,
+};
 use logos_rust_sdk::{EventData, EventSubscription};
 
 use crate::actions::{
@@ -33,6 +37,18 @@ use crate::persistence::ConversationKind;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 
+/// What the bridge hears about sends: the request id delivery_module accepted
+/// each of this module's sends under, with the receipt `publish` returned for
+/// it, and delivery_module's `messagePropagated` and `messageError`, which every
+/// subscriber gets for every module's sends. `reports` is where the client
+/// learns the outcome.
+pub(crate) struct SendEvents {
+    pub(crate) accepted: Receiver<(String, PublishReceipt)>,
+    pub(crate) propagated: EventSubscription,
+    pub(crate) failed: EventSubscription,
+    pub(crate) reports: Sender<DeliveryReport>,
+}
+
 pub(crate) fn spawn_bridge(
     stop: Arc<AtomicBool>,
     messages: EventSubscription,
@@ -40,10 +56,21 @@ pub(crate) fn spawn_bridge(
     conn: Option<EventSubscription>,
     inbound_tx: Sender<InboundPayload>,
     subscribe_rx: Receiver<String>,
+    sends: SendEvents,
 ) -> JoinHandle<()> {
     thread::Builder::new()
         .name("rust-chat-bridge".into())
-        .spawn(move || run_bridge(stop, messages, node_started, conn, inbound_tx, subscribe_rx))
+        .spawn(move || {
+            run_bridge(
+                stop,
+                messages,
+                node_started,
+                conn,
+                inbound_tx,
+                subscribe_rx,
+                sends,
+            )
+        })
         .expect("failed to spawn bridge thread")
 }
 
@@ -61,9 +88,20 @@ fn run_bridge(
     mut conn: Option<EventSubscription>,
     inbound_tx: Sender<InboundPayload>,
     subscribe_rx: Receiver<String>,
+    sends: SendEvents,
 ) {
     let mut node_started = Some(node_started);
     let mut seen = SeenMessages::default();
+    let mut propagated = Some(sends.propagated);
+    let mut failed = Some(sends.failed);
+    let mut outcomes = SendOutcomes::default();
+    // The receiver is the client's worker; if it has gone away the client is being
+    // dropped and the bridge is about to stop, so a failed send is benign.
+    let report = |report: Option<DeliveryReport>| {
+        if let Some(report) = report {
+            let _ = sends.reports.send(report);
+        }
+    };
     while !stop.load(Ordering::Relaxed) {
         match messages.receiver().recv_timeout(POLL_INTERVAL) {
             Ok(evt) => forward_message(&evt, &inbound_tx, &mut seen),
@@ -84,6 +122,28 @@ fn run_bridge(
             {
                 handle_connection_state(&state.connection_status);
             }
+        });
+
+        while let Ok((request_id, receipt)) = sends.accepted.try_recv() {
+            report(outcomes.accepted(request_id, receipt));
+        }
+        drain(&mut propagated, |evt| {
+            let Some(propagated) =
+                crate::delivery_module::DeliveryModuleClient::decode_message_propagated(evt)
+            else {
+                tracing::warn!("inbound: messagePropagated payload missing or malformed");
+                return;
+            };
+            report(outcomes.propagated(propagated.request_id, propagated.message_hash));
+        });
+        drain(&mut failed, |evt| {
+            let Some(failed) =
+                crate::delivery_module::DeliveryModuleClient::decode_message_error(evt)
+            else {
+                tracing::warn!("inbound: messageError payload missing or malformed");
+                return;
+            };
+            report(outcomes.failed(failed.request_id, failed.error));
         });
 
         forward_subscriptions(&subscribe_rx);
@@ -133,7 +193,7 @@ fn forward_message(evt: &EventData, inbound_tx: &Sender<InboundPayload>, seen: &
     // dropped and the bridge is about to stop, so a failed send is benign.
     let _ = inbound_tx.send(InboundPayload {
         data: msg.payload,
-        delivery_info: None,
+        delivery_info: crate::delivery::delivery_info(&msg.message_hash),
     });
 }
 
@@ -160,6 +220,90 @@ impl SeenMessages {
         self.hashes.insert(hash.to_owned());
         self.order.push_back(hash.to_owned());
         true
+    }
+}
+
+/// An early outcome waits for one send's reply, so the queue needs room for what
+/// every module's sends report in that time. delivery_module holds at most 1000
+/// sends at once by default (`DefaultMaxTaskCacheSize`) and reports at most two
+/// outcomes for each, `messagePropagated` and then `messageError`. Outcomes never
+/// claimed, other modules' and the late failure of a propagated send, age out.
+const UNCLAIMED_OUTCOMES: usize = 2 * 1_000;
+
+/// What delivery_module reported for a send.
+enum SendOutcome {
+    /// It reached the network as the message with this hash.
+    Propagated(String),
+    /// delivery_module gave up on it before it propagated, for this reason. A
+    /// mixed send can fail after its exit published it.
+    Failed(String),
+}
+
+impl SendOutcome {
+    /// What the client learns of this module's send under `receipt`.
+    fn report(self, receipt: PublishReceipt) -> DeliveryReport {
+        let delivery_info = match self {
+            SendOutcome::Propagated(message_hash) => crate::delivery::delivery_info(&message_hash),
+            SendOutcome::Failed(reason) => {
+                tracing::warn!("delivery_module failed a send: {reason}");
+                None
+            }
+        };
+        DeliveryReport {
+            receipt,
+            delivery_info,
+        }
+    }
+}
+
+/// Matches delivery_module's send outcomes to the receipts of this module's
+/// sends. An outcome can arrive before the answer that names its request.
+#[derive(Default)]
+struct SendOutcomes {
+    /// This module's sends, neither propagated nor failed yet.
+    pending: HashMap<String, PublishReceipt>,
+    /// Outcomes of requests not known to be this module's, oldest first.
+    unclaimed: VecDeque<(String, SendOutcome)>,
+}
+
+impl SendOutcomes {
+    /// Record a send delivery_module accepted from this module under
+    /// `request_id`. Returns its report when its outcome has already arrived.
+    fn accepted(&mut self, request_id: String, receipt: PublishReceipt) -> Option<DeliveryReport> {
+        let Some(at) = self.unclaimed.iter().position(|(id, _)| *id == request_id) else {
+            self.pending.insert(request_id, receipt);
+            return None;
+        };
+        let (_, outcome) = self.unclaimed.remove(at)?;
+        Some(outcome.report(receipt))
+    }
+
+    /// Record a request that reached the network as `message_hash`. Returns the
+    /// report for this module's send.
+    fn propagated(&mut self, request_id: String, message_hash: String) -> Option<DeliveryReport> {
+        self.settle(request_id, SendOutcome::Propagated(message_hash))
+    }
+
+    /// Record a failed request. Returns the report for this module's send that
+    /// had not propagated. delivery_module also fails a request that did, once no
+    /// store node confirms it, which by then is no longer pending.
+    fn failed(&mut self, request_id: String, reason: String) -> Option<DeliveryReport> {
+        self.settle(request_id, SendOutcome::Failed(reason))
+    }
+
+    fn settle(&mut self, request_id: String, outcome: SendOutcome) -> Option<DeliveryReport> {
+        let Some(receipt) = self.pending.remove(&request_id) else {
+            self.hold(request_id, outcome);
+            return None;
+        };
+        Some(outcome.report(receipt))
+    }
+
+    fn hold(&mut self, request_id: String, outcome: SendOutcome) {
+        if self.unclaimed.len() == UNCLAIMED_OUTCOMES {
+            self.unclaimed.pop_front();
+        }
+        self.unclaimed.push_back((request_id, outcome));
     }
 }
 
@@ -264,13 +408,15 @@ pub(crate) fn map_connection_status(status: &str) -> DeliveryStateKind {
 mod tests {
     use super::*;
 
+    use logos_generic_chat::{DeliveryInfo, DeliveryMsgId};
+
     #[test]
     fn forwards_delivery_message_with_source_field() {
         let payload = b"chat invite";
         let event = EventData::new(
             "messageReceived",
             serde_json::json!([
-                "hash",
+                "0x0a0b",
                 "/logos-chat/1/alice/proto",
                 logos_rust_sdk::bytes::encode(payload),
                 "live",
@@ -281,7 +427,112 @@ mod tests {
 
         forward_message(&event, &tx, &mut SeenMessages::default());
 
-        assert_eq!(rx.try_recv().unwrap().data, payload);
+        let inbound = rx.try_recv().unwrap();
+        assert_eq!(inbound.data, payload);
+        assert_eq!(inbound.delivery_info, Some(info(&[0x0a, 0x0b])));
+    }
+
+    fn receipt(n: u8) -> PublishReceipt {
+        PublishReceipt::from(vec![n])
+    }
+
+    fn info(bytes: &[u8]) -> DeliveryInfo {
+        DeliveryInfo {
+            delivery_msg_id: DeliveryMsgId::from(bytes.to_vec()),
+        }
+    }
+
+    /// The receipt a report is under and the delivery id it names.
+    fn names(report: Option<DeliveryReport>) -> Option<(PublishReceipt, Option<DeliveryInfo>)> {
+        report.map(|r| (r.receipt, r.delivery_info))
+    }
+
+    #[test]
+    fn a_propagated_send_reports_its_message_hash() {
+        let mut outcomes = SendOutcomes::default();
+        assert!(outcomes.accepted("ours".into(), receipt(1)).is_none());
+
+        assert_eq!(
+            names(outcomes.propagated("ours".into(), "0x0a".into())),
+            Some((receipt(1), Some(info(&[0x0a]))))
+        );
+        assert!(outcomes
+            .failed("ours".into(), "no store confirmation".into())
+            .is_none());
+    }
+
+    #[test]
+    fn a_failed_send_reports_no_delivery_id() {
+        let mut outcomes = SendOutcomes::default();
+        assert!(outcomes.accepted("ours".into(), receipt(1)).is_none());
+
+        assert_eq!(
+            names(outcomes.failed("ours".into(), "no peers".into())),
+            Some((receipt(1), None))
+        );
+        assert!(outcomes.failed("ours".into(), "no peers".into()).is_none());
+    }
+
+    /// delivery_module emits its send events to every subscriber, whoever sent.
+    #[test]
+    fn another_modules_send_reports_nothing() {
+        let mut outcomes = SendOutcomes::default();
+        assert!(outcomes.accepted("ours".into(), receipt(1)).is_none());
+
+        assert!(outcomes
+            .propagated("theirs".into(), "0x0a".into())
+            .is_none());
+        assert!(outcomes
+            .failed("theirs".into(), "no peers".into())
+            .is_none());
+    }
+
+    #[test]
+    fn an_outcome_that_arrives_before_its_request_id_is_kept_for_it() {
+        let mut outcomes = SendOutcomes::default();
+        assert!(outcomes.propagated("first".into(), "0x0a".into()).is_none());
+        assert!(outcomes
+            .failed("second".into(), "no peers".into())
+            .is_none());
+
+        assert_eq!(
+            names(outcomes.accepted("second".into(), receipt(2))),
+            Some((receipt(2), None))
+        );
+        assert_eq!(
+            names(outcomes.accepted("first".into(), receipt(1))),
+            Some((receipt(1), Some(info(&[0x0a]))))
+        );
+    }
+
+    /// Propagation precedes a failure for want of store confirmation, so the
+    /// earlier outcome is the one a late request id takes.
+    #[test]
+    fn a_late_request_id_takes_its_first_outcome() {
+        let mut outcomes = SendOutcomes::default();
+        assert!(outcomes.propagated("ours".into(), "0x0a".into()).is_none());
+        assert!(outcomes
+            .failed("ours".into(), "no store confirmation".into())
+            .is_none());
+
+        assert_eq!(
+            names(outcomes.accepted("ours".into(), receipt(1))),
+            Some((receipt(1), Some(info(&[0x0a]))))
+        );
+    }
+
+    #[test]
+    fn the_oldest_unclaimed_outcome_is_forgotten_at_capacity() {
+        let mut outcomes = SendOutcomes::default();
+        for i in 0..=UNCLAIMED_OUTCOMES {
+            assert!(outcomes.failed(i.to_string(), "no peers".into()).is_none());
+        }
+
+        assert!(outcomes.accepted("0".into(), receipt(0)).is_none());
+        assert_eq!(
+            names(outcomes.accepted("1".into(), receipt(1))),
+            Some((receipt(1), None))
+        );
     }
 
     #[test]
