@@ -1281,6 +1281,7 @@ dependencies = [
  "chrono",
  "components",
  "crossbeam-channel",
+ "hex",
  "logos-generic-chat",
  "logos-rust-sdk",
  "message-store",

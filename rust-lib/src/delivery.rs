@@ -3,13 +3,18 @@
 //! `publish` forwards each outbound envelope to delivery_module; `subscribe`
 //! queues the core's interest in a delivery address (forwarded once the node is
 //! started, see `inbound.rs`); `inbound` hands the client the channel the module
-//! feeds with received payloads. `fetch_messages` fails: delivery_module's store
+//! feeds with received payloads, and `delivery_reports` the one it feeds with the
+//! ids of published payloads. `fetch_messages` fails: delivery_module's store
 //! query needs a store peer's address, and nothing delivery_module offers names
 //! one.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+
 use crossbeam_channel::{Receiver, Sender};
 use logos_generic_chat::{
-    AddressedEnvelope, DeliveryMsgId, DeliveryService, InboundPayload, PublishedId, Transport,
+    AddressedEnvelope, DeliveryInfo, DeliveryMsgId, DeliveryReport, DeliveryService,
+    InboundPayload, PublishReceipt, PublishedId, Transport,
 };
 use logos_rust_sdk::LogosError;
 use serde_json::Value;
@@ -48,21 +53,45 @@ pub(crate) fn delivery_outcome(res: Result<Value, LogosError>) -> Result<Value, 
     }
 }
 
+/// The delivery id of the payload delivery_module's 0x-hex `message_hash`
+/// names: the hash's bytes, as libchat's own delivery adapter reads it, so the
+/// ids agree across clients.
+pub(crate) fn delivery_info(message_hash: &str) -> Option<DeliveryInfo> {
+    let bytes = message_hash
+        .strip_prefix("0x")
+        .and_then(|hex| hex::decode(hex).ok());
+    if bytes.is_none() {
+        tracing::warn!("delivery_module reported an unreadable message hash: {message_hash}");
+    }
+    bytes.map(|bytes| DeliveryInfo {
+        delivery_msg_id: DeliveryMsgId::from(bytes),
+    })
+}
+
 /// Carries each direction of the client's delivery boundary: the outbound
-/// [`SdkPublisher`], plus the inbound payload stream the client's worker drains.
+/// [`SdkPublisher`], plus the inbound payload stream and the delivery reports
+/// the client's worker drains.
 #[derive(Debug)]
 pub(crate) struct SdkDelivery {
     /// Handed to the client once via [`Transport::inbound`]. The module feeds the
     /// matching sender from delivery_module's `messageReceived` events.
     inbound_rx: Option<Receiver<InboundPayload>>,
+    /// Handed to the client once via [`Transport::delivery_reports`]. The module
+    /// feeds the matching sender from what delivery_module reports of each send.
+    reports_rx: Option<Receiver<DeliveryReport>>,
     publisher: SdkPublisher,
 }
 
 impl SdkDelivery {
-    pub(crate) fn new(inbound_rx: Receiver<InboundPayload>, subscribe_tx: Sender<String>) -> Self {
+    pub(crate) fn new(
+        inbound_rx: Receiver<InboundPayload>,
+        reports_rx: Receiver<DeliveryReport>,
+        publisher: SdkPublisher,
+    ) -> Self {
         Self {
             inbound_rx: Some(inbound_rx),
-            publisher: SdkPublisher { subscribe_tx },
+            reports_rx: Some(reports_rx),
+            publisher,
         }
     }
 
@@ -100,6 +129,12 @@ impl Transport for SdkDelivery {
             .take()
             .expect("SdkDelivery::inbound called more than once")
     }
+
+    fn delivery_reports(&mut self) -> Receiver<DeliveryReport> {
+        self.reports_rx
+            .take()
+            .expect("SdkDelivery::delivery_reports called more than once")
+    }
 }
 
 /// The outbound half of the delivery boundary. Clonable, so a consumer that only
@@ -108,6 +143,29 @@ impl Transport for SdkDelivery {
 pub(crate) struct SdkPublisher {
     /// Subscription requests from the core, drained by the inbound worker.
     subscribe_tx: Sender<String>,
+    /// The request id delivery_module accepted each send under, with the receipt
+    /// `publish` returned for it, for the inbound worker to match against what
+    /// delivery_module reports of the send later.
+    accepted_tx: Sender<(String, PublishReceipt)>,
+    /// Where a send delivery_module refused is reported.
+    reports_tx: Sender<DeliveryReport>,
+    /// Numbers the receipts `publish` returns.
+    sends: Arc<AtomicU64>,
+}
+
+impl SdkPublisher {
+    pub(crate) fn new(
+        subscribe_tx: Sender<String>,
+        accepted_tx: Sender<(String, PublishReceipt)>,
+        reports_tx: Sender<DeliveryReport>,
+    ) -> Self {
+        Self {
+            subscribe_tx,
+            accepted_tx,
+            reports_tx,
+            sends: Arc::default(),
+        }
+    }
 }
 
 impl DeliveryService for SdkPublisher {
@@ -118,17 +176,43 @@ impl DeliveryService for SdkPublisher {
         // encodes the envelope onto the lp_* wire.
         let topic = content_topic_for(&envelope.delivery_address);
         // Fire-and-forget: the synchronous `send` would block the dispatch thread on
-        // delivery's accept handshake, so hand off async and return. A failed send is
-        // only logged, not surfaced to the caller; a future "sent" confirmation will
-        // close that gap.
+        // delivery's accept handshake, so hand off async and return a receipt. What
+        // becomes of the payload is reported under it: its id once delivery_module's
+        // events name the request id the callback receives, or none when the send
+        // fails.
+        let receipt = PublishReceipt::from(
+            self.sends
+                .fetch_add(1, Ordering::Relaxed)
+                .to_be_bytes()
+                .to_vec(),
+        );
+        let accepted_tx = self.accepted_tx.clone();
+        let reports_tx = self.reports_tx.clone();
+        let sent = receipt.clone();
         crate::modules()
             .delivery_module
             .send_async(&topic, &envelope.data, move |res| {
-                if let Err(e) = delivery_outcome(res) {
-                    tracing::error!("delivery_module.send failed: {e}");
+                match delivery_outcome(res) {
+                    Ok(Value::String(request_id)) => {
+                        if accepted_tx.send((request_id, sent.clone())).is_ok() {
+                            return;
+                        }
+                        // The bridge has stopped, so nothing else will report the send.
+                        tracing::warn!("delivery_module accepted a send nothing will report");
+                    }
+                    Ok(other) => {
+                        tracing::error!("delivery_module.send returned no request id: {other}")
+                    }
+                    Err(e) => tracing::error!("delivery_module.send failed: {e}"),
                 }
+                // The receiver is the client's worker; if it has gone away the client is
+                // being dropped, so a failed send is benign.
+                let _ = reports_tx.send(DeliveryReport {
+                    receipt: sent,
+                    delivery_info: None,
+                });
             });
-        Ok(PublishedId::Unknown)
+        Ok(PublishedId::Pending(receipt))
     }
 
     fn subscribe(&mut self, delivery_address: &str) -> Result<(), String> {
@@ -152,6 +236,22 @@ mod tests {
 
     fn result(success: bool, value: Value, error: Value) -> Result<Value, LogosError> {
         Ok(json!({ "success": success, "value": value, "error": error }))
+    }
+
+    #[test]
+    fn a_message_hash_names_its_bytes() {
+        assert_eq!(
+            delivery_info("0x0a0bff"),
+            Some(DeliveryInfo {
+                delivery_msg_id: DeliveryMsgId::from(vec![0x0a, 0x0b, 0xff]),
+            })
+        );
+    }
+
+    #[test]
+    fn an_unreadable_message_hash_names_nothing() {
+        assert_eq!(delivery_info("0a0bff"), None);
+        assert_eq!(delivery_info("0xzz"), None);
     }
 
     #[test]

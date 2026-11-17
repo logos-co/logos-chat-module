@@ -61,6 +61,9 @@ tracing-core       = "0.1"
 # groups a log directory into runs by. Already in the graph, so declaring it
 # builds nothing new.
 chrono         = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# Reads delivery_module's 0x-hex message hashes as the delivery ids libchat
+# keeps. Already in the graph, so declaring it builds nothing new.
+hex            = "0.4"
 
 # libchat's `crypto` crate is written for the xeddsa 1.0 API. Cargo's
 # default SemVer resolution would pick 1.1.0 (released since), whose
