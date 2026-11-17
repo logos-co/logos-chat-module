@@ -106,11 +106,13 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     // node is started. The accepted channel carries the request id of each send
     // delivery_module accepted, which the bridge matches against the outcomes it
     // reports, and the reports channel carries what the client learns of a send
-    // (via `Transport::delivery_reports`).
+    // (via `Transport::delivery_reports`). The fetched channel carries what a
+    // fetch found in Store to the bridge, which forwards it to the client.
     let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded();
     let (subscribe_tx, subscribe_rx) = crossbeam_channel::unbounded();
     let (accepted_tx, accepted_rx) = crossbeam_channel::unbounded();
     let (reports_tx, reports_rx) = crossbeam_channel::unbounded();
+    let (fetched_tx, fetched_rx) = crossbeam_channel::unbounded();
 
     // Do the fallible *local* setup (store open, client build) before touching
     // delivery_module. The node's lifecycle is irreversible — createNode rejects
@@ -131,7 +133,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     let transport = SdkDelivery::new(
         inbound_rx,
         reports_rx,
-        SdkPublisher::new(subscribe_tx, accepted_tx, reports_tx.clone()),
+        SdkPublisher::new(subscribe_tx, accepted_tx, reports_tx.clone(), fetched_tx),
     );
     // Submit over the registry's HTTP API, which acknowledges each bundle. The
     // delivery wire it offers instead is fire-and-forget, so a rejected bundle
@@ -202,12 +204,16 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     };
 
     let stop = Arc::new(AtomicBool::new(false));
+    let receives = crate::inbound::ReceiveEvents {
+        messages: messages_sub,
+        fetched: fetched_rx,
+        inbound_tx,
+    };
     let inbound_thread = crate::inbound::spawn_bridge(
         stop.clone(),
-        messages_sub,
+        receives,
         started_sub,
         conn_sub,
-        inbound_tx,
         subscribe_rx,
         sends,
     );

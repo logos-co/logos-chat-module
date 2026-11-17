@@ -2,7 +2,8 @@
 //!
 //! Two workers run alongside the client's own inbound worker:
 //! * The bridge ([`run_bridge`]) drains delivery_module's events: `messageReceived`
-//!   payloads are pushed to the client's inbound channel; `nodeStarted` and
+//!   payloads, and those a fetch found in Store, are pushed to the client's
+//!   inbound channel; `nodeStarted` and
 //!   `connectionStateChanged` drive local `delivery_state`; `messagePropagated` and
 //!   `messageError` for this module's sends are reported to the client; and the
 //!   core's queued subscription requests are forwarded to delivery_module once its
@@ -32,6 +33,7 @@ use crate::actions::{
     record_conversation_started, record_members_changed, record_message_received,
     record_node_started, set_delivery_state,
 };
+use crate::delivery_module::MessageReceivedEvent;
 use crate::module::{with_display, with_display_mut, DeliveryStateKind};
 use crate::persistence::ConversationKind;
 
@@ -49,28 +51,26 @@ pub(crate) struct SendEvents {
     pub(crate) reports: Sender<DeliveryReport>,
 }
 
+/// What the bridge forwards to the client: delivery_module's `messageReceived`,
+/// and the messages a fetch found in Store. `inbound_tx` is the client's inbound
+/// channel.
+pub(crate) struct ReceiveEvents {
+    pub(crate) messages: EventSubscription,
+    pub(crate) fetched: Receiver<MessageReceivedEvent>,
+    pub(crate) inbound_tx: Sender<InboundPayload>,
+}
+
 pub(crate) fn spawn_bridge(
     stop: Arc<AtomicBool>,
-    messages: EventSubscription,
+    receives: ReceiveEvents,
     node_started: EventSubscription,
     conn: Option<EventSubscription>,
-    inbound_tx: Sender<InboundPayload>,
     subscribe_rx: Receiver<String>,
     sends: SendEvents,
 ) -> JoinHandle<()> {
     thread::Builder::new()
         .name("rust-chat-bridge".into())
-        .spawn(move || {
-            run_bridge(
-                stop,
-                messages,
-                node_started,
-                conn,
-                inbound_tx,
-                subscribe_rx,
-                sends,
-            )
-        })
+        .spawn(move || run_bridge(stop, receives, node_started, conn, subscribe_rx, sends))
         .expect("failed to spawn bridge thread")
 }
 
@@ -83,13 +83,17 @@ pub(crate) fn spawn_events(events: Receiver<Event>) -> JoinHandle<()> {
 
 fn run_bridge(
     stop: Arc<AtomicBool>,
-    messages: EventSubscription,
+    receives: ReceiveEvents,
     node_started: EventSubscription,
     mut conn: Option<EventSubscription>,
-    inbound_tx: Sender<InboundPayload>,
     subscribe_rx: Receiver<String>,
     sends: SendEvents,
 ) {
+    let ReceiveEvents {
+        messages,
+        fetched,
+        inbound_tx,
+    } = receives;
     let mut node_started = Some(node_started);
     let mut seen = SeenMessages::default();
     let mut propagated = Some(sends.propagated);
@@ -107,6 +111,9 @@ fn run_bridge(
             Ok(evt) => forward_message(&evt, &inbound_tx, &mut seen),
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => return,
+        }
+        while let Ok(msg) = fetched.try_recv() {
+            forward_unseen(msg, &inbound_tx, &mut seen);
         }
 
         drain(&mut node_started, |evt| {
@@ -181,6 +188,15 @@ fn forward_message(evt: &EventData, inbound_tx: &Sender<InboundPayload>, seen: &
     if !msg.content_topic.starts_with(crate::delivery::TOPIC_PREFIX) {
         return;
     }
+    forward_unseen(msg, inbound_tx, seen);
+}
+
+/// Push a message's payload to the client's inbound channel, once per hash.
+fn forward_unseen(
+    msg: MessageReceivedEvent,
+    inbound_tx: &Sender<InboundPayload>,
+    seen: &mut SeenMessages,
+) {
     if !seen.first_sighting(&msg.message_hash) {
         tracing::debug!(
             "inbound: dropped a repeat of {} ({})",
@@ -544,6 +560,40 @@ mod tests {
         assert!(seen.first_sighting("0xa"));
         assert!(seen.first_sighting("0xb"));
         assert!(!seen.first_sighting("0xa"));
+    }
+
+    fn fetched(hash: &str) -> MessageReceivedEvent {
+        MessageReceivedEvent {
+            message_hash: hash.into(),
+            content_topic: "/logos-chat/1/alice/proto".into(),
+            payload: b"hi".to_vec(),
+            source: "fetch".into(),
+            timestamp: 42,
+        }
+    }
+
+    #[test]
+    fn a_fetched_message_reaches_the_client_once() {
+        let (tx, rx) = crossbeam_channel::unbounded();
+        let mut seen = SeenMessages::default();
+
+        forward_unseen(fetched("0x0a0b"), &tx, &mut seen);
+        forward_unseen(fetched("0x0a0b"), &tx, &mut seen);
+
+        let inbound = rx.try_recv().unwrap();
+        assert_eq!(inbound.data, b"hi");
+        assert_eq!(inbound.delivery_info, Some(info(&[0x0a, 0x0b])));
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn a_live_copy_after_a_fetch_is_a_repeat() {
+        let (tx, _rx) = crossbeam_channel::unbounded();
+        let mut seen = SeenMessages::default();
+
+        forward_unseen(fetched("0x0a0b"), &tx, &mut seen);
+
+        assert!(!seen.first_sighting("0x0a0b"));
     }
 
     #[test]

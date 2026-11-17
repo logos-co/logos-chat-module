@@ -64,6 +64,9 @@ chrono         = { version = "0.4", default-features = false, features = ["clock
 # Reads delivery_module's 0x-hex message hashes as the delivery ids libchat
 # keeps. Already in the graph, so declaring it builds nothing new.
 hex            = "0.4"
+# Reads the base64 payloads of the messages a Store node returns. Already in the
+# graph, so declaring it builds nothing new.
+base64         = "0.22"
 
 # libchat's `crypto` crate is written for the xeddsa 1.0 API. Cargo's
 # default SemVer resolution would pick 1.1.0 (released since), whose

@@ -9,7 +9,7 @@ name: Doc-Tests
 # does not complete.
 #
 # The Linux leg runs several real delivery instances on one host (distinct data
-# dirs) and needs outbound network to reach the logos.test Waku fleet. The
+# dirs) and needs outbound network to reach the logos.dev Waku fleet. The
 # Windows leg loads chat and delivery in a native logosctl session, calls
 # status(), and publishes its own offline execution report.
 

@@ -13,7 +13,7 @@
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder/0.3.1";
 
-    logos-delivery-module.url = "github:logos-co/logos-delivery-module/v0.3.0-rc.3";
+    logos-delivery-module.url = "github:logos-co/logos-delivery-module/70d5242162a25f0aeaa3195cd35145f50050e768";
   };
 
   outputs = inputs@{ self, logos-module-builder, logos-delivery-module, ... }:

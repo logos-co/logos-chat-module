@@ -4,20 +4,25 @@
 //! queues the core's interest in a delivery address (forwarded once the node is
 //! started, see `inbound.rs`); `inbound` hands the client the channel the module
 //! feeds with received payloads, and `delivery_reports` the one it feeds with the
-//! ids of published payloads. `fetch_messages` fails: delivery_module's store
-//! query needs a store peer's address, and nothing delivery_module offers names
-//! one.
+//! ids of published payloads. `fetch_messages` looks payloads up by hash on the
+//! Store nodes delivery_module names, and hands what it finds to the bridge.
 
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 use crossbeam_channel::{Receiver, Sender};
 use logos_generic_chat::{
     AddressedEnvelope, DeliveryInfo, DeliveryMsgId, DeliveryReport, DeliveryService,
     InboundPayload, PublishReceipt, PublishedId, Transport,
 };
 use logos_rust_sdk::LogosError;
-use serde_json::Value;
+use serde::Deserialize;
+use serde_json::{json, Value};
+
+use crate::delivery_module::MessageReceivedEvent;
 
 /// The single home for chat's content-topic scheme. Both the outbound topic
 /// ([`content_topic_for`]) and the inbound prefix filter (`inbound.rs`) derive
@@ -149,6 +154,8 @@ pub(crate) struct SdkPublisher {
     accepted_tx: Sender<(String, PublishReceipt)>,
     /// Where a send delivery_module refused is reported.
     reports_tx: Sender<DeliveryReport>,
+    /// Where the messages a fetch finds go, for the bridge to forward.
+    fetched_tx: Sender<MessageReceivedEvent>,
     /// Numbers the receipts `publish` returns.
     sends: Arc<AtomicU64>,
 }
@@ -158,11 +165,13 @@ impl SdkPublisher {
         subscribe_tx: Sender<String>,
         accepted_tx: Sender<(String, PublishReceipt)>,
         reports_tx: Sender<DeliveryReport>,
+        fetched_tx: Sender<MessageReceivedEvent>,
     ) -> Self {
         Self {
             subscribe_tx,
             accepted_tx,
             reports_tx,
+            fetched_tx,
             sends: Arc::default(),
         }
     }
@@ -224,8 +233,159 @@ impl DeliveryService for SdkPublisher {
             .map_err(|e| e.to_string())
     }
 
-    fn fetch_messages(&mut self, _: &str, _: &[DeliveryMsgId]) -> Result<(), String> {
-        Err("delivery_module names no store peer to fetch from".to_owned())
+    fn fetch_messages(
+        &mut self,
+        _: &str,
+        delivery_msg_ids: &[DeliveryMsgId],
+    ) -> Result<(), String> {
+        // A store query without hashes matches every message.
+        if delivery_msg_ids.is_empty() {
+            return Ok(());
+        }
+        let fetch = Fetch {
+            query: store_query(delivery_msg_ids),
+            fetched_tx: self.fetched_tx.clone(),
+        };
+        crate::modules()
+            .delivery_module
+            .get_node_info_async("StoreNodes", move |res| {
+                match delivery_outcome(res).and_then(|nodes| store_nodes(&nodes)) {
+                    Ok(nodes) => fetch.ask(nodes),
+                    Err(e) => tracing::warn!("fetch: delivery_module named no Store node: {e}"),
+                }
+            });
+        Ok(())
+    }
+}
+
+/// How long one Store node gets to answer, as libchat's own delivery adapter
+/// gives it.
+const FETCH_TIMEOUT_MS: i64 = 10_000;
+
+/// A by-hash Store lookup of the payloads libchat is missing.
+struct Fetch {
+    query: Value,
+    fetched_tx: Sender<MessageReceivedEvent>,
+}
+
+impl Fetch {
+    /// Asks the first of `nodes`, and the next once it fails. A page with a cursor
+    /// sends the query for the next page to the same node.
+    fn ask(mut self, mut nodes: VecDeque<String>) {
+        let Some(node) = nodes.front().cloned() else {
+            tracing::warn!("fetch: no Store node answered");
+            return;
+        };
+        let query = self.query.to_string();
+        crate::modules().delivery_module.store_query_async(
+            &query,
+            &node,
+            FETCH_TIMEOUT_MS,
+            move |res| match delivery_outcome(res).and_then(|page| store_page(&page)) {
+                Ok(page) => {
+                    for message in page
+                        .messages
+                        .into_iter()
+                        .filter_map(StoredMessage::received)
+                    {
+                        // The receiver is the bridge; if it has gone away the module
+                        // is stopping, so a lost fetch is benign.
+                        let _ = self.fetched_tx.send(message);
+                    }
+                    if let Some(cursor) = page.pagination_cursor {
+                        self.query["paginationCursor"] = cursor.into();
+                        self.ask(nodes);
+                    }
+                }
+                Err(e) => {
+                    if let Some(failed) = nodes.pop_front() {
+                        tracing::warn!("fetch: Store node {failed} failed: {e}");
+                    }
+                    self.ask(nodes);
+                }
+            },
+        );
+    }
+}
+
+/// The `storeQuery` JSON that returns the messages `ids` name, with their data.
+fn store_query(ids: &[DeliveryMsgId]) -> Value {
+    let hashes: Vec<String> = ids
+        .iter()
+        .map(|id| format!("0x{}", hex::encode(id.as_bytes())))
+        .collect();
+    // logos-delivery requires the request id and the paging direction; it fills in
+    // an empty request id itself.
+    json!({
+        "requestId": "",
+        "includeData": true,
+        "paginationForward": false,
+        "messageHashes": hashes,
+    })
+}
+
+/// The multiaddrs delivery_module's `StoreNodes` node info lists, as JSON text.
+fn store_nodes(value: &Value) -> Result<VecDeque<String>, String> {
+    let text = value
+        .as_str()
+        .ok_or_else(|| format!("StoreNodes is not text: {value}"))?;
+    serde_json::from_str(text).map_err(|e| format!("StoreNodes is not a list of multiaddrs: {e}"))
+}
+
+/// One page of a `storeQuery` answer, as JSON text.
+fn store_page(value: &Value) -> Result<StorePage, String> {
+    let text = value
+        .as_str()
+        .ok_or_else(|| format!("storeQuery's answer is not text: {value}"))?;
+    serde_json::from_str(text).map_err(|e| format!("storeQuery's answer is unreadable: {e}"))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StorePage {
+    messages: Vec<StoredMessage>,
+    /// Set while more pages follow.
+    pagination_cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredMessage {
+    message_hash: String,
+    message: Option<StoredPayload>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredPayload {
+    content_topic: String,
+    /// Standard base64.
+    payload: String,
+    #[serde(default)]
+    timestamp: i64,
+}
+
+impl StoredMessage {
+    /// The message as the bridge takes a received one.
+    fn received(self) -> Option<MessageReceivedEvent> {
+        let Some(message) = self.message else {
+            tracing::warn!(
+                "fetch: Store returned {} without its data",
+                self.message_hash
+            );
+            return None;
+        };
+        let payload = STANDARD
+            .decode(&message.payload)
+            .map_err(|e| tracing::warn!("fetch: unreadable payload of {}: {e}", self.message_hash))
+            .ok()?;
+        Some(MessageReceivedEvent {
+            message_hash: self.message_hash,
+            content_topic: message.content_topic,
+            payload,
+            source: "fetch".to_owned(),
+            timestamp: message.timestamp,
+        })
     }
 }
 
@@ -291,5 +451,70 @@ mod tests {
     #[test]
     fn a_value_with_no_envelope_fails() {
         assert!(delivery_outcome(Ok(json!(true))).is_err());
+    }
+
+    #[test]
+    fn a_fetch_asks_for_the_data_of_each_hash() {
+        let ids = [
+            DeliveryMsgId::from(vec![0x0a, 0x0b]),
+            DeliveryMsgId::from(vec![0xff]),
+        ];
+        assert_eq!(
+            store_query(&ids),
+            json!({
+                "requestId": "",
+                "includeData": true,
+                "paginationForward": false,
+                "messageHashes": ["0x0a0b", "0xff"],
+            })
+        );
+    }
+
+    #[test]
+    fn store_nodes_lists_each_multiaddr_in_order() {
+        let listed = json!(r#"["/dns4/a/tcp/30303/p2p/16A","/dns4/b/tcp/30303/p2p/16B"]"#);
+        assert_eq!(
+            store_nodes(&listed),
+            Ok(VecDeque::from([
+                "/dns4/a/tcp/30303/p2p/16A".to_owned(),
+                "/dns4/b/tcp/30303/p2p/16B".to_owned(),
+            ]))
+        );
+        assert!(store_nodes(&json!(["/dns4/a/tcp/30303/p2p/16A"])).is_err());
+    }
+
+    #[test]
+    fn a_stored_message_reads_as_a_received_one() {
+        let answer = json!({
+            "requestId": "r", "statusCode": 200, "statusDesc": "OK",
+            "messages": [
+                {"messageHash": "0x0a0b", "pubsubTopic": "/waku/2/rs/1/0", "message": {
+                    "payload": STANDARD.encode(b"hi"), "contentTopic": "/logos-chat/1/a/proto",
+                    "version": 0, "timestamp": 42, "ephemeral": false}},
+                {"messageHash": "0x0c0d"},
+            ],
+            "paginationCursor": "0x0c0d",
+        });
+        let page = store_page(&Value::String(answer.to_string())).unwrap();
+        assert_eq!(page.pagination_cursor.as_deref(), Some("0x0c0d"));
+        let received: Vec<_> = page
+            .messages
+            .into_iter()
+            .filter_map(StoredMessage::received)
+            .collect();
+        assert_eq!(received.len(), 1);
+        assert_eq!(received[0].message_hash, "0x0a0b");
+        assert_eq!(received[0].content_topic, "/logos-chat/1/a/proto");
+        assert_eq!(received[0].payload, b"hi");
+        assert_eq!(received[0].timestamp, 42);
+    }
+
+    #[test]
+    fn a_last_page_has_no_cursor() {
+        let answer =
+            json!({"requestId": "", "statusCode": 200, "statusDesc": "OK", "messages": []});
+        let page = store_page(&Value::String(answer.to_string())).unwrap();
+        assert!(page.messages.is_empty());
+        assert_eq!(page.pagination_cursor, None);
     }
 }
