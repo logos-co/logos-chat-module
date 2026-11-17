@@ -3,10 +3,14 @@
 //! `publish` forwards each outbound envelope to delivery_module; `subscribe`
 //! queues the core's interest in a delivery address (forwarded once the node is
 //! started, see `inbound.rs`); `inbound` hands the client the channel the module
-//! feeds with received payloads.
+//! feeds with received payloads. `fetch_messages` fails: delivery_module's store
+//! query needs a store peer's address, and nothing delivery_module offers names
+//! one.
 
 use crossbeam_channel::{Receiver, Sender};
-use logos_generic_chat::{AddressedEnvelope, DeliveryService, Transport};
+use logos_generic_chat::{
+    AddressedEnvelope, DeliveryMsgId, DeliveryService, InboundPayload, PublishedId, Transport,
+};
 use logos_rust_sdk::LogosError;
 use serde_json::Value;
 
@@ -50,12 +54,12 @@ pub(crate) fn delivery_outcome(res: Result<Value, LogosError>) -> Result<Value, 
 pub(crate) struct SdkDelivery {
     /// Handed to the client once via [`Transport::inbound`]. The module feeds the
     /// matching sender from delivery_module's `messageReceived` events.
-    inbound_rx: Option<Receiver<Vec<u8>>>,
+    inbound_rx: Option<Receiver<InboundPayload>>,
     publisher: SdkPublisher,
 }
 
 impl SdkDelivery {
-    pub(crate) fn new(inbound_rx: Receiver<Vec<u8>>, subscribe_tx: Sender<String>) -> Self {
+    pub(crate) fn new(inbound_rx: Receiver<InboundPayload>, subscribe_tx: Sender<String>) -> Self {
         Self {
             inbound_rx: Some(inbound_rx),
             publisher: SdkPublisher { subscribe_tx },
@@ -72,17 +76,26 @@ impl SdkDelivery {
 impl DeliveryService for SdkDelivery {
     type Error = String;
 
-    fn publish(&mut self, envelope: AddressedEnvelope) -> Result<(), String> {
+    fn publish(&mut self, envelope: AddressedEnvelope) -> Result<PublishedId, String> {
         self.publisher.publish(envelope)
     }
 
     fn subscribe(&mut self, delivery_address: &str) -> Result<(), String> {
         self.publisher.subscribe(delivery_address)
     }
+
+    fn fetch_messages(
+        &mut self,
+        delivery_address: &str,
+        delivery_msg_ids: &[DeliveryMsgId],
+    ) -> Result<(), String> {
+        self.publisher
+            .fetch_messages(delivery_address, delivery_msg_ids)
+    }
 }
 
 impl Transport for SdkDelivery {
-    fn inbound(&mut self) -> Receiver<Vec<u8>> {
+    fn inbound(&mut self) -> Receiver<InboundPayload> {
         self.inbound_rx
             .take()
             .expect("SdkDelivery::inbound called more than once")
@@ -100,7 +113,7 @@ pub(crate) struct SdkPublisher {
 impl DeliveryService for SdkPublisher {
     type Error = String;
 
-    fn publish(&mut self, envelope: AddressedEnvelope) -> Result<(), String> {
+    fn publish(&mut self, envelope: AddressedEnvelope) -> Result<PublishedId, String> {
         // Topic derived from the recipient's delivery address; send_async base64url-
         // encodes the envelope onto the lp_* wire.
         let topic = content_topic_for(&envelope.delivery_address);
@@ -115,7 +128,7 @@ impl DeliveryService for SdkPublisher {
                     tracing::error!("delivery_module.send failed: {e}");
                 }
             });
-        Ok(())
+        Ok(PublishedId::Unknown)
     }
 
     fn subscribe(&mut self, delivery_address: &str) -> Result<(), String> {
@@ -125,6 +138,10 @@ impl DeliveryService for SdkPublisher {
         self.subscribe_tx
             .send(content_topic_for(delivery_address))
             .map_err(|e| e.to_string())
+    }
+
+    fn fetch_messages(&mut self, _: &str, _: &[DeliveryMsgId]) -> Result<(), String> {
+        Err("delivery_module names no store peer to fetch from".to_owned())
     }
 }
 

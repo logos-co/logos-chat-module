@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use components::HttpAuthClient;
-use logos_account::{Account, AccountError, Ed25519VerifyingKey, CHATSIGNER_CONTEXT};
+use logos_account::{Account, AccountError, ChatWrite, Ed25519VerifyingKey};
 use logos_generic_chat::{
     ChatClientBuilder, ClientError, ContactRegistry, GroupMetadata, Installation,
     PendingInstallation, RegistryPublishMode, SqliteStore, StorageConfig,
@@ -217,10 +217,7 @@ fn register_installation(auth: HttpAuthClient) -> Result<Installation, AccountEr
     let pending = PendingInstallation::generate();
     let key = Ed25519VerifyingKey::from_canonical_slice(&pending.endorsement_request())?;
     let mut account = Account::new(auth);
-    account
-        .update()
-        .endorse_ed25519_key(CHATSIGNER_CONTEXT.clone(), &key)
-        .publish()?;
+    account.update().endorse_chat_signer(&key).publish()?;
     Ok(pending.complete(account.addr()))
 }
 
@@ -507,7 +504,7 @@ pub(crate) fn create_conversation(peer_address: &str) -> Result<String, CoreErro
     Ok(chat_id)
 }
 
-/// Create a GroupV2 conversation with this installation as its only member;
+/// Create a GroupV3 conversation with this installation as its only member;
 /// peers are invited afterwards via [`add_group_member`]. `name` and `desc` are
 /// the group's shared metadata, carried to every joiner; both may be empty.
 /// Returns the conversation id, which every member observes once joined.
@@ -549,9 +546,10 @@ pub(crate) fn create_group_conversation(name: &str, desc: &str) -> Result<String
 }
 
 /// Invite every installation the account at `peer_address` endorses into an
-/// existing group conversation. The group's steward commits the add and the
-/// welcome is delivered asynchronously, so the peer joins some time after
-/// this returns.
+/// existing group conversation. This installation commits the add at once and
+/// sends the welcome when it finalizes that commit, about two minutes later, so
+/// the peer joins some time after this returns. Until then a further add from
+/// this installation fails, unless it names only current members.
 pub(crate) fn add_group_member(convo_id: &str, peer_address: &str) -> Result<(), CoreError> {
     check_live(convo_id)?;
 

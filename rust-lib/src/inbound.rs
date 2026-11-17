@@ -21,7 +21,7 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender};
-use logos_generic_chat::{ConversationClass, Event};
+use logos_generic_chat::{ConversationClass, Event, InboundPayload};
 use logos_rust_sdk::{EventData, EventSubscription};
 
 use crate::actions::{
@@ -38,7 +38,7 @@ pub(crate) fn spawn_bridge(
     messages: EventSubscription,
     node_started: EventSubscription,
     conn: Option<EventSubscription>,
-    inbound_tx: Sender<Vec<u8>>,
+    inbound_tx: Sender<InboundPayload>,
     subscribe_rx: Receiver<String>,
 ) -> JoinHandle<()> {
     thread::Builder::new()
@@ -59,7 +59,7 @@ fn run_bridge(
     messages: EventSubscription,
     node_started: EventSubscription,
     mut conn: Option<EventSubscription>,
-    inbound_tx: Sender<Vec<u8>>,
+    inbound_tx: Sender<InboundPayload>,
     subscribe_rx: Receiver<String>,
 ) {
     let mut node_started = Some(node_started);
@@ -112,7 +112,7 @@ fn drain(sub: &mut Option<EventSubscription>, mut handle: impl FnMut(&EventData)
 /// channel. The loose topic-prefix filter stays: libp2p delivers every message in
 /// the shard regardless of subscribed topic, so non-chat traffic is dropped here
 /// and `Core::handle_payload` (inside the client) discriminates the rest.
-fn forward_message(evt: &EventData, inbound_tx: &Sender<Vec<u8>>, seen: &mut SeenMessages) {
+fn forward_message(evt: &EventData, inbound_tx: &Sender<InboundPayload>, seen: &mut SeenMessages) {
     let Some(msg) = crate::delivery_module::DeliveryModuleClient::decode_message_received(evt)
     else {
         tracing::warn!("inbound: messageReceived payload missing or malformed");
@@ -131,7 +131,10 @@ fn forward_message(evt: &EventData, inbound_tx: &Sender<Vec<u8>>, seen: &mut See
     }
     // The receiver is the client's worker; if it has gone away the client is being
     // dropped and the bridge is about to stop, so a failed send is benign.
-    let _ = inbound_tx.send(msg.payload);
+    let _ = inbound_tx.send(InboundPayload {
+        data: msg.payload,
+        delivery_info: None,
+    });
 }
 
 const SEEN_CAPACITY: usize = 10_000;
@@ -215,7 +218,7 @@ fn run_events(events: Receiver<Event>) {
 }
 
 /// Map libchat's display class to the module's contract kind: the pairwise
-/// shape (DirectV1) is `direct`, GroupV2 is `group`.
+/// shape (DirectV1) is `direct`, a group is `group`.
 fn kind_for_class(class: ConversationClass) -> ConversationKind {
     match class {
         ConversationClass::Dm => ConversationKind::Direct,
@@ -278,7 +281,7 @@ mod tests {
 
         forward_message(&event, &tx, &mut SeenMessages::default());
 
-        assert_eq!(rx.try_recv().unwrap(), payload);
+        assert_eq!(rx.try_recv().unwrap().data, payload);
     }
 
     #[test]
