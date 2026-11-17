@@ -39,8 +39,6 @@ message-store  = { git = "https://github.com/logos-messaging/logos-chat.git", pa
 # without the feature `PRAGMA key` is ignored and the file is written in plain
 # text, so enable it on our own dep rather than rely on libchat's.
 rusqlite       = { version = "0.35", features = ["bundled-sqlcipher-vendored-openssl"] }
-# Versions the module's own tables in `chat.db`, through `PRAGMA user_version`.
-rusqlite_migration = "2.1"
 # The client hands back a `Receiver<Event>` and drains a `Receiver<Vec<u8>>`
 # through its `Transport`, so the module's plumbing speaks the same channel type.
 crossbeam-channel = "0.5"
