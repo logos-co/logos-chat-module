@@ -82,7 +82,7 @@ delivery network, documenting the module's API by example.
 [`chat-module-exchange.test.yaml`](doctests/chat-module-exchange.test.yaml) is
 the two-instance 1:1 round-trip;
 [`chat-module-group.test.yaml`](doctests/chat-module-group.test.yaml) runs a
-three-instance GroupV2 conversation (create, grow member by member, fan-out
+three-instance group conversation (create, grow member by member, fan-out
 messages with sender attribution). They run on every PR via
 [`.github/workflows/doctests.yml`](.github/workflows/doctests.yml) (the
 [shared doctest CLI](https://github.com/logos-co/logos-doctest) builds the
