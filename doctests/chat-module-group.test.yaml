@@ -44,7 +44,7 @@ prerequisites:
     ```
   - "**A Linux or macOS machine.** Nix provides every toolchain (Qt, CMake, cargo, rustc) during the builds."
   - "**`jq`** on `PATH` (used to read the JSON the CLI prints). GitHub runners ship it; locally, run the spec inside `nix shell nixpkgs#jq`."
-  - "**Network access.** The three delivery nodes discover each other over the `logos.test` Waku fleet; an isolated sandbox won't complete the exchange. Expect ~5-40s to reach Online, minutes per membership change, and up to ~2 min for messages to propagate."
+  - "**Network access.** The three delivery nodes discover each other over the `logos.dev` Waku fleet, which needs no RLN membership to send; an isolated sandbox won't complete the exchange. Expect ~5-40s to reach Online, minutes per membership change, and up to ~2 min for messages to propagate."
 
 sections:
   - title: "Build logosctl and the two modules"
@@ -149,15 +149,15 @@ sections:
       - title: "Initialise Alice, Bob, and Carol"
         run: |
           for who in alice bob carol; do
-            out=$(./logos/bin/logosctl --config-dir "$who" call chat_module init 'json:{"delivery_preset":"logos.test"}')
+            out=$(./logos/bin/logosctl --config-dir "$who" call chat_module init 'json:{"delivery_preset":"logos.dev"}')
             echo "$out"
             echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "$who init failed: $out" >&2; exit 1; }
             echo "${who}_INIT_OK"
           done
         code_block: |
-          logosctl --config-dir alice call chat_module init 'json:{"delivery_preset":"logos.test"}'
-          logosctl --config-dir bob   call chat_module init 'json:{"delivery_preset":"logos.test"}'
-          logosctl --config-dir carol call chat_module init 'json:{"delivery_preset":"logos.test"}'
+          logosctl --config-dir alice call chat_module init 'json:{"delivery_preset":"logos.dev"}'
+          logosctl --config-dir bob   call chat_module init 'json:{"delivery_preset":"logos.dev"}'
+          logosctl --config-dir carol call chat_module init 'json:{"delivery_preset":"logos.dev"}'
         expect_contains:
           - "alice_INIT_OK"
           - "bob_INIT_OK"

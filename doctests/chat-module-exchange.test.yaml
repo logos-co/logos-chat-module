@@ -43,7 +43,7 @@ prerequisites:
     ```
   - "**A Linux or macOS machine.** Nix provides every toolchain (Qt, CMake, cargo, rustc) during the builds."
   - "**`jq`** on `PATH` (used to read the JSON the CLI prints). GitHub runners ship it; locally, run the spec inside `nix shell nixpkgs#jq`."
-  - "**Network access.** The two delivery nodes discover each other over the `logos.test` Waku fleet; an isolated sandbox won't complete the exchange. Expect ~5-40s to reach Online and up to ~2 min for messages to propagate."
+  - "**Network access.** The two delivery nodes discover each other over the `logos.dev` Waku fleet, which needs no RLN membership to send; an isolated sandbox won't complete the exchange. Expect ~5-40s to reach Online and up to ~2 min for messages to propagate."
 
 sections:
   - title: "Build logosctl and the two modules"
@@ -157,11 +157,11 @@ sections:
     steps:
       - title: "Initialise Alice and Bob"
         run: |
-          ./logos/bin/logosctl --config-dir alice call chat_module init 'json:{"delivery_preset":"logos.test"}'
-          ./logos/bin/logosctl --config-dir bob   call chat_module init 'json:{"delivery_preset":"logos.test"}'
+          ./logos/bin/logosctl --config-dir alice call chat_module init 'json:{"delivery_preset":"logos.dev"}'
+          ./logos/bin/logosctl --config-dir bob   call chat_module init 'json:{"delivery_preset":"logos.dev"}'
         code_block: |
-          logosctl --config-dir alice call chat_module init 'json:{"delivery_preset":"logos.test"}'
-          logosctl --config-dir bob   call chat_module init 'json:{"delivery_preset":"logos.test"}'
+          logosctl --config-dir alice call chat_module init 'json:{"delivery_preset":"logos.dev"}'
+          logosctl --config-dir bob   call chat_module init 'json:{"delivery_preset":"logos.dev"}'
         expect_contains:
           - '"status":"ok"'
         post_text: |
@@ -347,10 +347,10 @@ sections:
       - title: "Load and initialise chat_module"
         run: |
           ./logos/bin/logosctl --config-dir alice module load chat_module
-          ./logos/bin/logosctl --config-dir alice call chat_module init 'json:{"delivery_preset":"logos.test"}'
+          ./logos/bin/logosctl --config-dir alice call chat_module init 'json:{"delivery_preset":"logos.dev"}'
         code_block: |
           logosctl --config-dir alice module load chat_module
-          logosctl --config-dir alice call chat_module init 'json:{"delivery_preset":"logos.test"}'
+          logosctl --config-dir alice call chat_module init 'json:{"delivery_preset":"logos.dev"}'
         expect_contains:
           - '"status":"ok"'
       - title: "The conversation and its messages are back"

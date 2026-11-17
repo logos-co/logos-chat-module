@@ -1278,6 +1278,7 @@ name = "chat_module"
 version = "0.3.0"
 dependencies = [
  "account",
+ "base64",
  "chrono",
  "components",
  "crossbeam-channel",

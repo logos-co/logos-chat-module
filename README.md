@@ -56,8 +56,8 @@ See [Documentation](#documentation) below to build the site locally.
 ## Runtime
 
 End-to-end chat needs a `delivery_module` available to the host at runtime; the
-flake pins [`logos-delivery-module`](https://github.com/logos-co/logos-delivery-module)
-at `v0.3.0-rc.3`. Load `chat_module` via `logoscore` or Basecamp.
+flake pins a [`logos-delivery-module`](https://github.com/logos-co/logos-delivery-module)
+that runs logos-delivery v0.40.0. Load `chat_module` via `logoscore` or Basecamp.
 
 Bring-up is `init(config)`, taking a `ChatConfig` record whose every field is
 optional: `delivery_preset` (empty or absent → `logos.test`) and `log_level`.
