@@ -33,6 +33,7 @@ what_you_learn:
   - "Create a named group with `create_group_conversation` and grow it with `add_group_member` — including an add proposed by a non-creator member"
   - "Why a group join lands asynchronously (commit, a two-minute wait to apply it, then the welcome), and how to observe it by polling `list_conversations`"
   - "How every member shares one conversation id, and how `get_messages` attributes each inbound message to its sender's account address"
+  - "How members confirm they hold one group state, by its epoch and fingerprint"
 
 prerequisites:
   - |
@@ -332,6 +333,35 @@ sections:
           this poll skips those. Alice applies Bob's add of Carol two minutes
           after his commit reaches her, so all three converge on the same
           three-member set shortly after Carol joins.
+      - title: "Every member holds the same group state"
+        run: |
+          gid=$(cat group-id.txt)
+          ok=""
+          for i in $(seq 1 60); do
+            views=$(for who in alice bob carol; do
+              ./logos/bin/logosctl --config-dir "$who" call chat_module list_conversations 2>/dev/null \
+                | jq -r --arg id "$gid" '.result[]? | select(.convo_id == $id) | "\(.protocol) epoch=\(.epoch) fingerprint=\(.epoch_fingerprint)"' || true
+            done)
+            if [ "$(printf '%s\n' "$views" | grep -c '^GroupV3 epoch=[0-9][0-9]* fingerprint=[0-9a-f][0-9a-f]*$')" = 3 ] \
+              && [ "$(printf '%s\n' "$views" | sort -u | wc -l)" = 1 ]; then
+              ok=1; echo "SAME_GROUP_STATE $(printf '%s\n' "$views" | head -n 1)"; break
+            fi
+            sleep 4
+          done
+          [ -n "$ok" ] || { echo "the members never agreed on one group state: $views" >&2; exit 1; }
+        code_block: |
+          # each member reports the group's protocol, epoch and fingerprint
+          logosctl --config-dir alice call chat_module list_conversations
+          logosctl --config-dir bob   call chat_module list_conversations
+          logosctl --config-dir carol call chat_module list_conversations
+        expect_contains:
+          - "SAME_GROUP_STATE GroupV3"
+        post_text: |
+          A group's `protocol` is `GroupV3`. Its `epoch` advances with every
+          commit a member applies, and `epoch_fingerprint` names the group
+          state at that epoch. Members that applied the same commits hold the
+          same pair; two members at one epoch with different fingerprints
+          have forked.
 
   - title: "Messages fan out to every member, with senders attributed"
     step: true

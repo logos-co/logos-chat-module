@@ -32,6 +32,17 @@ module chat_module {
     last_activity_ms: int
     ; "direct" (1:1) or "group". PrivateV1 and DirectV1 are both "direct".
     kind: tstr
+    ; The protocol the conversation runs, as the chat core names it, such as
+    ; "DirectV1" or "GroupV3". Absent when this installation has not recorded
+    ; it.
+    ? protocol: tstr
+    ; A group's epoch, which each commit this installation applies advances.
+    ; Absent unless the conversation is live and its protocol fingerprints its
+    ; epochs, as GroupV3 does.
+    ? epoch: int
+    ; The fingerprint of epoch, in hex. Every member on the same group state
+    ; holds the same epoch and fingerprint. Absent on the same terms as epoch.
+    ? epoch_fingerprint: tstr
     ; A group's shared name, set at creation and identical for every member.
     ; Absent for direct conversations and unnamed groups; distinct from the
     ; local-only `nickname`.
@@ -211,9 +222,9 @@ module chat_module {
   ; name, desc: the group's shared metadata, empty for direct conversations and
   ; unnamed groups.
   event conversation_created(convo_id: tstr, is_outgoing: bool, peer_label: tstr, kind: tstr, name: tstr, desc: tstr)
-  ; A conversation's local metadata changed here: a nickname was set, a member
-  ; was invited, or an invite back into a history_only conversation cleared
-  ; the flag. Re-read it with list_conversations.
+  ; A conversation's record changed here: a nickname was set, a member was
+  ; invited, an invite back into a history_only conversation cleared the flag,
+  ; or the group's epoch moved. Re-read it with list_conversations.
   event conversation_updated(convo_id: tstr)
   ; This instance applied a commit that changed the group's roster. Call
   ; list_group_members for the roster it applied.
