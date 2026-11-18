@@ -30,8 +30,8 @@ use logos_generic_chat::{
 use logos_rust_sdk::{EventData, EventSubscription};
 
 use crate::actions::{
-    record_conversation_started, record_members_changed, record_message_received,
-    record_node_started, set_delivery_state,
+    record_conversation_started, record_member_states_changed, record_members_changed,
+    record_message_delivered, record_message_received, record_node_started, set_delivery_state,
 };
 use crate::delivery_module::MessageReceivedEvent;
 use crate::module::{with_display, with_display_mut, DeliveryStateKind};
@@ -367,6 +367,15 @@ fn run_events(events: Receiver<Event>) {
             }
             Event::ConversationMembersChanged { convo_id } => {
                 record_members_changed(&convo_id);
+            }
+            Event::MessageDelivered {
+                convo_id,
+                message_id,
+            } => {
+                record_message_delivered(&convo_id, &message_id);
+            }
+            Event::ConversationMemberStatesChanged { convo_id } => {
+                record_member_states_changed(&convo_id);
             }
             Event::InboundError { message } => {
                 tracing::warn!("inbound error: {message}");

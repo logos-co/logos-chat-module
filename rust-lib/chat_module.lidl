@@ -32,6 +32,17 @@ module chat_module {
     last_activity_ms: int
     ; "direct" (1:1) or "group". PrivateV1 and DirectV1 are both "direct".
     kind: tstr
+    ; The protocol the conversation runs, as the chat core names it, such as
+    ; "DirectV1" or "GroupV3". Absent when this installation has not recorded
+    ; it.
+    ? protocol: tstr
+    ; A group's epoch, which each commit this installation applies advances.
+    ; Absent unless the conversation is live and its protocol fingerprints its
+    ; epochs, as GroupV3 does.
+    ? epoch: int
+    ; The fingerprint of epoch, in hex. Every member on the same group state
+    ; holds the same epoch and fingerprint. Absent on the same terms as epoch.
+    ? epoch_fingerprint: tstr
     ; A group's shared name, set at creation and identical for every member.
     ; Absent for direct conversations and unnamed groups; distinct from the
     ; local-only `nickname`.
@@ -56,6 +67,14 @@ module chat_module {
     timestamp_ms: int
     ; Sender's account address; unset on messages this installation sent.
     ? sender: tstr
+    ; The chat core's id for a message this installation sent, which
+    ; message_sent and message_delivered carry too. Unset on received messages.
+    ? message_id: tstr
+    ; True once another member holds this message, which this installation
+    ; sent; false until then, and on received messages. In a group it turns
+    ; true with the first member who holds it, not the last, and it says
+    ; nothing of whether anyone read it. Only GroupV3 reports it.
+    delivered: bool
   }
   type Status {
     ; How many conversations this installation currently holds.
@@ -84,6 +103,20 @@ module chat_module {
     ; applies its commit, about two minutes after the add; an invite whose commit
     ; lost to another member's concurrent commit is dropped from the roster.
     pending: bool
+    ; How the member's group state compares with this installation's: "synced"
+    ; on the same state, "behind" on one this installation held at an earlier
+    ; epoch, "ahead" past this installation's epoch through its state,
+    ; "forked" on another state, or "unconfirmed" until something heard from
+    ; them can be checked. This installation's own entry is "synced". Empty
+    ; for a pending member, and in a conversation that does not track it, as
+    ; only GroupV3 does. Told from the epoch fingerprints the member's messages
+    ; carry and the beacon it signs each epoch; a message's are unsigned, so
+    ; this is a hint.
+    sync_state: tstr
+    ; The newest epoch the member was heard at. Absent until then.
+    ? epoch: int
+    ; The member's fingerprint of epoch, in hex. Absent with epoch.
+    ? epoch_fingerprint: tstr
   }
 
   ; --- lifecycle ---
@@ -204,20 +237,27 @@ module chat_module {
   ; sender: the sender's account address, which its account's log vouches for.
   event message_received(convo_id: tstr, content: tstr, timestamp_ms: int, sender: tstr)
   ; A message this installation sent was published and recorded.
-  event message_sent(convo_id: tstr, content: tstr, timestamp_ms: int)
+  ; message_id: the chat core's id for it, as get_messages reports it.
+  event message_sent(convo_id: tstr, content: tstr, timestamp_ms: int, message_id: tstr)
+  ; Another member holds a message this installation sent, so get_messages
+  ; now reports it delivered. Raised once per message.
+  event message_delivered(convo_id: tstr, message_id: tstr)
   ; A conversation was opened — by a call here, or by a peer's invite arriving.
   ; is_outgoing tells the two apart.
   ; kind: "direct" (1:1) or "group", matching the Conversation record's field.
   ; name, desc: the group's shared metadata, empty for direct conversations and
   ; unnamed groups.
   event conversation_created(convo_id: tstr, is_outgoing: bool, peer_label: tstr, kind: tstr, name: tstr, desc: tstr)
-  ; A conversation's local metadata changed here: a nickname was set, a member
-  ; was invited, or an invite back into a history_only conversation cleared
-  ; the flag. Re-read it with list_conversations.
+  ; A conversation's record changed here: a nickname was set, a member was
+  ; invited, an invite back into a history_only conversation cleared the flag,
+  ; or the group's epoch moved. Re-read it with list_conversations.
   event conversation_updated(convo_id: tstr)
   ; This instance applied a commit that changed the group's roster. Call
   ; list_group_members for the roster it applied.
   event members_changed(convo_id: tstr)
+  ; A member's sync_state, epoch or epoch_fingerprint may have moved. Call
+  ; list_group_members for them.
+  event member_states_changed(convo_id: tstr)
   ; A conversation was deleted on this installation.
   event conversation_deleted(convo_id: tstr)
   ; The delivery node's state changed: "initialising", "online", "offline",

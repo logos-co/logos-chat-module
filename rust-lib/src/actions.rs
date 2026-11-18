@@ -13,8 +13,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use components::HttpAuthClient;
 use logos_account::{Account, AccountError, ChatWrite, Ed25519VerifyingKey};
 use logos_generic_chat::{
-    ChatClientBuilder, ClientError, ContactRegistry, GroupMetadata, Installation,
-    PendingInstallation, RegistryPublishMode, SqliteStore, StorageConfig,
+    ChatClientBuilder, ClientError, ContactRegistry, GroupEpoch, GroupMetadata, Installation,
+    MemberSync, PendingInstallation, RegistryPublishMode, Signer, SqliteStore, StorageConfig,
 };
 use message_store::Direction;
 
@@ -169,6 +169,17 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         .map_err(|e| InitError::Internal(format!("list_all_conversations failed: {e}")))?;
     for session in state.chats.values_mut() {
         session.history_only = !live.contains(&session.chat_id);
+        if !session.history_only {
+            let read =
+                |e: ClientError| InitError::Internal(format!("reading {}: {e}", session.chat_id));
+            session.protocol = Some(
+                client
+                    .convo_type(&session.chat_id)
+                    .map_err(read)?
+                    .to_owned(),
+            );
+            session.epoch = client.group_epoch(&session.chat_id).map_err(read)?;
+        }
     }
 
     // Register listeners before the node starts — `connectionStateChanged` and
@@ -448,7 +459,7 @@ fn record_message(
     let chat_db = d.chat_db.as_mut().ok_or(CoreError::NotInit)?;
     let recorded =
         persistence::record_message(chat_db, chat_changed.then_some(&*session), &message);
-    session.messages.push(display_message(message));
+    session.messages.push(display_message(message, false));
     recorded?;
     Ok(())
 }
@@ -461,6 +472,25 @@ fn check_live(convo_id: &str) -> Result<(), CoreError> {
         None => Err(CoreError::NotFound),
         Some(true) => Err(CoreError::HistoryOnly),
         Some(false) => Ok(()),
+    }
+}
+
+/// The protocol `convo_id` runs and, for a group whose protocol fingerprints
+/// its epochs, its epoch. A client error is logged and reads as unknown.
+fn protocol_and_epoch(convo_id: &str) -> (Option<String>, Option<GroupEpoch>) {
+    let read = with_client(|client| {
+        Ok::<_, ClientError>((client.convo_type(convo_id)?, client.group_epoch(convo_id)?))
+    });
+    match read {
+        Ok(Ok((protocol, epoch))) => (Some(protocol.to_owned()), epoch),
+        Ok(Err(e)) => {
+            tracing::warn!("reading the protocol of {convo_id} failed: {e}");
+            (None, None)
+        }
+        Err(e) => {
+            tracing::warn!("reading the protocol of {convo_id}: {e}");
+            (None, None)
+        }
     }
 }
 
@@ -501,6 +531,7 @@ pub(crate) fn create_conversation(peer_address: &str) -> Result<String, CoreErro
 
     tracing::info!("created direct conversation {chat_id}");
     let peer_label = short_label(&chat_id).to_owned();
+    let (protocol, epoch) = protocol_and_epoch(&chat_id);
     with_display_mut(|d| {
         d.state.chats.insert(
             chat_id.clone(),
@@ -510,6 +541,8 @@ pub(crate) fn create_conversation(peer_address: &str) -> Result<String, CoreErro
                 kind: ConversationKind::Direct,
                 name: None,
                 description: None,
+                protocol,
+                epoch,
                 peer: Some(peer_address.to_owned()),
                 messages: Vec::new(),
                 older_messages: 0,
@@ -542,6 +575,7 @@ pub(crate) fn create_group_conversation(name: &str, desc: &str) -> Result<String
     tracing::info!("created group conversation {chat_id}");
 
     let label = short_label(&chat_id).to_owned();
+    let (protocol, epoch) = protocol_and_epoch(&chat_id);
     with_display_mut(|d| {
         d.state.chats.insert(
             chat_id.clone(),
@@ -551,6 +585,8 @@ pub(crate) fn create_group_conversation(name: &str, desc: &str) -> Result<String
                 kind: ConversationKind::Group,
                 name: non_empty(name),
                 description: non_empty(desc),
+                protocol,
+                epoch,
                 peer: None,
                 messages: Vec::new(),
                 older_messages: 0,
@@ -595,18 +631,37 @@ pub(crate) fn list_group_members(convo_id: &str) -> Vec<GroupMember> {
         return Vec::new();
     }
     let roster = with_client(|client| {
-        Ok::<_, ClientError>((client.members(convo_id)?, client.pending_members(convo_id)?))
+        Ok::<_, ClientError>((
+            client.members(convo_id)?,
+            client.pending_members(convo_id)?,
+            client.member_states(convo_id)?,
+        ))
     });
     match roster {
-        Ok(Ok((committed, invited))) => committed
-            .into_iter()
-            .map(|member| (member, false))
-            .chain(invited.into_iter().map(|member| (member, true)))
-            .map(|(member, pending)| GroupMember {
-                address: member.account.to_string(),
-                pending,
-            })
-            .collect(),
+        Ok(Ok((committed, invited, states))) => {
+            let state_of = |member: &Signer| states.iter().find(|s| s.signer == member.signer_key);
+            committed
+                .iter()
+                .map(|member| {
+                    let state = state_of(member);
+                    let heard = state.and_then(|s| s.heard.as_ref());
+                    GroupMember {
+                        address: member.account.to_string(),
+                        pending: false,
+                        sync_state: state.map_or("", |s| sync_state(&s.sync)).to_owned(),
+                        epoch: heard.map(|h| h.epoch as i64),
+                        epoch_fingerprint: heard.map(|h| h.fingerprint.clone()),
+                    }
+                })
+                .chain(invited.iter().map(|member| GroupMember {
+                    address: member.account.to_string(),
+                    pending: true,
+                    sync_state: String::new(),
+                    epoch: None,
+                    epoch_fingerprint: None,
+                }))
+                .collect()
+        }
         Ok(Err(e)) => {
             tracing::warn!("list_group_members failed: {e}");
             Vec::new()
@@ -615,6 +670,19 @@ pub(crate) fn list_group_members(convo_id: &str) -> Vec<GroupMember> {
             tracing::warn!("list_group_members: {e}");
             Vec::new()
         }
+    }
+}
+
+/// The contract's word for a member's sync state. A state this module does not
+/// know yet reads as unconfirmed.
+fn sync_state(sync: &MemberSync) -> &'static str {
+    match sync {
+        MemberSync::Synced => "synced",
+        MemberSync::Behind => "behind",
+        MemberSync::Ahead => "ahead",
+        MemberSync::Forked => "forked",
+        MemberSync::Unconfirmed => "unconfirmed",
+        _ => "unconfirmed",
     }
 }
 
@@ -629,6 +697,9 @@ pub(crate) fn list_conversations() -> Vec<Conversation> {
                 message_count: (s.older_messages + s.messages.len()) as i64,
                 last_activity_ms: s.messages.last().map_or(0, |m| m.timestamp_ms as i64),
                 kind: s.kind.as_str().to_string(),
+                protocol: s.protocol.clone(),
+                epoch: s.epoch.as_ref().map(|e| e.epoch as i64),
+                epoch_fingerprint: s.epoch.as_ref().map(|e| e.fingerprint.clone()),
                 name: s.name.clone(),
                 description: s.description.clone(),
                 preview: s
@@ -654,6 +725,8 @@ pub(crate) fn get_messages(convo_id: &str) -> Vec<Message> {
                 content: m.content.clone(),
                 timestamp_ms: m.timestamp_ms as i64,
                 sender: m.sender.clone(),
+                message_id: m.message_id.clone(),
+                delivered: m.delivered,
             })
             .collect()
     })
@@ -665,7 +738,7 @@ pub(crate) fn send_message(convo_id: &str, content: &str) -> Result<(), CoreErro
     // isn't kept for a convo the user just removed).
     check_live(convo_id)?;
 
-    with_client(|client| client.send_message(convo_id, content.as_bytes()))??;
+    let message_id = with_client(|client| client.send_message(convo_id, content.as_bytes()))??;
 
     // Size, never the text: this file is handed to whoever is diagnosing a run,
     // and the one thing a chat log must not leak is what was said.
@@ -675,14 +748,12 @@ pub(crate) fn send_message(convo_id: &str, content: &str) -> Result<(), CoreErro
     // Record before emitting: the message is already on the wire, but if the
     // local write fails we report failure rather than paint a "sent" bubble
     // the next restart would lose.
-    with_display_mut(|d| {
-        record_message(
-            d,
-            chat_message(convo_id, Direction::Sent, ts, content.as_bytes()),
-            false,
-        )
-    })?;
-    crate::emit_message_sent(convo_id, content, ts as i64);
+    let message = message_store::Message {
+        message_id: Some(message_id.clone()),
+        ..chat_message(convo_id, Direction::Sent, ts, content.as_bytes())
+    };
+    with_display_mut(|d| record_message(d, message, false))?;
+    crate::emit_message_sent(convo_id, content, ts as i64, &message_id);
     Ok(())
 }
 
@@ -791,6 +862,7 @@ pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind
     } else {
         (None, None)
     };
+    let (protocol, epoch) = protocol_and_epoch(convo_id);
     with_display_mut(|d| {
         // libchat retains crypto state across local deletes, so we still observe
         // events for deleted convos.
@@ -800,6 +872,11 @@ pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind
         // Invited back into a conversation from a previous session.
         if let Some(session) = d.state.chats.get_mut(convo_id) {
             if std::mem::take(&mut session.history_only) {
+                session.protocol = protocol;
+                session.epoch = epoch;
+                if let Err(e) = persist_chat(d, convo_id) {
+                    tracing::error!("saving a conversation failed after an invite back: {e}");
+                }
                 crate::emit_conversation_updated(convo_id);
             }
             return;
@@ -812,6 +889,8 @@ pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind
                 kind,
                 name: name.clone(),
                 description: description.clone(),
+                protocol,
+                epoch,
                 peer: None,
                 messages: Vec::new(),
                 older_messages: 0,
@@ -870,6 +949,8 @@ pub(crate) fn record_message_received(
                 kind: ConversationKind::default(),
                 name: None,
                 description: None,
+                protocol: None,
+                epoch: None,
                 peer: None,
                 messages: Vec::new(),
                 older_messages: 0,
@@ -898,15 +979,92 @@ pub(crate) fn record_message_received(
 }
 
 /// Surface a group roster change (the client's `ConversationMembersChanged`
-/// event). No-op for a locally-deleted or unknown conversation. Called from the
-/// event consumer thread; takes only the display lock, so it never waits on the
-/// client.
+/// event), and the epoch the commit behind it moved to. No-op for a
+/// locally-deleted or unknown conversation. Called from the event consumer
+/// thread.
 pub(crate) fn record_members_changed(convo_id: &str) {
+    refresh_epoch(convo_id);
     with_display(|d| {
         if d.state.deleted.contains(convo_id) || !d.state.chats.contains_key(convo_id) {
             return;
         }
         crate::emit_members_changed(convo_id);
+    });
+}
+
+/// Surface that another member holds a message this installation sent (the
+/// client's `MessageDelivered` event). Called from the event consumer thread;
+/// takes only the display lock.
+pub(crate) fn record_message_delivered(convo_id: &str, message_id: &str) {
+    with_display_mut(|d| {
+        if !d.state.deleted.contains(convo_id) && mark_delivered(d, convo_id, message_id) {
+            crate::emit_message_delivered(convo_id, message_id);
+        }
+    });
+}
+
+/// Mark a sent message delivered in `chat.db` and in its chat's list. `false`
+/// for one already marked, and for an id this installation holds no message
+/// under, such as a commit's.
+fn mark_delivered(d: &mut Display, convo_id: &str, message_id: &str) -> bool {
+    let stored = match d.chat_db.as_ref() {
+        Some(chat_db) => persistence::mark_delivered(chat_db, convo_id, message_id)
+            .inspect_err(|e| tracing::error!("marking a message delivered failed: {e}"))
+            .unwrap_or(false),
+        None => false,
+    };
+    let shown = d
+        .state
+        .chats
+        .get_mut(convo_id)
+        .and_then(|s| {
+            s.messages
+                .iter_mut()
+                .find(|m| m.message_id.as_deref() == Some(message_id))
+        })
+        .is_some_and(|m| !std::mem::replace(&mut m.delivered, true));
+    stored || shown
+}
+
+/// Surface that a member's group state may have moved (the client's
+/// `ConversationMemberStatesChanged` event), and this installation's epoch
+/// with it. No-op for a locally-deleted or unknown conversation. Called from
+/// the event consumer thread.
+pub(crate) fn record_member_states_changed(convo_id: &str) {
+    refresh_epoch(convo_id);
+    with_display(|d| {
+        if d.state.deleted.contains(convo_id) || !d.state.chats.contains_key(convo_id) {
+            return;
+        }
+        crate::emit_member_states_changed(convo_id);
+    });
+}
+
+/// Re-read a group's epoch, and raise `conversation_updated` when it moved.
+/// Reads the client before taking the display lock, so the two are never
+/// nested.
+fn refresh_epoch(convo_id: &str) {
+    let epoch = match with_client(|client| client.group_epoch(convo_id)) {
+        Ok(Ok(epoch)) => epoch,
+        Ok(Err(e)) => {
+            tracing::warn!("reading the epoch of {convo_id} failed: {e}");
+            return;
+        }
+        Err(e) => {
+            tracing::warn!("reading the epoch of {convo_id}: {e}");
+            return;
+        }
+    };
+    with_display_mut(|d| {
+        if d.state.deleted.contains(convo_id) {
+            return;
+        }
+        if let Some(session) = d.state.chats.get_mut(convo_id) {
+            if session.epoch != epoch {
+                session.epoch = epoch;
+                crate::emit_conversation_updated(convo_id);
+            }
+        }
     });
 }
 
@@ -923,6 +1081,8 @@ mod tests {
             kind: ConversationKind::Direct,
             name: None,
             description: None,
+            protocol: None,
+            epoch: None,
             peer: None,
             messages: Vec::new(),
             older_messages: 0,
@@ -976,6 +1136,35 @@ mod tests {
                 (false, "hi saro", 2, Some("raya-account")),
             ]
         );
+    }
+
+    #[test]
+    fn a_sent_message_is_marked_delivered_once_and_after_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("chat.db");
+        let mut d = Display {
+            chat_db: Some(persistence::open(&path, KEY).unwrap()),
+            ..Display::default()
+        };
+        d.state
+            .chats
+            .insert("convo-1".into(), direct_chat("convo-1"));
+        let sent = message_store::Message {
+            message_id: Some("msg-1".into()),
+            ..chat_message("convo-1", Direction::Sent, 1, b"hi raya")
+        };
+        record_message(&mut d, sent, true).unwrap();
+
+        assert!(!mark_delivered(&mut d, "convo-1", "a-commit"));
+        assert!(mark_delivered(&mut d, "convo-1", "msg-1"));
+        assert!(!mark_delivered(&mut d, "convo-1", "msg-1"));
+        assert!(d.state.chats["convo-1"].messages[0].delivered);
+        drop(d);
+
+        let state = persistence::load_state(&persistence::open(&path, KEY).unwrap()).unwrap();
+        let message = &state.chats["convo-1"].messages[0];
+        assert_eq!(message.message_id.as_deref(), Some("msg-1"));
+        assert!(message.delivered);
     }
 
     #[test]

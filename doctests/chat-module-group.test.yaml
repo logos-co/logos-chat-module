@@ -33,6 +33,9 @@ what_you_learn:
   - "Create a named group with `create_group_conversation` and grow it with `add_group_member` — including an add proposed by a non-creator member"
   - "Why a group join lands asynchronously (commit, a two-minute wait to apply it, then the welcome), and how to observe it by polling `list_conversations`"
   - "How every member shares one conversation id, and how `get_messages` attributes each inbound message to its sender's account address"
+  - "How members confirm they hold one group state, by its epoch and fingerprint"
+  - "How a sender learns that another member holds its message"
+  - "How each member tells every other member's `sync_state` against its own"
 
 prerequisites:
   - |
@@ -332,6 +335,35 @@ sections:
           this poll skips those. Alice applies Bob's add of Carol two minutes
           after his commit reaches her, so all three converge on the same
           three-member set shortly after Carol joins.
+      - title: "Every member holds the same group state"
+        run: |
+          gid=$(cat group-id.txt)
+          ok=""
+          for i in $(seq 1 60); do
+            views=$(for who in alice bob carol; do
+              ./logos/bin/logosctl --config-dir "$who" call chat_module list_conversations 2>/dev/null \
+                | jq -r --arg id "$gid" '.result[]? | select(.convo_id == $id) | "\(.protocol) epoch=\(.epoch) fingerprint=\(.epoch_fingerprint)"' || true
+            done)
+            if [ "$(printf '%s\n' "$views" | grep -c '^GroupV3 epoch=[0-9][0-9]* fingerprint=[0-9a-f][0-9a-f]*$')" = 3 ] \
+              && [ "$(printf '%s\n' "$views" | sort -u | wc -l)" = 1 ]; then
+              ok=1; echo "SAME_GROUP_STATE $(printf '%s\n' "$views" | head -n 1)"; break
+            fi
+            sleep 4
+          done
+          [ -n "$ok" ] || { echo "the members never agreed on one group state: $views" >&2; exit 1; }
+        code_block: |
+          # each member reports the group's protocol, epoch and fingerprint
+          logosctl --config-dir alice call chat_module list_conversations
+          logosctl --config-dir bob   call chat_module list_conversations
+          logosctl --config-dir carol call chat_module list_conversations
+        expect_contains:
+          - "SAME_GROUP_STATE GroupV3"
+        post_text: |
+          A group's `protocol` is `GroupV3`. Its `epoch` advances with every
+          commit a member applies, and `epoch_fingerprint` names the group
+          state at that epoch. Members that applied the same commits hold the
+          same pair; two members at one epoch with different fingerprints
+          have forked.
 
   - title: "Messages fan out to every member, with senders attributed"
     step: true
@@ -408,6 +440,67 @@ sections:
           The newest member's messages reach the founding members and vice
           versa: all three instances share one MLS group at one epoch, and
           every message is end-to-end encrypted and sender-attributed.
+      - title: "Alice sees her message delivered"
+        run: |
+          gid=$(cat group-id.txt)
+          ok=""
+          for i in $(seq 1 60); do
+            row=$(./logos/bin/logosctl --config-dir alice call chat_module get_messages "$gid" 2>/dev/null | jq -c '.result[]? | select(.content == "hello-group")' || true)
+            if printf '%s' "$row" | jq -e '.delivered == true and (.message_id | type) == "string"' >/dev/null 2>&1; then
+              ok=1; echo "ALICE_HELLO_DELIVERED"; break
+            fi
+            sleep 4
+          done
+          [ -n "$ok" ] || { echo "alice's message was never reported delivered: $row" >&2; exit 1; }
+        code_block: |
+          # hello-group now reads "delivered": true
+          logosctl --config-dir alice call chat_module get_messages "$GROUP_ID"
+        expect_contains:
+          - "ALICE_HELLO_DELIVERED"
+        post_text: |
+          Carol's reply names the messages she had received, Alice's among
+          them, so Alice's instance learns that another member holds hello-group
+          and raises `message_delivered`. In a group that comes with the first
+          member who holds the message, not the last, and says nothing of
+          whether anyone read it.
+      - title: "Each member sees the senders on its own state"
+        run: |
+          gid=$(cat group-id.txt)
+          a=$(cat alice-addr.txt); c=$(cat carol-addr.txt)
+          for who in alice bob carol; do
+            me=$(cat "${who}-addr.txt")
+            ok=""
+            for i in $(seq 1 60); do
+              members=$(./logos/bin/logosctl --config-dir "$who" call chat_module list_group_members "$gid" 2>/dev/null || true)
+              if printf '%s' "$members" | jq -e --arg a "$a" --arg c "$c" --arg me "$me" '
+                  [.result[]? | select(.pending | not)] as $rows
+                  | ([$a, $c, $me] | unique | length) as $want
+                  | ([$rows[] | select(.address | IN($a, $c, $me)) | select(.sync_state == "synced")] | length) == $want
+                    and all($rows[]; .sync_state != "forked")' >/dev/null 2>&1; then
+                ok=1; echo "$(echo "$who" | tr a-z A-Z)_SEES_SENDERS_SYNCED"; break
+              fi
+              sleep 4
+            done
+            [ -n "$ok" ] || { echo "$who never saw the senders synced: $members" >&2; exit 1; }
+          done
+        code_block: |
+          # Alice, Carol and the member asking read "sync_state": "synced"
+          logosctl --config-dir alice call chat_module list_group_members "$GROUP_ID"
+          logosctl --config-dir bob   call chat_module list_group_members "$GROUP_ID"
+          logosctl --config-dir carol call chat_module list_group_members "$GROUP_ID"
+        expect_contains:
+          - "ALICE_SEES_SENDERS_SYNCED"
+          - "BOB_SEES_SENDERS_SYNCED"
+          - "CAROL_SEES_SENDERS_SYNCED"
+        post_text: |
+          Every GroupV3 message carries its sender's epoch and recent
+          fingerprints, and every member signs a beacon each epoch, so each
+          instance tells every other member's `sync_state` against its own:
+          `synced`, `behind`, `ahead`, `forked`, or `unconfirmed` until it has
+          heard from them. Alice and Carol have sent, so every member reads
+          them `synced`; Bob reads `synced` once his beacon arrives, which a
+          member who joins after he sent it may not see until he sends a
+          message.
 
   - title: "Stop the daemons"
     step: true
