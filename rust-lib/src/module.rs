@@ -53,11 +53,13 @@ pub(crate) const LIBCHAT_PERSISTENCE_ENABLED: bool = false;
 /// `Initialising` covers the gap between a successful init and delivery
 /// reporting its node started (see `actions::start_delivery_bootstrap`), at
 /// which point we report `Online` — distinct from `Stopped`, which means not
-/// initialised.
+/// initialised. `Offline` is a started node that delivery reports
+/// `Disconnected`, and it still takes calls.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DeliveryStateKind {
     Initialising,
     Online,
+    Offline,
     Error,
     Stopped,
 }
@@ -69,6 +71,7 @@ impl DeliveryStateKind {
         match self {
             DeliveryStateKind::Initialising => "initialising",
             DeliveryStateKind::Online => "online",
+            DeliveryStateKind::Offline => "offline",
             DeliveryStateKind::Error => "error",
             DeliveryStateKind::Stopped => "stopped",
         }
@@ -281,6 +284,7 @@ mod tests {
     fn delivery_state_kind_is_lowercase_on_the_wire() {
         assert_eq!(DeliveryStateKind::Initialising.as_str(), "initialising");
         assert_eq!(DeliveryStateKind::Online.as_str(), "online");
+        assert_eq!(DeliveryStateKind::Offline.as_str(), "offline");
         assert_eq!(DeliveryStateKind::Error.as_str(), "error");
         assert_eq!(DeliveryStateKind::Stopped.as_str(), "stopped");
     }
