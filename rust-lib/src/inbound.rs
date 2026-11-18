@@ -176,9 +176,9 @@ fn drain(sub: &mut Option<EventSubscription>, mut handle: impl FnMut(&EventData)
 }
 
 /// Decode a `messageReceived` event and push its payload to the client's inbound
-/// channel. The loose topic-prefix filter stays: libp2p delivers every message in
-/// the shard regardless of subscribed topic, so non-chat traffic is dropped here
-/// and `Core::handle_payload` (inside the client) discriminates the rest.
+/// channel. Only chat topics pass: delivery_module's node serves every module that
+/// loads it, and its `messageReceived` carries each topic any of them subscribed.
+/// `Core::handle_payload` (inside the client) discriminates the rest.
 fn forward_message(evt: &EventData, inbound_tx: &Sender<InboundPayload>, seen: &mut SeenMessages) {
     let Some(msg) = crate::delivery_module::DeliveryModuleClient::decode_message_received(evt)
     else {
