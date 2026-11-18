@@ -59,6 +59,10 @@ pub(crate) struct DisplayMessage {
     pub timestamp_ms: u64,
     /// Sender's account address; `None` on messages this installation sent.
     pub sender: Option<String>,
+    /// libchat's id for a message this installation sent.
+    pub message_id: Option<String>,
+    /// Another member holds this sent message.
+    pub delivered: bool,
 }
 
 /// Whether a conversation is pairwise or a group; drives the members-panel
@@ -194,7 +198,7 @@ pub(crate) fn load_state(conn: &Connection) -> rusqlite::Result<AppState> {
         session.messages = store
             .messages(&session.chat_id, None, LOADED_PER_CHAT)?
             .into_iter()
-            .map(|stored| display_message(stored.message))
+            .map(|stored| display_message(stored.message, stored.delivered))
             .collect();
         session.older_messages = store.count(&session.chat_id)? - session.messages.len();
         chats.insert(session.chat_id.clone(), session);
@@ -287,13 +291,25 @@ pub(crate) fn save_installation_name(
     Ok(())
 }
 
+/// Mark the message `message_id` of `convo_id` delivered. `false` when no
+/// message has that id, or it was marked already.
+pub(crate) fn mark_delivered(
+    conn: &Connection,
+    convo_id: &str,
+    message_id: &str,
+) -> rusqlite::Result<bool> {
+    MessageStore::new(conn).mark_delivered(convo_id, message_id)
+}
+
 /// A stored message as `get_messages` shows it, its sender named by account.
-pub(crate) fn display_message(message: Message) -> DisplayMessage {
+pub(crate) fn display_message(message: Message, delivered: bool) -> DisplayMessage {
     DisplayMessage {
         from_self: message.direction == Direction::Sent,
         content: String::from_utf8_lossy(&message.content).into_owned(),
         timestamp_ms: message.timestamp_ms as u64,
         sender: message.sender_account,
+        message_id: message.message_id,
+        delivered,
     }
 }
 
