@@ -61,8 +61,8 @@ module chat_module {
     ; How many conversations this installation currently holds.
     convo_count: int
     ; The delivery node's state, same vocabulary as the
-    ; delivery_state_changed event: "initialising", "online", "error" or
-    ; "stopped".
+    ; delivery_state_changed event: "initialising", "online", "offline",
+    ; "error" or "stopped".
     delivery_state: tstr
     ; A human-readable reason for that state, empty when there is none.
     detail: tstr
@@ -220,10 +220,12 @@ module chat_module {
   event members_changed(convo_id: tstr)
   ; A conversation was deleted on this installation.
   event conversation_deleted(convo_id: tstr)
-  ; The delivery node's state changed: "initialising", "online", "error" or
-  ; "stopped", with detail carrying a human-readable reason where there is one.
-  ; Reaching "online" is how a caller learns init() has finished bringing the
-  ; network up. delivery_adopted is as in the Status record, and settled by the
-  ; time the state reaches "online".
+  ; The delivery node's state changed: "initialising", "online", "offline",
+  ; "error" or "stopped", with detail carrying a human-readable reason where
+  ; there is one. Reaching "online" is how a caller learns init() has finished
+  ; bringing the network up. "offline" follows it while delivery reports the
+  ; node Disconnected, as it does for a few seconds after a start: calls still
+  ; work, and delivery keeps trying a send for a minute. delivery_adopted is as
+  ; in the Status record, and settled by the time the state reaches "online".
   event delivery_state_changed(delivery_state: tstr, detail: tstr, delivery_adopted: bool)
 }

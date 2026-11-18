@@ -308,11 +308,11 @@ impl SendOutcomes {
 }
 
 /// Forward the core's queued subscription requests to delivery_module, but only
-/// once its node is online. `subscribe` rejects until the node is started, so the
-/// requests queued at client construction wait in the channel until then; later
-/// requests are forwarded as they arrive.
+/// once its node has started. `subscribe` rejects until then, so the requests
+/// queued at client construction wait in the channel; later requests are
+/// forwarded as they arrive, online or offline.
 fn forward_subscriptions(subscribe_rx: &Receiver<String>) {
-    if with_display(|d| d.delivery_state.state) != DeliveryStateKind::Online {
+    if !with_display(|d| d.delivery_state.started) {
         return;
     }
     while let Ok(topic) = subscribe_rx.try_recv() {
@@ -395,11 +395,13 @@ pub(crate) fn connection_transition(started: bool, status: &str) -> Option<Deliv
     Some(map_connection_status(status))
 }
 
-/// Unknown statuses map to `Error` so a degraded state isn't silently
-/// reported as healthy.
+/// `Disconnected` means a subscribed shard has no mesh peer, which happens for a
+/// few seconds after a start. Unknown statuses map to `Error`
+/// so a degraded state isn't silently reported as healthy.
 pub(crate) fn map_connection_status(status: &str) -> DeliveryStateKind {
     match status {
         "Connected" | "PartiallyConnected" => DeliveryStateKind::Online,
+        "Disconnected" => DeliveryStateKind::Offline,
         _ => DeliveryStateKind::Error,
     }
 }
@@ -568,7 +570,7 @@ mod tests {
         );
         assert_eq!(
             map_connection_status("Disconnected"),
-            DeliveryStateKind::Error
+            DeliveryStateKind::Offline
         );
     }
 
@@ -595,7 +597,7 @@ mod tests {
         // After startup, connectivity drives online/offline for reconnect.
         assert_eq!(
             connection_transition(true, "Disconnected"),
-            Some(DeliveryStateKind::Error)
+            Some(DeliveryStateKind::Offline)
         );
         assert_eq!(
             connection_transition(true, "Connected"),
