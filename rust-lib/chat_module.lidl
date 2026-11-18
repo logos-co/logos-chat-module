@@ -103,6 +103,20 @@ module chat_module {
     ; applies its commit, about two minutes after the add; an invite whose commit
     ; lost to another member's concurrent commit is dropped from the roster.
     pending: bool
+    ; How the member's group state compares with this installation's: "synced"
+    ; on the same state, "behind" on one this installation held at an earlier
+    ; epoch, "ahead" past this installation's epoch through its state,
+    ; "forked" on another state, or "unconfirmed" until something heard from
+    ; them can be checked. This installation's own entry is "synced". Empty
+    ; for a pending member, and in a conversation that does not track it, as
+    ; only GroupV3 does. Told from the epoch fingerprints the member's messages
+    ; carry and the beacon it signs each epoch; a message's are unsigned, so
+    ; this is a hint.
+    sync_state: tstr
+    ; The newest epoch the member was heard at. Absent until then.
+    ? epoch: int
+    ; The member's fingerprint of epoch, in hex. Absent with epoch.
+    ? epoch_fingerprint: tstr
   }
 
   ; --- lifecycle ---
@@ -241,6 +255,9 @@ module chat_module {
   ; This instance applied a commit that changed the group's roster. Call
   ; list_group_members for the roster it applied.
   event members_changed(convo_id: tstr)
+  ; A member's sync_state, epoch or epoch_fingerprint may have moved. Call
+  ; list_group_members for them.
+  event member_states_changed(convo_id: tstr)
   ; A conversation was deleted on this installation.
   event conversation_deleted(convo_id: tstr)
   ; The delivery node's state changed: "initialising", "online", "offline",

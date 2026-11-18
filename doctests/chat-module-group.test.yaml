@@ -35,6 +35,7 @@ what_you_learn:
   - "How every member shares one conversation id, and how `get_messages` attributes each inbound message to its sender's account address"
   - "How members confirm they hold one group state, by its epoch and fingerprint"
   - "How a sender learns that another member holds its message"
+  - "How each member tells every other member's `sync_state` against its own"
 
 prerequisites:
   - |
@@ -462,6 +463,44 @@ sections:
           and raises `message_delivered`. In a group that comes with the first
           member who holds the message, not the last, and says nothing of
           whether anyone read it.
+      - title: "Each member sees the senders on its own state"
+        run: |
+          gid=$(cat group-id.txt)
+          a=$(cat alice-addr.txt); c=$(cat carol-addr.txt)
+          for who in alice bob carol; do
+            me=$(cat "${who}-addr.txt")
+            ok=""
+            for i in $(seq 1 60); do
+              members=$(./logos/bin/logosctl --config-dir "$who" call chat_module list_group_members "$gid" 2>/dev/null || true)
+              if printf '%s' "$members" | jq -e --arg a "$a" --arg c "$c" --arg me "$me" '
+                  [.result[]? | select(.pending | not)] as $rows
+                  | ([$a, $c, $me] | unique | length) as $want
+                  | ([$rows[] | select(.address | IN($a, $c, $me)) | select(.sync_state == "synced")] | length) == $want
+                    and all($rows[]; .sync_state != "forked")' >/dev/null 2>&1; then
+                ok=1; echo "$(echo "$who" | tr a-z A-Z)_SEES_SENDERS_SYNCED"; break
+              fi
+              sleep 4
+            done
+            [ -n "$ok" ] || { echo "$who never saw the senders synced: $members" >&2; exit 1; }
+          done
+        code_block: |
+          # Alice, Carol and the member asking read "sync_state": "synced"
+          logosctl --config-dir alice call chat_module list_group_members "$GROUP_ID"
+          logosctl --config-dir bob   call chat_module list_group_members "$GROUP_ID"
+          logosctl --config-dir carol call chat_module list_group_members "$GROUP_ID"
+        expect_contains:
+          - "ALICE_SEES_SENDERS_SYNCED"
+          - "BOB_SEES_SENDERS_SYNCED"
+          - "CAROL_SEES_SENDERS_SYNCED"
+        post_text: |
+          Every GroupV3 message carries its sender's epoch and recent
+          fingerprints, and every member signs a beacon each epoch, so each
+          instance tells every other member's `sync_state` against its own:
+          `synced`, `behind`, `ahead`, `forked`, or `unconfirmed` until it has
+          heard from them. Alice and Carol have sent, so every member reads
+          them `synced`; Bob reads `synced` once his beacon arrives, which a
+          member who joins after he sent it may not see until he sends a
+          message.
 
   - title: "Stop the daemons"
     step: true

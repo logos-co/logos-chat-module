@@ -14,7 +14,7 @@ use components::HttpAuthClient;
 use logos_account::{Account, AccountError, ChatWrite, Ed25519VerifyingKey};
 use logos_generic_chat::{
     ChatClientBuilder, ClientError, ContactRegistry, GroupEpoch, GroupMetadata, Installation,
-    PendingInstallation, RegistryPublishMode, SqliteStore, StorageConfig,
+    MemberSync, PendingInstallation, RegistryPublishMode, Signer, SqliteStore, StorageConfig,
 };
 use message_store::Direction;
 
@@ -631,18 +631,37 @@ pub(crate) fn list_group_members(convo_id: &str) -> Vec<GroupMember> {
         return Vec::new();
     }
     let roster = with_client(|client| {
-        Ok::<_, ClientError>((client.members(convo_id)?, client.pending_members(convo_id)?))
+        Ok::<_, ClientError>((
+            client.members(convo_id)?,
+            client.pending_members(convo_id)?,
+            client.member_states(convo_id)?,
+        ))
     });
     match roster {
-        Ok(Ok((committed, invited))) => committed
-            .into_iter()
-            .map(|member| (member, false))
-            .chain(invited.into_iter().map(|member| (member, true)))
-            .map(|(member, pending)| GroupMember {
-                address: member.account.to_string(),
-                pending,
-            })
-            .collect(),
+        Ok(Ok((committed, invited, states))) => {
+            let state_of = |member: &Signer| states.iter().find(|s| s.signer == member.signer_key);
+            committed
+                .iter()
+                .map(|member| {
+                    let state = state_of(member);
+                    let heard = state.and_then(|s| s.heard.as_ref());
+                    GroupMember {
+                        address: member.account.to_string(),
+                        pending: false,
+                        sync_state: state.map_or("", |s| sync_state(&s.sync)).to_owned(),
+                        epoch: heard.map(|h| h.epoch as i64),
+                        epoch_fingerprint: heard.map(|h| h.fingerprint.clone()),
+                    }
+                })
+                .chain(invited.iter().map(|member| GroupMember {
+                    address: member.account.to_string(),
+                    pending: true,
+                    sync_state: String::new(),
+                    epoch: None,
+                    epoch_fingerprint: None,
+                }))
+                .collect()
+        }
         Ok(Err(e)) => {
             tracing::warn!("list_group_members failed: {e}");
             Vec::new()
@@ -651,6 +670,19 @@ pub(crate) fn list_group_members(convo_id: &str) -> Vec<GroupMember> {
             tracing::warn!("list_group_members: {e}");
             Vec::new()
         }
+    }
+}
+
+/// The contract's word for a member's sync state. A state this module does not
+/// know yet reads as unconfirmed.
+fn sync_state(sync: &MemberSync) -> &'static str {
+    match sync {
+        MemberSync::Synced => "synced",
+        MemberSync::Behind => "behind",
+        MemberSync::Ahead => "ahead",
+        MemberSync::Forked => "forked",
+        MemberSync::Unconfirmed => "unconfirmed",
+        _ => "unconfirmed",
     }
 }
 
@@ -992,6 +1024,20 @@ fn mark_delivered(d: &mut Display, convo_id: &str, message_id: &str) -> bool {
         })
         .is_some_and(|m| !std::mem::replace(&mut m.delivered, true));
     stored || shown
+}
+
+/// Surface that a member's group state may have moved (the client's
+/// `ConversationMemberStatesChanged` event), and this installation's epoch
+/// with it. No-op for a locally-deleted or unknown conversation. Called from
+/// the event consumer thread.
+pub(crate) fn record_member_states_changed(convo_id: &str) {
+    refresh_epoch(convo_id);
+    with_display(|d| {
+        if d.state.deleted.contains(convo_id) || !d.state.chats.contains_key(convo_id) {
+            return;
+        }
+        crate::emit_member_states_changed(convo_id);
+    });
 }
 
 /// Re-read a group's epoch, and raise `conversation_updated` when it moved.
