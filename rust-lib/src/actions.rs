@@ -464,7 +464,7 @@ fn record_message(
     let chat_db = d.chat_db.as_mut().ok_or(CoreError::NotInit)?;
     let recorded =
         persistence::record_message(chat_db, chat_changed.then_some(&*session), &message);
-    session.messages.push(display_message(message));
+    session.messages.push(display_message(message, false));
     recorded?;
     Ok(())
 }
@@ -691,6 +691,8 @@ pub(crate) fn get_messages(convo_id: &str) -> Vec<Message> {
                 content: m.content.clone(),
                 timestamp_ms: m.timestamp_ms as i64,
                 sender: m.sender.clone(),
+                message_id: m.message_id.clone(),
+                delivered: m.delivered,
             })
             .collect()
     })
@@ -702,7 +704,7 @@ pub(crate) fn send_message(convo_id: &str, content: &str) -> Result<(), CoreErro
     // isn't kept for a convo the user just removed).
     check_live(convo_id)?;
 
-    with_client(|client| client.send_message(convo_id, content.as_bytes()))??;
+    let message_id = with_client(|client| client.send_message(convo_id, content.as_bytes()))??;
 
     // Size, never the text: this file is handed to whoever is diagnosing a run,
     // and the one thing a chat log must not leak is what was said.
@@ -712,14 +714,12 @@ pub(crate) fn send_message(convo_id: &str, content: &str) -> Result<(), CoreErro
     // Record before emitting: the message is already on the wire, but if the
     // local write fails we report failure rather than paint a "sent" bubble
     // the next restart would lose.
-    with_display_mut(|d| {
-        record_message(
-            d,
-            chat_message(convo_id, Direction::Sent, ts, content.as_bytes()),
-            false,
-        )
-    })?;
-    crate::emit_message_sent(convo_id, content, ts as i64);
+    let message = message_store::Message {
+        message_id: Some(message_id.clone()),
+        ..chat_message(convo_id, Direction::Sent, ts, content.as_bytes())
+    };
+    with_display_mut(|d| record_message(d, message, false))?;
+    crate::emit_message_sent(convo_id, content, ts as i64, &message_id);
     Ok(())
 }
 
@@ -954,6 +954,40 @@ pub(crate) fn record_members_changed(convo_id: &str) {
     });
 }
 
+/// Surface that another member received a message this installation sent (the
+/// client's `MessageDelivered` event). Called from the event consumer thread;
+/// takes only the display lock.
+pub(crate) fn record_message_delivered(convo_id: &str, message_id: &str) {
+    with_display_mut(|d| {
+        if !d.state.deleted.contains(convo_id) && mark_delivered(d, convo_id, message_id) {
+            crate::emit_message_delivered(convo_id, message_id);
+        }
+    });
+}
+
+/// Mark a sent message delivered in `chat.db` and in its chat's list. `false`
+/// for one already marked, and for an id this installation holds no message
+/// under, such as a commit's.
+fn mark_delivered(d: &mut Display, convo_id: &str, message_id: &str) -> bool {
+    let stored = match d.chat_db.as_ref() {
+        Some(chat_db) => persistence::mark_delivered(chat_db, convo_id, message_id)
+            .inspect_err(|e| tracing::error!("marking a message delivered failed: {e}"))
+            .unwrap_or(false),
+        None => false,
+    };
+    let shown = d
+        .state
+        .chats
+        .get_mut(convo_id)
+        .and_then(|s| {
+            s.messages
+                .iter_mut()
+                .find(|m| m.message_id.as_deref() == Some(message_id))
+        })
+        .is_some_and(|m| !std::mem::replace(&mut m.delivered, true));
+    stored || shown
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1021,6 +1055,35 @@ mod tests {
                 (false, "hi saro", 2, Some("raya-account")),
             ]
         );
+    }
+
+    #[test]
+    fn a_sent_message_is_marked_delivered_once_and_after_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("chat.db");
+        let mut d = Display {
+            chat_db: Some(persistence::open(&path, KEY).unwrap()),
+            ..Display::default()
+        };
+        d.state
+            .chats
+            .insert("convo-1".into(), direct_chat("convo-1"));
+        let sent = message_store::Message {
+            message_id: Some("msg-1".into()),
+            ..chat_message("convo-1", Direction::Sent, 1, b"hi raya")
+        };
+        record_message(&mut d, sent, true).unwrap();
+
+        assert!(!mark_delivered(&mut d, "convo-1", "a-commit"));
+        assert!(mark_delivered(&mut d, "convo-1", "msg-1"));
+        assert!(!mark_delivered(&mut d, "convo-1", "msg-1"));
+        assert!(d.state.chats["convo-1"].messages[0].delivered);
+        drop(d);
+
+        let state = persistence::load_state(&persistence::open(&path, KEY).unwrap()).unwrap();
+        let message = &state.chats["convo-1"].messages[0];
+        assert_eq!(message.message_id.as_deref(), Some("msg-1"));
+        assert!(message.delivered);
     }
 
     #[test]
