@@ -1,6 +1,7 @@
 //! `Transport` impl bridging the client's delivery boundary to delivery_module.
 //!
-//! `publish` forwards each outbound envelope to delivery_module; `subscribe`
+//! `publish` forwards each outbound envelope to delivery_module, and a send that
+//! never reaches the network is reported as `delivery_send_failed`; `subscribe`
 //! queues the core's interest in a delivery address (forwarded once the node is
 //! started, see `inbound.rs`); `inbound` hands the client the channel the module
 //! feeds with received payloads.
@@ -44,6 +45,14 @@ pub(crate) fn delivery_outcome(res: Result<Value, LogosError>) -> Result<Value, 
     }
 }
 
+/// Report a send delivery_module refused or could not put on the network.
+/// `publish` returned when the envelope was handed over, so there is no caller
+/// left to fail.
+pub(crate) fn report_send_failed(reason: &str) {
+    tracing::error!("delivery_module.send failed: {reason}");
+    crate::emit_delivery_send_failed(reason);
+}
+
 /// Carries each direction of the client's delivery boundary: the outbound
 /// [`SdkPublisher`], plus the inbound payload stream the client's worker drains.
 #[derive(Debug)]
@@ -55,10 +64,17 @@ pub(crate) struct SdkDelivery {
 }
 
 impl SdkDelivery {
-    pub(crate) fn new(inbound_rx: Receiver<Vec<u8>>, subscribe_tx: Sender<String>) -> Self {
+    pub(crate) fn new(
+        inbound_rx: Receiver<Vec<u8>>,
+        subscribe_tx: Sender<String>,
+        accepted_tx: Sender<String>,
+    ) -> Self {
         Self {
             inbound_rx: Some(inbound_rx),
-            publisher: SdkPublisher { subscribe_tx },
+            publisher: SdkPublisher {
+                subscribe_tx,
+                accepted_tx,
+            },
         }
     }
 
@@ -95,6 +111,9 @@ impl Transport for SdkDelivery {
 pub(crate) struct SdkPublisher {
     /// Subscription requests from the core, drained by the inbound worker.
     subscribe_tx: Sender<String>,
+    /// The request id of each send delivery_module accepted, for the inbound
+    /// worker to match against the outcomes delivery_module reports later.
+    accepted_tx: Sender<String>,
 }
 
 impl DeliveryService for SdkPublisher {
@@ -106,13 +125,21 @@ impl DeliveryService for SdkPublisher {
         let topic = content_topic_for(&envelope.delivery_address);
         // Fire-and-forget: the synchronous `send` would block the dispatch thread on
         // delivery's accept handshake, so hand off async and return. A failed send is
-        // only logged, not surfaced to the caller; a future "sent" confirmation will
-        // close that gap.
+        // reported as `delivery_send_failed`, not surfaced to the caller.
+        let accepted_tx = self.accepted_tx.clone();
         crate::modules()
             .delivery_module
             .send_async(&topic, &envelope.data, move |res| {
-                if let Err(e) = delivery_outcome(res) {
-                    tracing::error!("delivery_module.send failed: {e}");
+                match delivery_outcome(res) {
+                    // The receiver is the inbound worker; if it has gone away the
+                    // module is shutting down, so a failed send is benign.
+                    Ok(Value::String(request_id)) => {
+                        let _ = accepted_tx.send(request_id);
+                    }
+                    Ok(other) => {
+                        tracing::error!("delivery_module.send returned no request id: {other}")
+                    }
+                    Err(e) => report_send_failed(&e),
                 }
             });
         Ok(())
