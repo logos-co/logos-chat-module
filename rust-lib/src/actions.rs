@@ -176,6 +176,12 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         .map_err(|e| InitError::Internal(format!("list_all_conversations failed: {e}")))?;
     for session in state.chats.values_mut() {
         session.history_only = !live.contains(&session.chat_id);
+        if !session.history_only {
+            let protocol = client
+                .convo_type(&session.chat_id)
+                .map_err(|e| InitError::Internal(format!("reading {}: {e}", session.chat_id)))?;
+            session.protocol = Some(protocol.to_owned());
+        }
     }
 
     // Register listeners before the node starts — `connectionStateChanged` and
@@ -474,6 +480,22 @@ fn check_live(convo_id: &str) -> Result<(), CoreError> {
     }
 }
 
+/// The protocol `convo_id` runs. A client error is logged and reads as
+/// unknown.
+fn protocol(convo_id: &str) -> Option<String> {
+    match with_client(|client| client.convo_type(convo_id)) {
+        Ok(Ok(protocol)) => Some(protocol.to_owned()),
+        Ok(Err(e)) => {
+            tracing::warn!("reading the protocol of {convo_id} failed: {e}");
+            None
+        }
+        Err(e) => {
+            tracing::warn!("reading the protocol of {convo_id}: {e}");
+            None
+        }
+    }
+}
+
 // ── Identity ─────────────────────────────────────────────────────────────────
 
 pub(crate) fn set_installation_name(name: &str) -> Result<(), CoreError> {
@@ -511,6 +533,7 @@ pub(crate) fn create_conversation(peer_address: &str) -> Result<String, CoreErro
 
     tracing::info!("created direct conversation {chat_id}");
     let peer_label = short_label(&chat_id).to_owned();
+    let protocol = protocol(&chat_id);
     with_display_mut(|d| {
         d.state.chats.insert(
             chat_id.clone(),
@@ -520,6 +543,7 @@ pub(crate) fn create_conversation(peer_address: &str) -> Result<String, CoreErro
                 kind: ConversationKind::Direct,
                 name: None,
                 description: None,
+                protocol,
                 peer: Some(peer_address.to_owned()),
                 messages: Vec::new(),
                 older_messages: 0,
@@ -552,6 +576,7 @@ pub(crate) fn create_group_conversation(name: &str, desc: &str) -> Result<String
     tracing::info!("created group conversation {chat_id}");
 
     let label = short_label(&chat_id).to_owned();
+    let protocol = protocol(&chat_id);
     with_display_mut(|d| {
         d.state.chats.insert(
             chat_id.clone(),
@@ -561,6 +586,7 @@ pub(crate) fn create_group_conversation(name: &str, desc: &str) -> Result<String
                 kind: ConversationKind::Group,
                 name: non_empty(name),
                 description: non_empty(desc),
+                protocol,
                 peer: None,
                 messages: Vec::new(),
                 older_messages: 0,
@@ -639,6 +665,7 @@ pub(crate) fn list_conversations() -> Vec<Conversation> {
                 message_count: (s.older_messages + s.messages.len()) as i64,
                 last_activity_ms: s.messages.last().map_or(0, |m| m.timestamp_ms as i64),
                 kind: s.kind.as_str().to_string(),
+                protocol: s.protocol.clone(),
                 name: s.name.clone(),
                 description: s.description.clone(),
                 preview: s
@@ -801,6 +828,7 @@ pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind
     } else {
         (None, None)
     };
+    let protocol = protocol(convo_id);
     with_display_mut(|d| {
         // libchat retains crypto state across local deletes, so we still observe
         // events for deleted convos.
@@ -810,6 +838,10 @@ pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind
         // Invited back into a conversation from a previous session.
         if let Some(session) = d.state.chats.get_mut(convo_id) {
             if std::mem::take(&mut session.history_only) {
+                session.protocol = protocol;
+                if let Err(e) = persist_chat(d, convo_id) {
+                    tracing::error!("saving a conversation failed after an invite back: {e}");
+                }
                 crate::emit_conversation_updated(convo_id);
             }
             return;
@@ -822,6 +854,7 @@ pub(crate) fn record_conversation_started(convo_id: &str, kind: ConversationKind
                 kind,
                 name: name.clone(),
                 description: description.clone(),
+                protocol,
                 peer: None,
                 messages: Vec::new(),
                 older_messages: 0,
@@ -880,6 +913,7 @@ pub(crate) fn record_message_received(
                 kind: ConversationKind::default(),
                 name: None,
                 description: None,
+                protocol: None,
                 peer: None,
                 messages: Vec::new(),
                 older_messages: 0,
@@ -933,6 +967,7 @@ mod tests {
             kind: ConversationKind::Direct,
             name: None,
             description: None,
+            protocol: None,
             peer: None,
             messages: Vec::new(),
             older_messages: 0,

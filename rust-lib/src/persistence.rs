@@ -29,7 +29,10 @@ use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
 /// The module's own tables. A change to them is a new migration appended here.
 /// A database's `user_version` is how many of them it has run.
-const MIGRATIONS: &[&str] = &[include_str!("migrations/001_app_state.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("migrations/001_app_state.sql"),
+    include_str!("migrations/002_protocol.sql"),
+];
 
 /// Why `chat.db` did not open.
 #[derive(Debug, thiserror::Error)]
@@ -107,6 +110,8 @@ pub(crate) struct ChatSession {
     pub name: Option<String>,
     /// Group's shared description, `None` when unset.
     pub description: Option<String>,
+    /// The protocol the conversation runs, as libchat names it.
+    pub protocol: Option<String>,
     /// A direct conversation's other side: the address it was opened with, or
     /// the account of its first inbound message. `None` for a group.
     pub peer: Option<String>,
@@ -164,8 +169,8 @@ fn migrate(conn: &mut Connection) -> Result<(), OpenError> {
 pub(crate) fn load_state(conn: &Connection) -> rusqlite::Result<AppState> {
     let store = MessageStore::new(conn);
     let mut chats = HashMap::new();
-    let mut stmt =
-        conn.prepare("SELECT chat_id, kind, nickname, name, description, peer FROM chats")?;
+    let mut stmt = conn
+        .prepare("SELECT chat_id, kind, nickname, name, description, peer, protocol FROM chats")?;
     let rows = stmt.query_map([], |row| {
         Ok(ChatSession {
             chat_id: row.get(0)?,
@@ -174,6 +179,7 @@ pub(crate) fn load_state(conn: &Connection) -> rusqlite::Result<AppState> {
             name: row.get(3)?,
             description: row.get(4)?,
             peer: row.get(5)?,
+            protocol: row.get(6)?,
             messages: Vec::new(),
             older_messages: 0,
             history_only: false,
@@ -212,14 +218,15 @@ pub(crate) fn load_state(conn: &Connection) -> rusqlite::Result<AppState> {
 /// Write a chat's row, inserting it or replacing what it held.
 pub(crate) fn save_chat(conn: &Connection, session: &ChatSession) -> rusqlite::Result<()> {
     conn.execute(
-        "INSERT INTO chats (chat_id, kind, nickname, name, description, peer)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "INSERT INTO chats (chat_id, kind, nickname, name, description, peer, protocol)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
          ON CONFLICT (chat_id) DO UPDATE SET
              kind = excluded.kind,
              nickname = excluded.nickname,
              name = excluded.name,
              description = excluded.description,
-             peer = excluded.peer",
+             peer = excluded.peer,
+             protocol = excluded.protocol",
         params![
             session.chat_id,
             session.kind,
@@ -227,6 +234,7 @@ pub(crate) fn save_chat(conn: &Connection, session: &ChatSession) -> rusqlite::R
             session.name,
             session.description,
             session.peer,
+            session.protocol,
         ],
     )?;
     Ok(())
@@ -298,6 +306,7 @@ mod tests {
             kind,
             name: None,
             description: None,
+            protocol: None,
             peer: None,
             messages: Vec::new(),
             older_messages: 0,
@@ -378,6 +387,7 @@ mod tests {
                 nickname: Some("club".into()),
                 name: Some("Book Club".into()),
                 description: Some("Weekly reads".into()),
+                protocol: Some("GroupV3".into()),
                 ..chat("group", ConversationKind::Group)
             };
             save_chat(&conn, &group).unwrap();
@@ -397,6 +407,7 @@ mod tests {
         assert_eq!(group.nickname.as_deref(), Some("club"));
         assert_eq!(group.name.as_deref(), Some("Book Club"));
         assert_eq!(group.description.as_deref(), Some("Weekly reads"));
+        assert_eq!(group.protocol.as_deref(), Some("GroupV3"));
         assert!(group.messages.is_empty());
         let direct = &state.chats["direct"];
         assert_eq!(direct.kind, ConversationKind::Direct);

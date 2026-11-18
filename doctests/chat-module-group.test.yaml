@@ -33,6 +33,7 @@ what_you_learn:
   - "Create a named group with `create_group_conversation` and grow it with `add_group_member` — including an add proposed by a non-creator member"
   - "Why a group join lands asynchronously (commit, a two-minute wait to apply it, then the welcome), and how to observe it by polling `list_conversations`"
   - "How every member shares one conversation id, and how `get_messages` attributes each inbound message to its sender's account address"
+  - "How each conversation names the protocol it runs"
 
 prerequisites:
   - |
@@ -332,6 +333,25 @@ sections:
           this poll skips those. Alice applies Bob's add of Carol two minutes
           after his commit reaches her, so all three converge on the same
           three-member set shortly after Carol joins.
+      - title: "Every member names the group's protocol"
+        run: |
+          gid=$(cat group-id.txt)
+          views=$(for who in alice bob carol; do
+            ./logos/bin/logosctl --config-dir "$who" call chat_module list_conversations 2>/dev/null \
+              | jq -r --arg id "$gid" '.result[]? | select(.convo_id == $id) | .protocol' || true
+          done)
+          [ "$(printf '%s\n' "$views" | grep -c '^GroupV3$')" = 3 ] \
+            || { echo "not every member names the group GroupV3: $views" >&2; exit 1; }
+          echo "PROTOCOL GroupV3"
+        code_block: |
+          # each member's record of the group names its protocol
+          logosctl --config-dir alice call chat_module list_conversations
+        expect_contains:
+          - "PROTOCOL GroupV3"
+        post_text: |
+          A group's `protocol` is `GroupV3`, and a direct conversation's is
+          `DirectV1`. The module keeps it in chat.db, so a conversation from
+          an earlier session still names it.
 
   - title: "Messages fan out to every member, with senders attributed"
     step: true

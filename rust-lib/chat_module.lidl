@@ -32,6 +32,10 @@ module chat_module {
     last_activity_ms: int
     ; "direct" (1:1) or "group". PrivateV1 and DirectV1 are both "direct".
     kind: tstr
+    ; The protocol the conversation runs, as the chat core names it, such as
+    ; "DirectV1" or "GroupV3". Absent when this installation has not recorded
+    ; it.
+    ? protocol: tstr
     ; A group's shared name, set at creation and identical for every member.
     ; Absent for direct conversations and unnamed groups; distinct from the
     ; local-only `nickname`.
