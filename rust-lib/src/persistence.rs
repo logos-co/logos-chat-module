@@ -25,12 +25,20 @@ use std::path::Path;
 
 use message_store::{Direction, Message, MessageStore};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
-use rusqlite::{params, Connection, OptionalExtension};
-use rusqlite_migration::{Migrations, M};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
 /// The module's own tables. A change to them is a new migration appended here.
-const MIGRATION_ARRAY: &[M] = &[M::up(include_str!("migrations/001_app_state.sql"))];
-const MIGRATIONS: Migrations = Migrations::from_slice(MIGRATION_ARRAY);
+/// A database's `user_version` is how many of them it has run.
+const MIGRATIONS: &[&str] = &[include_str!("migrations/001_app_state.sql")];
+
+/// Why `chat.db` did not open.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum OpenError {
+    #[error(transparent)]
+    Sqlite(#[from] rusqlite::Error),
+    #[error("schema version {0} is newer than this module's {latest}", latest = MIGRATIONS.len())]
+    TooNew(u32),
+}
 
 /// How many of a chat's newest messages [`load_state`] reads back.
 const LOADED_PER_CHAT: usize = 500;
@@ -126,13 +134,30 @@ pub(crate) struct AppState {
 }
 
 /// Open `chat.db`, keyed with `key`, with every table at its latest version.
-pub(crate) fn open(path: &Path, key: &str) -> rusqlite_migration::Result<Connection> {
+pub(crate) fn open(path: &Path, key: &str) -> Result<Connection, OpenError> {
     let mut conn = Connection::open(path)?;
     conn.pragma_update(None, "key", key)?;
     conn.pragma_update(None, "journal_mode", "WAL")?;
-    MIGRATIONS.to_latest(&mut conn)?;
+    migrate(&mut conn)?;
     MessageStore::migrate(&mut conn)?;
     Ok(conn)
+}
+
+/// Runs the [`MIGRATIONS`] `conn` has not run yet, in one transaction. A
+/// database a newer module wrote is refused, as this one does not know its
+/// tables.
+fn migrate(conn: &mut Connection) -> Result<(), OpenError> {
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let version: u32 = tx.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    let pending = MIGRATIONS
+        .get(version as usize..)
+        .ok_or(OpenError::TooNew(version))?;
+    for sql in pending {
+        tx.execute_batch(sql)?;
+    }
+    tx.pragma_update(None, "user_version", MIGRATIONS.len() as u32)?;
+    tx.commit()?;
+    Ok(())
 }
 
 /// The persisted state, each chat with its newest [`LOADED_PER_CHAT`] messages.
@@ -293,9 +318,42 @@ mod tests {
         }
     }
 
+    fn user_version(conn: &Connection) -> u32 {
+        conn.pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap()
+    }
+
     #[test]
-    fn migrations_are_valid() {
-        MIGRATIONS.validate().unwrap();
+    fn a_new_database_runs_every_migration_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("chat.db");
+        let conn = open(&path, KEY).unwrap();
+        let tables: u32 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type = 'table'
+                 AND name IN ('chats', 'deleted_chats', 'settings')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(tables, 3);
+        drop(conn);
+
+        let conn = open(&path, KEY).unwrap();
+        assert_eq!(user_version(&conn), MIGRATIONS.len() as u32);
+    }
+
+    #[test]
+    fn a_database_a_newer_module_wrote_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("chat.db");
+        let newer = MIGRATIONS.len() as u32 + 1;
+        open(&path, KEY)
+            .unwrap()
+            .pragma_update(None, "user_version", newer)
+            .unwrap();
+
+        assert!(matches!(open(&path, KEY), Err(OpenError::TooNew(v)) if v == newer));
     }
 
     #[test]

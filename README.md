@@ -56,8 +56,8 @@ See [Documentation](#documentation) below to build the site locally.
 ## Runtime
 
 End-to-end chat needs a `delivery_module` available to the host at runtime; the
-flake pins [`logos-delivery-module`](https://github.com/logos-co/logos-delivery-module)
-at `v0.3.0-rc.3`. Load `chat_module` via `logoscore` or Basecamp.
+flake pins a [`logos-delivery-module`](https://github.com/logos-co/logos-delivery-module)
+that runs logos-delivery v0.40.0. Load `chat_module` via `logoscore` or Basecamp.
 
 Bring-up is `init(config)`, taking a `ChatConfig` record whose every field is
 optional: `delivery_preset` (empty or absent → `logos.test`) and `log_level`.
@@ -82,7 +82,7 @@ delivery network, documenting the module's API by example.
 [`chat-module-exchange.test.yaml`](doctests/chat-module-exchange.test.yaml) is
 the two-instance 1:1 round-trip;
 [`chat-module-group.test.yaml`](doctests/chat-module-group.test.yaml) runs a
-three-instance GroupV2 conversation (create, grow member by member, fan-out
+three-instance group conversation (create, grow member by member, fan-out
 messages with sender attribution, remove a member). They run on every PR via
 [`.github/workflows/doctests.yml`](.github/workflows/doctests.yml) (the
 [shared doctest CLI](https://github.com/logos-co/logos-doctest) builds the

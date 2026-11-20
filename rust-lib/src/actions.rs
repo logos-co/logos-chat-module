@@ -11,14 +11,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use components::HttpAuthClient;
-use logos_account::{Account, AccountError, Ed25519VerifyingKey, CHATSIGNER_CONTEXT};
+use logos_account::{Account, AccountError, ChatWrite, Ed25519VerifyingKey};
 use logos_generic_chat::{
     ChatClientBuilder, ClientError, ContactRegistry, GroupMetadata, Installation,
     PendingInstallation, RegistryPublishMode, SqliteStore, StorageConfig,
 };
 use message_store::Direction;
 
-use crate::delivery::{delivery_outcome, SdkDelivery};
+use crate::delivery::{delivery_outcome, SdkDelivery, SdkPublisher, Subscribes};
 use crate::{Conversation, GroupMember, Message, Status};
 
 /// The devnet registry: DirectV1 publishes this installation's key package there
@@ -101,11 +101,19 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
 
     // The transport's inbound channel: the bridge worker feeds `inbound_tx` from
     // delivery_module's `messageReceived`, the client's worker drains the rx (via
-    // `Transport::inbound`). The subscribe channel carries the core's inbound-address
-    // subscriptions to the bridge, which forwards them to delivery_module once the
-    // node is started.
+    // `Transport::inbound`). The subscribe channel carries the subscriptions the core
+    // makes before the node has started to the bridge, which forwards them to
+    // delivery_module once it has. The accepted channel carries the request id of
+    // each send delivery_module accepted, which the bridge matches against the
+    // outcomes it reports, and the reports channel carries what the client learns of
+    // a send (via `Transport::delivery_reports`). The fetched channel carries what a
+    // fetch found in Store to the bridge, which forwards it to the client.
     let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded();
     let (subscribe_tx, subscribe_rx) = crossbeam_channel::unbounded();
+    let subscribes = Subscribes::default();
+    let (accepted_tx, accepted_rx) = crossbeam_channel::unbounded();
+    let (reports_tx, reports_rx) = crossbeam_channel::unbounded();
+    let (fetched_tx, fetched_rx) = crossbeam_channel::unbounded();
 
     // Do the fallible *local* setup (store open, client build) before touching
     // delivery_module. The node's lifecycle is irreversible — createNode rejects
@@ -123,7 +131,17 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     let auth = HttpAuthClient::new(DEFAULT_REGISTRY_URL);
     let installation = register_installation(auth.clone())
         .map_err(|e| InitError::Internal(format!("publish account failed: {e}")))?;
-    let transport = SdkDelivery::new(inbound_rx, subscribe_tx);
+    let transport = SdkDelivery::new(
+        inbound_rx,
+        reports_rx,
+        SdkPublisher::new(
+            subscribe_tx,
+            subscribes.clone(),
+            accepted_tx,
+            reports_tx.clone(),
+            fetched_tx,
+        ),
+    );
     // Submit over the registry's HTTP API, which acknowledges each bundle. The
     // delivery wire it offers instead is fire-and-forget, so a rejected bundle
     // would surface only as a peer failing to resolve us much later.
@@ -172,6 +190,16 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     let started_sub = dm
         .on_node_started()
         .map_err(|e| InitError::Delivery(format!("subscribe(nodeStarted) failed: {e}")))?;
+    let sends = crate::inbound::SendEvents {
+        accepted: accepted_rx,
+        propagated: dm.on_message_propagated().map_err(|e| {
+            InitError::Delivery(format!("subscribe(messagePropagated) failed: {e}"))
+        })?,
+        failed: dm
+            .on_message_error()
+            .map_err(|e| InitError::Delivery(format!("subscribe(messageError) failed: {e}")))?,
+        reports: reports_tx,
+    };
     let conn_sub = match dm.on_connection_state_changed() {
         Ok(sub) => Some(sub),
         Err(e) => {
@@ -183,15 +211,21 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     };
 
     let stop = Arc::new(AtomicBool::new(false));
+    let receives = crate::inbound::ReceiveEvents {
+        messages: messages_sub,
+        fetched: fetched_rx,
+        inbound_tx,
+    };
     let inbound_thread = crate::inbound::spawn_bridge(
         stop.clone(),
-        messages_sub,
+        receives,
         started_sub,
         conn_sub,
-        inbound_tx,
         subscribe_rx,
+        subscribes.clone(),
+        sends,
     );
-    let event_thread = crate::inbound::spawn_events(events);
+    let event_thread = crate::inbound::spawn_events(events, subscribes.clone());
 
     // Seed the display state read by the getters (the client owns its identity;
     // its intrinsic name is cached here for get_installation_name).
@@ -208,6 +242,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         inbound_stop: stop,
         inbound_thread: Some(inbound_thread),
         event_thread: Some(event_thread),
+        subscribes,
     })
 }
 
@@ -217,10 +252,7 @@ fn register_installation(auth: HttpAuthClient) -> Result<Installation, AccountEr
     let pending = PendingInstallation::generate();
     let key = Ed25519VerifyingKey::from_canonical_slice(&pending.endorsement_request())?;
     let mut account = Account::new(auth);
-    account
-        .update()
-        .endorse_ed25519_key(CHATSIGNER_CONTEXT.clone(), &key)
-        .publish()?;
+    account.update().endorse_chat_signer(&key).publish()?;
     Ok(pending.complete(account.addr()))
 }
 
@@ -355,6 +387,7 @@ pub(crate) fn shutdown(mut ms: ModuleState) {
     // Drop the client so its worker stops and its event sender disconnects; the
     // event consumer then ends its loop and can be joined.
     drop(ms.client);
+    ms.subscribes.close();
     if let Some(handle) = ms.event_thread.take() {
         let _ = handle.join();
     }
@@ -507,7 +540,7 @@ pub(crate) fn create_conversation(peer_address: &str) -> Result<String, CoreErro
     Ok(chat_id)
 }
 
-/// Create a GroupV2 conversation with this installation as its only member;
+/// Create a GroupV3 conversation with this installation as its only member;
 /// peers are invited afterwards via [`add_group_member`]. `name` and `desc` are
 /// the group's shared metadata, carried to every joiner; both may be empty.
 /// Returns the conversation id, which every member observes once joined.
@@ -549,9 +582,10 @@ pub(crate) fn create_group_conversation(name: &str, desc: &str) -> Result<String
 }
 
 /// Invite every installation the account at `peer_address` endorses into an
-/// existing group conversation. The group's steward commits the add and the
-/// welcome is delivered asynchronously, so the peer joins some time after
-/// this returns.
+/// existing group conversation. This installation commits the add at once and
+/// sends the welcome when it finalizes that commit, about two minutes later, so
+/// the peer joins some time after this returns. Until then a further add from
+/// this installation fails, unless it names only current members.
 pub(crate) fn add_group_member(convo_id: &str, peer_address: &str) -> Result<(), CoreError> {
     check_live(convo_id)?;
 

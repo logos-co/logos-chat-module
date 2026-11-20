@@ -25,24 +25,22 @@ panic = "abort"
 # observations as `Event`s on a channel the module drains. The module brings its own
 # delivery (logoscore's delivery_module), so it depends on this transport-generic
 # crate, not the `logos-chat` facade that bundles an embedded logos delivery.
-# Every libchat crate is pinned to the same main rev, so their shared types agree.
-logos-generic-chat = { git = "https://github.com/logos-messaging/logos-chat.git", package = "logos-generic-chat", rev = "f26b5765156d36b6421a154149745535b6d93821" }
+# Every libchat crate is pinned to the same rev, so their shared types agree.
+logos-generic-chat = { git = "https://github.com/logos-messaging/logos-chat.git", package = "logos-generic-chat", rev = "b41a5326b2f8ad0967a3b5368d6f95072db7577f" }
 # The account (package `account`, under the name libchat's own crates give it):
 # each launch publishes a fresh one whose log endorses this installation's key.
-logos-account  = { git = "https://github.com/logos-messaging/logos-chat.git", package = "account", rev = "f26b5765156d36b6421a154149745535b6d93821" }
+logos-account  = { git = "https://github.com/logos-messaging/logos-chat.git", package = "account", rev = "b41a5326b2f8ad0967a3b5368d6f95072db7577f" }
 # `HttpAuthClient`, which publishes the account's log and checks other
 # participants against theirs, on the registry's server.
-components     = { git = "https://github.com/logos-messaging/logos-chat.git", package = "components", rev = "f26b5765156d36b6421a154149745535b6d93821" }
+components     = { git = "https://github.com/logos-messaging/logos-chat.git", package = "components", rev = "b41a5326b2f8ad0967a3b5368d6f95072db7577f" }
 # The chat history, in `chat.db`.
-message-store  = { git = "https://github.com/logos-messaging/logos-chat.git", package = "message-store", rev = "f26b5765156d36b6421a154149745535b6d93821" }
+message-store  = { git = "https://github.com/logos-messaging/logos-chat.git", package = "message-store", rev = "b41a5326b2f8ad0967a3b5368d6f95072db7577f" }
 # The connection `message-store` borrows. SQLCipher, so `chat.db` is keyed:
 # without the feature `PRAGMA key` is ignored and the file is written in plain
 # text, so enable it on our own dep rather than rely on libchat's.
-rusqlite       = { version = "0.35", features = ["bundled-sqlcipher-vendored-openssl"] }
-# Versions the module's own tables in `chat.db`, through `PRAGMA user_version`.
-rusqlite_migration = "2.1"
-# The client hands back a `Receiver<Event>` and drains a `Receiver<Vec<u8>>`
-# through its `Transport`, so the module's plumbing speaks the same channel type.
+rusqlite       = { version = "0.42", features = ["bundled-sqlcipher-vendored-openssl"] }
+# The client hands back a `Receiver<Event>` and drains its `Transport`'s
+# receivers, so the module's plumbing speaks the same channel type.
 crossbeam-channel = "0.5"
 # The runtime SDK, staged by the module builder (codegen.rust) at this path
 # from the same logos-rust-sdk rev its generator came from, so the generated
@@ -63,6 +61,12 @@ tracing-core       = "0.1"
 # groups a log directory into runs by. Already in the graph, so declaring it
 # builds nothing new.
 chrono         = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# Reads delivery_module's 0x-hex message hashes as the delivery ids libchat
+# keeps. Already in the graph, so declaring it builds nothing new.
+hex            = "0.4"
+# Reads the base64 payloads of the messages a Store node returns. Already in the
+# graph, so declaring it builds nothing new.
+base64         = "0.22"
 
 # libchat's `crypto` crate is written for the xeddsa 1.0 API. Cargo's
 # default SemVer resolution would pick 1.1.0 (released since), whose
