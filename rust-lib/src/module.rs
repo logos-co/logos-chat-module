@@ -28,7 +28,7 @@ use components::HttpAuthClient;
 use logos_generic_chat::{ChatClient, ContactRegistry, SqliteStore};
 use rusqlite::Connection;
 
-use crate::delivery::{SdkDelivery, SdkPublisher};
+use crate::delivery::{SdkDelivery, SdkPublisher, Subscribes};
 use crate::persistence::AppState;
 
 /// The chat client as this module configures it: an installation of an
@@ -130,6 +130,9 @@ pub(crate) struct ModuleState {
     /// Event consumer worker handle. Drains the client's `Receiver<Event>`; it
     /// exits once the client is dropped and the event sender disconnects.
     pub event_thread: Option<JoinHandle<()>>,
+    /// The subscriptions delivery_module has not answered, which the event
+    /// consumer waits on; `shutdown()` closes them before joining it.
+    pub subscribes: Subscribes,
 }
 
 /// Unreachable under `panic = "abort"` — the process dies before a

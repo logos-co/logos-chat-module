@@ -1,15 +1,15 @@
 //! `Transport` impl bridging the client's delivery boundary to delivery_module.
 //!
-//! `publish` forwards each outbound envelope to delivery_module; `subscribe`
-//! queues the core's interest in a delivery address (forwarded once the node is
-//! started, see `inbound.rs`); `inbound` hands the client the channel the module
-//! feeds with received payloads, and `delivery_reports` the one it feeds with the
-//! ids of published payloads. `fetch_messages` looks payloads up by hash on the
-//! Store nodes delivery_module names, and hands what it finds to the bridge.
+//! `publish` forwards each outbound envelope to delivery_module; `subscribe` sends
+//! the core's interest in a delivery address to delivery_module, queued until the
+//! node has started (see `inbound.rs`); `inbound` hands the client the channel the
+//! module feeds with received payloads, and `delivery_reports` the one it feeds
+//! with the ids of published payloads. `fetch_messages` looks payloads up by hash
+//! on the Store nodes delivery_module names, and hands what it finds to the bridge.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex};
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
@@ -146,8 +146,11 @@ impl Transport for SdkDelivery {
 /// publishes holds its own handle without a second claim on the inbound stream.
 #[derive(Clone, Debug)]
 pub(crate) struct SdkPublisher {
-    /// Subscription requests from the core, drained by the inbound worker.
+    /// Subscription requests the core makes before the node has started, drained
+    /// by the inbound worker once it has.
     subscribe_tx: Sender<String>,
+    /// The subscriptions sent to delivery_module, until it answers them.
+    subscribes: Subscribes,
     /// The request id delivery_module accepted each send under, with the receipt
     /// `publish` returned for it, for the inbound worker to match against what
     /// delivery_module reports of the send later.
@@ -163,17 +166,78 @@ pub(crate) struct SdkPublisher {
 impl SdkPublisher {
     pub(crate) fn new(
         subscribe_tx: Sender<String>,
+        subscribes: Subscribes,
         accepted_tx: Sender<(String, PublishReceipt)>,
         reports_tx: Sender<DeliveryReport>,
         fetched_tx: Sender<MessageReceivedEvent>,
     ) -> Self {
         Self {
             subscribe_tx,
+            subscribes,
             accepted_tx,
             reports_tx,
             fetched_tx,
             sends: Arc::default(),
         }
+    }
+}
+
+/// The subscriptions sent to delivery_module that it has not answered yet. The
+/// event consumer lists a conversation the core reports started only once this
+/// is empty (`inbound::run_events`), so the conversation's topic is live by
+/// then.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Subscribes(Arc<(Mutex<SubscribesState>, Condvar)>);
+
+#[derive(Debug, Default)]
+struct SubscribesState {
+    unanswered: usize,
+    closed: bool,
+}
+
+impl Subscribes {
+    /// Subscribes `topic` with delivery_module, counted until it answers.
+    pub(crate) fn send(&self, topic: &str) {
+        self.sent();
+        let subscribes = self.clone();
+        crate::modules()
+            .delivery_module
+            .subscribe_async(topic, move |res| {
+                if let Err(e) = delivery_outcome(res) {
+                    tracing::error!("delivery_module.subscribe failed: {e}");
+                }
+                subscribes.answered();
+            });
+    }
+
+    /// Returns once delivery_module has answered every subscription sent so far,
+    /// or once [`Self::close`] is called.
+    pub(crate) fn wait_answered(&self) {
+        let (state, changed) = &*self.0;
+        let state = state.lock().unwrap_or_else(|e| e.into_inner());
+        let _state = changed
+            .wait_while(state, |s| s.unanswered > 0 && !s.closed)
+            .unwrap_or_else(|e| e.into_inner());
+    }
+
+    /// Ends every wait for good. Shutdown calls it before joining the event
+    /// consumer: delivery_module answers on the thread shutdown blocks.
+    pub(crate) fn close(&self) {
+        self.update(|s| s.closed = true);
+    }
+
+    fn sent(&self) {
+        self.update(|s| s.unanswered += 1);
+    }
+
+    fn answered(&self) {
+        self.update(|s| s.unanswered = s.unanswered.saturating_sub(1));
+    }
+
+    fn update(&self, change: impl FnOnce(&mut SubscribesState)) {
+        let (state, changed) = &*self.0;
+        change(&mut state.lock().unwrap_or_else(|e| e.into_inner()));
+        changed.notify_all();
     }
 }
 
@@ -225,12 +289,17 @@ impl DeliveryService for SdkPublisher {
     }
 
     fn subscribe(&mut self, delivery_address: &str) -> Result<(), String> {
-        // The core subscribes its inbound addresses at construction, before the
-        // delivery node exists. Queue the topic; the inbound worker forwards it to
-        // delivery_module once the node is started (see `inbound::forward_subscriptions`).
-        self.subscribe_tx
-            .send(content_topic_for(delivery_address))
-            .map_err(|e| e.to_string())
+        let topic = content_topic_for(delivery_address);
+        // delivery_module refuses a subscribe until its node has started, and the
+        // core subscribes its inbound addresses at construction, before the node
+        // exists. Those wait for the inbound worker (`inbound::forward_subscriptions`).
+        if !crate::module::with_display(|d| d.delivery_state.started) {
+            return self.subscribe_tx.send(topic).map_err(|e| e.to_string());
+        }
+        // The core subscribes a conversation it joins before it reports it, so a
+        // subscribe sent now is counted before the conversation is listed.
+        self.subscribes.send(&topic);
+        Ok(())
     }
 
     fn fetch_messages(
@@ -391,11 +460,44 @@ impl StoredMessage {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
     use serde_json::json;
 
     fn result(success: bool, value: Value, error: Value) -> Result<Value, LogosError> {
         Ok(json!({ "success": success, "value": value, "error": error }))
+    }
+
+    /// Whether `subscribes.wait_answered()` returns within `within`, waited for
+    /// on another thread.
+    fn wait_ends(subscribes: &Subscribes, within: Duration) -> bool {
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let waiting = subscribes.clone();
+        std::thread::spawn(move || {
+            waiting.wait_answered();
+            let _ = done_tx.send(());
+        });
+        done_rx.recv_timeout(within).is_ok()
+    }
+
+    #[test]
+    fn a_wait_ends_once_every_subscribe_is_answered() {
+        let subscribes = Subscribes::default();
+        subscribes.sent();
+        subscribes.sent();
+        subscribes.answered();
+        assert!(!wait_ends(&subscribes, Duration::from_millis(100)));
+        subscribes.answered();
+        assert!(wait_ends(&subscribes, Duration::from_secs(5)));
+    }
+
+    #[test]
+    fn close_ends_a_wait_on_an_unanswered_subscribe() {
+        let subscribes = Subscribes::default();
+        subscribes.sent();
+        subscribes.close();
+        assert!(wait_ends(&subscribes, Duration::from_secs(5)));
     }
 
     #[test]

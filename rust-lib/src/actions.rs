@@ -18,7 +18,7 @@ use logos_generic_chat::{
 };
 use message_store::Direction;
 
-use crate::delivery::{delivery_outcome, SdkDelivery, SdkPublisher};
+use crate::delivery::{delivery_outcome, SdkDelivery, SdkPublisher, Subscribes};
 use crate::{Conversation, GroupMember, Message, Status};
 
 /// The devnet registry: DirectV1 publishes this installation's key package there
@@ -101,15 +101,16 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
 
     // The transport's inbound channel: the bridge worker feeds `inbound_tx` from
     // delivery_module's `messageReceived`, the client's worker drains the rx (via
-    // `Transport::inbound`). The subscribe channel carries the core's inbound-address
-    // subscriptions to the bridge, which forwards them to delivery_module once the
-    // node is started. The accepted channel carries the request id of each send
-    // delivery_module accepted, which the bridge matches against the outcomes it
-    // reports, and the reports channel carries what the client learns of a send
-    // (via `Transport::delivery_reports`). The fetched channel carries what a
+    // `Transport::inbound`). The subscribe channel carries the subscriptions the core
+    // makes before the node has started to the bridge, which forwards them to
+    // delivery_module once it has. The accepted channel carries the request id of
+    // each send delivery_module accepted, which the bridge matches against the
+    // outcomes it reports, and the reports channel carries what the client learns of
+    // a send (via `Transport::delivery_reports`). The fetched channel carries what a
     // fetch found in Store to the bridge, which forwards it to the client.
     let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded();
     let (subscribe_tx, subscribe_rx) = crossbeam_channel::unbounded();
+    let subscribes = Subscribes::default();
     let (accepted_tx, accepted_rx) = crossbeam_channel::unbounded();
     let (reports_tx, reports_rx) = crossbeam_channel::unbounded();
     let (fetched_tx, fetched_rx) = crossbeam_channel::unbounded();
@@ -133,7 +134,13 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     let transport = SdkDelivery::new(
         inbound_rx,
         reports_rx,
-        SdkPublisher::new(subscribe_tx, accepted_tx, reports_tx.clone(), fetched_tx),
+        SdkPublisher::new(
+            subscribe_tx,
+            subscribes.clone(),
+            accepted_tx,
+            reports_tx.clone(),
+            fetched_tx,
+        ),
     );
     // Submit over the registry's HTTP API, which acknowledges each bundle. The
     // delivery wire it offers instead is fire-and-forget, so a rejected bundle
@@ -215,9 +222,10 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         started_sub,
         conn_sub,
         subscribe_rx,
+        subscribes.clone(),
         sends,
     );
-    let event_thread = crate::inbound::spawn_events(events);
+    let event_thread = crate::inbound::spawn_events(events, subscribes.clone());
 
     // Seed the display state read by the getters (the client owns its identity;
     // its intrinsic name is cached here for get_installation_name).
@@ -234,6 +242,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         inbound_stop: stop,
         inbound_thread: Some(inbound_thread),
         event_thread: Some(event_thread),
+        subscribes,
     })
 }
 
@@ -378,6 +387,7 @@ pub(crate) fn shutdown(mut ms: ModuleState) {
     // Drop the client so its worker stops and its event sender disconnects; the
     // event consumer then ends its loop and can be joined.
     drop(ms.client);
+    ms.subscribes.close();
     if let Some(handle) = ms.event_thread.take() {
         let _ = handle.join();
     }

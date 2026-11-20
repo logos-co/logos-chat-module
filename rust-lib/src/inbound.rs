@@ -6,11 +6,12 @@
 //!   inbound channel; `nodeStarted` and
 //!   `connectionStateChanged` drive local `delivery_state`; `messagePropagated` and
 //!   `messageError` for this module's sends are reported to the client; and the
-//!   core's queued subscription requests are forwarded to delivery_module once its
-//!   node is started.
+//!   subscription requests the core made before delivery_module's node started are
+//!   forwarded to it once the node has.
 //! * The event consumer ([`run_events`]) drains the client's `Event` stream and
 //!   records each observation in the display history, emitting the matching plugin
-//!   events.
+//!   events. It lists a started conversation only once delivery_module has answered
+//!   every subscription sent before it.
 //!
 //! The delivery_module subscriptions are set up in `init` (before the node starts,
 //! so the events emitted during start aren't missed) and the resulting
@@ -33,6 +34,7 @@ use crate::actions::{
     record_conversation_started, record_members_changed, record_message_received,
     record_node_started, set_delivery_state,
 };
+use crate::delivery::Subscribes;
 use crate::delivery_module::MessageReceivedEvent;
 use crate::module::{with_display, with_display_mut, DeliveryStateKind};
 use crate::persistence::ConversationKind;
@@ -66,18 +68,29 @@ pub(crate) fn spawn_bridge(
     node_started: EventSubscription,
     conn: Option<EventSubscription>,
     subscribe_rx: Receiver<String>,
+    subscribes: Subscribes,
     sends: SendEvents,
 ) -> JoinHandle<()> {
     thread::Builder::new()
         .name("rust-chat-bridge".into())
-        .spawn(move || run_bridge(stop, receives, node_started, conn, subscribe_rx, sends))
+        .spawn(move || {
+            run_bridge(
+                stop,
+                receives,
+                node_started,
+                conn,
+                subscribe_rx,
+                subscribes,
+                sends,
+            )
+        })
         .expect("failed to spawn bridge thread")
 }
 
-pub(crate) fn spawn_events(events: Receiver<Event>) -> JoinHandle<()> {
+pub(crate) fn spawn_events(events: Receiver<Event>, subscribes: Subscribes) -> JoinHandle<()> {
     thread::Builder::new()
         .name("rust-chat-events".into())
-        .spawn(move || run_events(events))
+        .spawn(move || run_events(events, subscribes))
         .expect("failed to spawn events thread")
 }
 
@@ -87,6 +100,7 @@ fn run_bridge(
     node_started: EventSubscription,
     mut conn: Option<EventSubscription>,
     subscribe_rx: Receiver<String>,
+    subscribes: Subscribes,
     sends: SendEvents,
 ) {
     let ReceiveEvents {
@@ -153,7 +167,7 @@ fn run_bridge(
             report(outcomes.failed(failed.request_id, failed.error));
         });
 
-        forward_subscriptions(&subscribe_rx);
+        forward_subscriptions(&subscribe_rx, &subscribes);
     }
 }
 
@@ -323,32 +337,29 @@ impl SendOutcomes {
     }
 }
 
-/// Forward the core's queued subscription requests to delivery_module, but only
-/// once its node has started. `subscribe` rejects until then, so the requests
-/// queued at client construction wait in the channel; later requests are
-/// forwarded as they arrive, online or offline.
-fn forward_subscriptions(subscribe_rx: &Receiver<String>) {
+/// Forward the subscription requests the core made before delivery_module's node
+/// started, once it has. `subscribe` rejects until then; a request made after
+/// goes to delivery_module at once (`SdkPublisher::subscribe`).
+fn forward_subscriptions(subscribe_rx: &Receiver<String>, subscribes: &Subscribes) {
     if !with_display(|d| d.delivery_state.started) {
         return;
     }
     while let Ok(topic) = subscribe_rx.try_recv() {
-        crate::modules()
-            .delivery_module
-            .subscribe_async(&topic, move |res| {
-                if let Err(e) = crate::delivery::delivery_outcome(res) {
-                    tracing::error!("delivery_module.subscribe failed: {e}");
-                }
-            });
+        subscribes.send(&topic);
     }
 }
 
 /// Drain the client's event stream until the client is dropped (the sender
 /// disconnects and the iterator ends). Each event is recorded in the display
 /// history, which re-emits it to consumers over IPC.
-fn run_events(events: Receiver<Event>) {
+fn run_events(events: Receiver<Event>, subscribes: Subscribes) {
     for event in events {
         match event {
             Event::ConversationStarted { convo_id, class } => {
+                // The core subscribed the conversation's topic before reporting it.
+                // Listing it only once delivery_module has answered means a message
+                // sent after the join reaches this node.
+                subscribes.wait_answered();
                 record_conversation_started(&convo_id, kind_for_class(class));
             }
             Event::MessageReceived {
