@@ -22,11 +22,17 @@ use crate::delivery::{delivery_outcome, SdkDelivery};
 use crate::{Conversation, GroupMember, Message, Status};
 
 /// The devnet registry: DirectV1 publishes this installation's key package there
-/// and fetches a peer's, and every account's log lives there too. Hardcoded for
-/// now; a configurable endpoint is a future enhancement (the wiring is behind
-/// libchat's `RegistrationService` and `AuthService`, so swapping it later is
-/// localized).
+/// and fetches a peer's, and every account's log lives there too. `init`'s
+/// `registry_url` names another, such as a local one for offline development.
 const DEFAULT_REGISTRY_URL: &str = "https://devnet.chat-kc.logos.co";
+
+/// The registry `init` was given, or the devnet's when it was empty or absent.
+pub(crate) fn registry_url(configured: Option<&str>) -> &str {
+    match configured.map(str::trim) {
+        None | Some("") => DEFAULT_REGISTRY_URL,
+        Some(url) => url,
+    }
+}
 
 use crate::module::{
     module, now_ms, short_label, with_display, with_display_mut, Client, DeliveryState,
@@ -68,7 +74,7 @@ const PREVIEW_MAX_CHARS: usize = 160;
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
-pub(crate) fn initialize() -> Result<ModuleState, InitError> {
+pub(crate) fn initialize(registry_url: &str) -> Result<ModuleState, InitError> {
     // A host that never set a persistence base path still stamps a context, with
     // the path left empty, so emptiness is the "host not configured" signal.
     let persistence_path = crate::context()
@@ -120,7 +126,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     // peer given only the account address resolves this installation and opens
     // a DirectV1 conversation. The same server checks every other participant
     // against their account's log.
-    let auth = HttpAuthClient::new(DEFAULT_REGISTRY_URL);
+    let auth = HttpAuthClient::new(registry_url);
     let installation = register_installation(auth.clone())
         .map_err(|e| InitError::Internal(format!("publish account failed: {e}")))?;
     let transport = SdkDelivery::new(inbound_rx, subscribe_tx);
@@ -129,7 +135,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     // would surface only as a peer failing to resolve us much later.
     let registry = ContactRegistry::new(
         transport.publisher(),
-        DEFAULT_REGISTRY_URL,
+        registry_url,
         RegistryPublishMode::Http,
     );
     let (client, events) = ChatClientBuilder::new(installation)
@@ -889,6 +895,17 @@ pub(crate) fn record_members_changed(convo_id: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_registry_is_the_devnets_unless_init_names_another() {
+        assert_eq!(registry_url(None), DEFAULT_REGISTRY_URL);
+        assert_eq!(registry_url(Some("")), DEFAULT_REGISTRY_URL);
+        assert_eq!(registry_url(Some("  ")), DEFAULT_REGISTRY_URL);
+        assert_eq!(
+            registry_url(Some(" http://127.0.0.1:8080 ")),
+            "http://127.0.0.1:8080"
+        );
+    }
 
     const KEY: &str = "rust-chat-test";
 
