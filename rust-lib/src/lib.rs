@@ -182,6 +182,12 @@ impl ChatModule for ChatModuleImpl {
         actions::list_group_members(&convo_id)
     }
 
+    fn get_debug_data(&mut self, convo_id: String) -> Result<Value, String> {
+        actions::get_debug_data(&convo_id)
+            .map(Value::Object)
+            .map_err(|e| e.to_string())
+    }
+
     fn send_message(&mut self, convo_id: String, content: String) -> Result<Value, String> {
         actions::send_message(&convo_id, &content)
             .map(|()| Value::Null)

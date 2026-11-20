@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use components::HttpAuthClient;
 use logos_account::{Account, AccountError, ChatWrite, Ed25519VerifyingKey};
 use logos_generic_chat::{
-    ChatClientBuilder, ClientError, ContactRegistry, GroupMetadata, Installation,
+    ChatClientBuilder, ClientError, ContactRegistry, DebugData, GroupMetadata, Installation,
     PendingInstallation, RegistryPublishMode, SqliteStore, StorageConfig,
 };
 use message_store::Direction;
@@ -654,6 +654,42 @@ pub(crate) fn list_group_members(convo_id: &str) -> Vec<GroupMember> {
     }
 }
 
+/// What `convo_id` reports about itself for debugging, each member entry
+/// naming the account its signer acts for.
+pub(crate) fn get_debug_data(convo_id: &str) -> Result<DebugData, CoreError> {
+    check_live(convo_id)?;
+    let data = with_client(|client| {
+        let mut data = client.debug_data(convo_id)?;
+        if data.contains_key("members") {
+            let accounts: Vec<(String, String)> = client
+                .members(convo_id)?
+                .into_iter()
+                .map(|member| (member.signer_key.to_string(), member.account.to_string()))
+                .collect();
+            name_accounts(&mut data, &accounts);
+        }
+        Ok::<_, ClientError>(data)
+    })??;
+    Ok(data)
+}
+
+/// Add `account` to each entry of the debug data's `members` whose `signer`
+/// `accounts` pairs with one.
+fn name_accounts(data: &mut DebugData, accounts: &[(String, String)]) {
+    let Some(serde_json::Value::Array(members)) = data.get_mut("members") else {
+        return;
+    };
+    for member in members.iter_mut().filter_map(|m| m.as_object_mut()) {
+        let signer = member.get("signer").and_then(|s| s.as_str());
+        if let Some((_, account)) = accounts
+            .iter()
+            .find(|(key, _)| Some(key.as_str()) == signer)
+        {
+            member.insert("account".to_owned(), account.clone().into());
+        }
+    }
+}
+
 pub(crate) fn list_conversations() -> Vec<Conversation> {
     with_display(|d| {
         d.state
@@ -1084,6 +1120,22 @@ mod tests {
         let message = &state.chats["convo-1"].messages[0];
         assert_eq!(message.message_id.as_deref(), Some("msg-1"));
         assert!(message.delivered);
+    }
+
+    #[test]
+    fn debug_data_names_the_account_of_each_known_signer() {
+        let mut data: DebugData = serde_json::from_str(
+            r#"{"epoch": 4, "members": [{"signer": "aa", "sync": "synced"}, {"signer": "bb", "sync": "unconfirmed"}]}"#,
+        )
+        .unwrap();
+        name_accounts(&mut data, &[("aa".into(), "raya".into())]);
+        assert_eq!(
+            serde_json::Value::Object(data),
+            serde_json::json!({"epoch": 4, "members": [
+                {"signer": "aa", "sync": "synced", "account": "raya"},
+                {"signer": "bb", "sync": "unconfirmed"},
+            ]})
+        );
     }
 
     #[test]

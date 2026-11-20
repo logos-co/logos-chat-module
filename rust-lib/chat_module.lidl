@@ -191,6 +191,13 @@ module chat_module {
   ; reports both participants and never a pending one; an unknown conversation
   ; reports an empty roster.
   method list_group_members(convo_id: tstr) -> [GroupMember]
+  ; What a conversation reports about itself for debugging, as a JSON object.
+  ; The chat core picks the names and may change them without notice. A
+  ; GroupV3 group reports its epoch and epoch_fingerprint, and members, one
+  ; entry per member with its signer and sync state; this module adds the
+  ; account each member's signer acts for. Other conversations report an empty
+  ; object. Fails on an unknown or history_only convo_id.
+  method get_debug_data(convo_id: tstr) -> result
   ; Encrypt content and publish it to the conversation, then record it here and
   ; raise message_sent. Success means the message was handed to delivery_module,
   ; not that delivery sent it or that any peer received it. Fails on an unknown
