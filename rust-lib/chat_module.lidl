@@ -61,8 +61,8 @@ module chat_module {
     ; How many conversations this installation currently holds.
     convo_count: int
     ; The delivery node's state, same vocabulary as the
-    ; delivery_state_changed event: "initialising", "online", "error" or
-    ; "stopped".
+    ; delivery_state_changed event: "initialising", "online", "offline",
+    ; "error" or "stopped".
     delivery_state: tstr
     ; A human-readable reason for that state, empty when there is none.
     detail: tstr
@@ -77,11 +77,12 @@ module chat_module {
   type GroupMember {
     ; The member's account address.
     address: tstr
-    ; True while the group has not committed this member's add, so it cannot
-    ; read the conversation yet. Only invites this instance sent are reported, so
-    ; a member another instance invited appears once the group commits it. The
-    ; flag clears when that commit lands; an invite the group never commits stays
-    ; pending for the life of the conversation.
+    ; True while this instance has not applied the commit adding this member,
+    ; so it cannot read the conversation yet. Only invites this instance sent are
+    ; reported, so a member another instance invited appears once this instance
+    ; applies the commit that adds them. The flag clears when this instance
+    ; applies its commit, about two minutes after the add; an invite whose commit
+    ; lost to another member's concurrent commit is dropped from the roster.
     pending: bool
   }
 
@@ -159,10 +160,12 @@ module chat_module {
   ; both may be empty for an unnamed group.
   method create_group_conversation(name: tstr, desc: tstr) -> result
   ; Invite every installation the account at peer_address endorses into an
-  ; existing group conversation. The invite is committed and delivered
-  ; asynchronously; the peer observes the conversation once its instance has
-  ; joined. Raises conversation_updated here, and members_changed once the
-  ; group commits the add. Fails on an unknown convo_id.
+  ; existing group conversation. The add is committed at once and applied, with
+  ; the welcome sent, about two minutes later; the peer observes the
+  ; conversation once its instance has joined. Raises conversation_updated
+  ; here, and members_changed once this instance applies the add. Fails on an
+  ; unknown convo_id, and while an earlier add here is still to be applied; an
+  ; add naming only current members does nothing and succeeds.
   method add_group_member(convo_id: tstr, peer_address: tstr) -> result
   ; Every conversation this installation holds, in no particular order — sort
   ; by last_activity_ms for a conversation list.
@@ -172,7 +175,7 @@ module chat_module {
   ; conversation reports an empty list rather than failing.
   method get_messages(convo_id: tstr) -> [Message]
   ; The roster of a conversation, one GroupMember per element: committed members
-  ; first, then invites still awaiting the group's commit. A direct conversation
+  ; first, then invites this instance has not applied yet. A direct conversation
   ; reports both participants and never a pending one; an unknown conversation
   ; reports an empty roster.
   method list_group_members(convo_id: tstr) -> [GroupMember]
@@ -212,15 +215,17 @@ module chat_module {
   ; was invited, or an invite back into a history_only conversation cleared
   ; the flag. Re-read it with list_conversations.
   event conversation_updated(convo_id: tstr)
-  ; The group committed a roster change. Call list_group_members for the roster
-  ; it committed.
+  ; This instance applied a commit that changed the group's roster. Call
+  ; list_group_members for the roster it applied.
   event members_changed(convo_id: tstr)
   ; A conversation was deleted on this installation.
   event conversation_deleted(convo_id: tstr)
-  ; The delivery node's state changed: "initialising", "online", "error" or
-  ; "stopped", with detail carrying a human-readable reason where there is one.
-  ; Reaching "online" is how a caller learns init() has finished bringing the
-  ; network up. delivery_adopted is as in the Status record, and settled by the
-  ; time the state reaches "online".
+  ; The delivery node's state changed: "initialising", "online", "offline",
+  ; "error" or "stopped", with detail carrying a human-readable reason where
+  ; there is one. Reaching "online" is how a caller learns init() has finished
+  ; bringing the network up. "offline" follows it while delivery reports the
+  ; node Disconnected, as it does for a few seconds after a start: calls still
+  ; work, and delivery keeps trying a send for a minute. delivery_adopted is as
+  ; in the Status record, and settled by the time the state reaches "online".
   event delivery_state_changed(delivery_state: tstr, detail: tstr, delivery_adopted: bool)
 }

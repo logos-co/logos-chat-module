@@ -4,12 +4,12 @@ name: Doc-Tests
 # commit under test. Each spec is an executable tutorial that builds this
 # module's `.lgx`, installs it into headless `logosctl` daemons, and drives a real
 # exchange over the live delivery network: the two-instance 1:1 round-trip and
-# the three-instance GroupV2 conversation. Because they exercise the module end
+# the three-instance group conversation. Because they exercise the module end
 # to end, the job also serves as an integration check and fails if an exchange
 # does not complete.
 #
 # The Linux leg runs several real delivery instances on one host (distinct data
-# dirs) and needs outbound network to reach the logos.test Waku fleet. The
+# dirs) and needs outbound network to reach the logos.dev Waku fleet. The
 # Windows leg loads chat and delivery in a native logosctl session, calls
 # status(), and publishes its own offline execution report.
 

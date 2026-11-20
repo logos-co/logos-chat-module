@@ -10,9 +10,9 @@ afterwards.
 Three targets carry the chat core's account of a run: `libchat` (the
 conversation core, MLS groups, inbox), `logos_generic_chat` (the threaded client
 and its inbound worker), and `chat_module` itself. The module is one of them
-because the other two are nearly silent: between them they raise eleven events,
-almost all on paths that are already failing, so a run that merely behaves oddly
-would write nothing. This module reports its own lifecycle instead, and logs a
+because the other two are nearly silent: what they log is mostly warnings on
+paths that are already failing, so a run that merely behaves oddly would write
+little. This module reports its own lifecycle instead, and logs a
 message as a byte count and a conversation id, never as content.
 
 ## Choosing a level
