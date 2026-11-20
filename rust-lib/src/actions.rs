@@ -594,14 +594,15 @@ pub(crate) fn add_group_member(convo_id: &str, peer_address: &str) -> Result<(),
     Ok(())
 }
 
-/// Propose removing every installation of the account at `peer_address` from
-/// a group conversation. The member stays on the roster until the group has
-/// voted and committed the removal, so nothing is emitted here: the commit
-/// surfaces as `members_changed`.
+/// Removes every installation of the account at `peer_address` from the group
+/// conversation `convo_id`. The removal is an MLS commit, applied like an add;
+/// the account must be a member and must not be this instance's own (a member
+/// cannot remove itself).
 pub(crate) fn remove_group_member(convo_id: &str, peer_address: &str) -> Result<(), CoreError> {
     check_live(convo_id)?;
 
     with_client(|client| client.remove_group_participants(convo_id, &[peer_address]))??;
+    crate::emit_conversation_updated(convo_id);
     Ok(())
 }
 

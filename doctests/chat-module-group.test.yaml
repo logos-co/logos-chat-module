@@ -15,8 +15,8 @@ intro: |
   daemons (Alice, Bob, and Carol), each loading `chat_module` and its runtime
   dependency `delivery_module`, and drives them through the `logosctl call`
   CLI: `init`, `get_address`, `create_group_conversation`, `add_group_member`,
-  `send_message`, and reading the shared thread back with
-  `list_conversations` / `get_messages`.
+  `remove_group_member`, `send_message`, and reading the shared thread back
+  with `list_conversations` / `get_messages`.
 
   Group membership changes are **asynchronous by design**: the inviting
   instance publishes the add as an MLS commit at once, but every member, the
@@ -26,13 +26,14 @@ intro: |
   land a little over two minutes after the `add_group_member` call over the
   live network. The poll loops below are budgeted for that.
 
-what_you_build: "A verified three-member, end-to-end-encrypted group conversation across three headless chat_module instances, grown member by member, with sender-attributed message fan-out."
+what_you_build: "A verified three-member, end-to-end-encrypted group conversation across three headless chat_module instances, grown member by member, with sender-attributed message fan-out, then shrunk to two by a removal."
 
 what_you_learn:
   - "Run three isolated `logosctl` daemons on one host, selected by `--config-dir`"
   - "Create a named group with `create_group_conversation` and grow it with `add_group_member` — including an add proposed by a non-creator member"
   - "Why a group join lands asynchronously (commit, a two-minute wait to apply it, then the welcome), and how to observe it by polling `list_conversations`"
   - "How every member shares one conversation id, and how `get_messages` attributes each inbound message to its sender's account address"
+  - "Remove a member with `remove_group_member`, and why the roster changes only once the group applies the removal's commit"
 
 prerequisites:
   - |
@@ -408,6 +409,73 @@ sections:
           The newest member's messages reach the founding members and vice
           versa: all three instances share one MLS group at one epoch, and
           every message is end-to-end encrypted and sender-attributed.
+
+  - title: "A member is removed, and reads nothing after"
+    step: true
+    text: |
+      Removal is a commit like an add: Alice proposes it at once and every
+      member applies it about two minutes later. A member cannot remove
+      itself (MLS), so another member removes it. Once the removal applies,
+      the group moves to a new epoch that Carol does not hold: what is sent
+      after reaches Bob, and never Carol.
+    steps:
+      - title: "Alice removes Carol"
+        run: |
+          gid=$(cat group-id.txt)
+          out=$(./logos/bin/logosctl --config-dir alice call chat_module remove_group_member "$gid" @carol-addr.txt)
+          echo "$out"
+          echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "remove_group_member failed: $out" >&2; exit 1; }
+          echo "CAROL_REMOVED"
+        code_block: |
+          logosctl --config-dir alice call chat_module remove_group_member "$GROUP_ID" @carol-addr.txt
+        expect_contains:
+          - "CAROL_REMOVED"
+      - title: "Alice and Bob converge on a two-member roster"
+        run: |
+          gid=$(cat group-id.txt)
+          c=$(cat carol-addr.txt)
+          for who in alice bob; do
+            ok=""
+            for i in $(seq 1 60); do
+              roster=$(./logos/bin/logosctl --config-dir "$who" call chat_module list_group_members "$gid" 2>/dev/null | jq -r '.result[]? | .address' || true)
+              n=$(printf '%s\n' "$roster" | grep -c . || true)
+              if [ "$n" = 2 ] && ! printf '%s\n' "$roster" | grep -qF "$c"; then
+                ok=1; echo "$(echo "$who" | tr a-z A-Z)_ROSTER_WITHOUT_CAROL"; break
+              fi
+              sleep 4
+            done
+            [ -n "$ok" ] || { echo "$who roster never dropped carol: $roster" >&2; exit 1; }
+          done
+        code_block: |
+          logosctl --config-dir alice call chat_module list_group_members "$GROUP_ID"
+          logosctl --config-dir bob   call chat_module list_group_members "$GROUP_ID"
+        expect_contains:
+          - "ALICE_ROSTER_WITHOUT_CAROL"
+          - "BOB_ROSTER_WITHOUT_CAROL"
+      - title: "Alice sends after the removal: Bob reads it, Carol never does"
+        run: |
+          gid=$(cat group-id.txt)
+          out=$(./logos/bin/logosctl --config-dir alice call chat_module send_message "$gid" after-carol)
+          echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "alice could not send: $out" >&2; exit 1; }
+          a=$(cat alice-addr.txt); got=""
+          for i in $(seq 1 60); do
+            ok=$(./logos/bin/logosctl --config-dir bob call chat_module get_messages "$gid" 2>/dev/null | jq -r --arg a "$a" '.result[]? | select(.content == "after-carol") | select(.sender == $a) | .content' || true)
+            if [ -n "$ok" ]; then got=1; echo "BOB_GOT_AFTER_CAROL"; break; fi
+            sleep 4
+          done
+          [ -n "$got" ] || { echo "bob never received the message sent after the removal" >&2; exit 1; }
+          # Carol has had as long as Bob took, and then a minute more
+          sleep 60
+          leak=$(./logos/bin/logosctl --config-dir carol call chat_module get_messages "$gid" 2>/dev/null | jq -r '.result[]? | select(.content == "after-carol") | .content' || true)
+          [ -z "$leak" ] || { echo "carol read a message sent after her removal" >&2; exit 1; }
+          echo "CAROL_READS_NOTHING_AFTER"
+        code_block: |
+          logosctl --config-dir alice call chat_module send_message "$GROUP_ID" after-carol
+          logosctl --config-dir bob   call chat_module get_messages "$GROUP_ID"   # has it
+          logosctl --config-dir carol call chat_module get_messages "$GROUP_ID"   # never has it
+        expect_contains:
+          - "BOB_GOT_AFTER_CAROL"
+          - "CAROL_READS_NOTHING_AFTER"
 
   - title: "Stop the daemons"
     step: true
