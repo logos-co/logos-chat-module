@@ -285,7 +285,14 @@ sections:
             case "$msgs" in *'"content":"hello-from-bob"'*) echo "ALICE_GOT_BOB_MSG"; exit 0;; esac
             sleep 3
           done
-          echo "alice never received bob's message" >&2; exit 1
+          echo "alice never received bob's message" >&2
+          for who in alice bob; do
+            echo "--- $who: chat_module's run log" >&2
+            find "$who" -name 'chat_module_*.log' -exec cat {} + >&2
+            echo "--- $who: daemon.log, last 40 lines" >&2
+            tail -n 40 "$who/logs/daemon.log" >&2
+          done
+          exit 1
         code_block: |
           logosctl --config-dir alice call chat_module get_messages "$ALICE_CONVO"
         expect_contains:
@@ -311,7 +318,14 @@ sections:
             case "$msgs" in *'"content":"hi-bob-got-it"'*) echo "BOB_GOT_REPLY"; exit 0;; esac
             sleep 3
           done
-          echo "bob never received alice's reply" >&2; exit 1
+          echo "bob never received alice's reply" >&2
+          for who in alice bob; do
+            echo "--- $who: chat_module's run log" >&2
+            find "$who" -name 'chat_module_*.log' -exec cat {} + >&2
+            echo "--- $who: daemon.log, last 40 lines" >&2
+            tail -n 40 "$who/logs/daemon.log" >&2
+          done
+          exit 1
         code_block: |
           logosctl --config-dir bob call chat_module get_messages "$BOB_CONVO"
         expect_contains:
