@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "account"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/logos-chat.git?rev=f26b5765156d36b6421a154149745535b6d93821#f26b5765156d36b6421a154149745535b6d93821"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=27366d671e853c3fa66150eeb331845f9d49dfd1#27366d671e853c3fa66150eeb331845f9d49dfd1"
 dependencies = [
  "account-log",
  "thiserror",
@@ -14,11 +14,10 @@ dependencies = [
 [[package]]
 name = "account-log"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/logos-chat.git?rev=f26b5765156d36b6421a154149745535b6d93821#f26b5765156d36b6421a154149745535b6d93821"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=27366d671e853c3fa66150eeb331845f9d49dfd1#27366d671e853c3fa66150eeb331845f9d49dfd1"
 dependencies = [
- "ed25519-dalek",
+ "crypto",
  "hex",
- "rand_core 0.6.4",
  "thiserror",
 ]
 
@@ -1233,13 +1232,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "chacha20"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65c35e4b699c7e15ccbe7ee35c005e4fc0a278d22238a2857e6ce2dadeda1b06"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.3.0",
+ "rand_core 0.10.1",
+]
+
+[[package]]
 name = "chacha20poly1305"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10cd79432192d1c0f4e1a0fef9527696cc039165d729fb41b3f4f4f354c2dc35"
 dependencies = [
  "aead",
- "chacha20",
+ "chacha20 0.9.1",
  "cipher",
  "poly1305",
  "zeroize",
@@ -1256,7 +1266,7 @@ dependencies = [
 [[package]]
 name = "chat-sqlite"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/logos-chat.git?rev=f26b5765156d36b6421a154149745535b6d93821#f26b5765156d36b6421a154149745535b6d93821"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=27366d671e853c3fa66150eeb331845f9d49dfd1#27366d671e853c3fa66150eeb331845f9d49dfd1"
 dependencies = [
  "libchat",
  "rusqlite",
@@ -1268,14 +1278,15 @@ name = "chat_module"
 version = "0.3.0"
 dependencies = [
  "account",
+ "base64",
  "chrono",
  "components",
  "crossbeam-channel",
+ "hex",
  "logos-generic-chat",
  "logos-rust-sdk",
  "message-store",
  "rusqlite",
- "rusqlite_migration",
  "serde",
  "serde_json",
  "tempfile",
@@ -1331,7 +1342,7 @@ dependencies = [
 [[package]]
 name = "components"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/logos-chat.git?rev=f26b5765156d36b6421a154149745535b6d93821#f26b5765156d36b6421a154149745535b6d93821"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=27366d671e853c3fa66150eeb331845f9d49dfd1#27366d671e853c3fa66150eeb331845f9d49dfd1"
 dependencies = [
  "account",
  "account-log",
@@ -1505,7 +1516,7 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 [[package]]
 name = "crypto"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/logos-chat.git?rev=f26b5765156d36b6421a154149745535b6d93821#f26b5765156d36b6421a154149745535b6d93821"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=27366d671e853c3fa66150eeb331845f9d49dfd1#27366d671e853c3fa66150eeb331845f9d49dfd1"
 dependencies = [
  "ed25519-dalek",
  "generic-array 1.4.1",
@@ -2261,11 +2272,11 @@ dependencies = [
 
 [[package]]
 name = "hashlink"
-version = "0.10.0"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7382cf6263419f2d8df38c55d7da83da5c18aef87fc7a7fc1fb1e344edfe14c1"
+checksum = "a596f1b20ed2cc5ecac41a164aaebc7258057060f06c0cf7a2ba3991ee7990fb"
 dependencies = [
- "hashbrown 0.15.5",
+ "hashbrown 0.17.0",
 ]
 
 [[package]]
@@ -2906,7 +2917,7 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 [[package]]
 name = "libchat"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/logos-chat.git?rev=f26b5765156d36b6421a154149745535b6d93821#f26b5765156d36b6421a154149745535b6d93821"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=27366d671e853c3fa66150eeb331845f9d49dfd1#27366d671e853c3fa66150eeb331845f9d49dfd1"
 dependencies = [
  "alloy",
  "base64",
@@ -2921,9 +2932,12 @@ dependencies = [
  "openmls_memory_storage 0.5.0",
  "openmls_traits 0.5.0",
  "prost",
+ "rand 0.10.1",
  "rand 0.9.4",
  "rand_core 0.6.4",
+ "sds",
  "serde",
+ "serde_json",
  "thiserror",
  "tracing",
  "x25519-dalek",
@@ -3201,13 +3215,14 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.33.0"
+version = "0.40.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "947e6816f7825b2b45027c2c32e7085da9934defa535de4a6a46b10a4d5257fa"
+checksum = "b06e69070b7e12262b0cd90832f0a7396f142a2b330181255562decf9f0c6215"
 dependencies = [
  "cc",
  "openssl-sys",
  "pkg-config",
+ "sqlcipher-src",
  "vcpkg",
 ]
 
@@ -3241,7 +3256,7 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 [[package]]
 name = "logos-generic-chat"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/logos-chat.git?rev=f26b5765156d36b6421a154149745535b6d93821#f26b5765156d36b6421a154149745535b6d93821"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=27366d671e853c3fa66150eeb331845f9d49dfd1#27366d671e853c3fa66150eeb331845f9d49dfd1"
 dependencies = [
  "account",
  "chat-sqlite",
@@ -3307,7 +3322,7 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 [[package]]
 name = "message-store"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/logos-chat.git?rev=f26b5765156d36b6421a154149745535b6d93821#f26b5765156d36b6421a154149745535b6d93821"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=27366d671e853c3fa66150eeb331845f9d49dfd1#27366d671e853c3fa66150eeb331845f9d49dfd1"
 dependencies = [
  "rusqlite",
 ]
@@ -4082,6 +4097,7 @@ version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2e8e8bcc7961af1fdac401278c6a831614941f6164ee3bf4ce61b7edb162207"
 dependencies = [
+ "chacha20 0.10.2",
  "getrandom 0.4.2",
  "rand_core 0.10.1",
 ]
@@ -4355,6 +4371,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rsqlite-vfs"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "353b74f9810d5b085b6c42c9d86a5f0fdb795553235cdd48753b32e3809d18a7"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "rstest"
 version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4431,9 +4456,9 @@ checksum = "48fd7bd8a6377e15ad9d42a8ec25371b94ddc67abe7c8b9127bec79bebaaae18"
 
 [[package]]
 name = "rusqlite"
-version = "0.35.0"
+version = "0.42.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a22715a5d6deef63c637207afbe68d0c72c3f8d0022d7cf9714c442d6157606b"
+checksum = "a4edff0039f148731aee2fd80f76dbfeb12d204ab3d1c544838d34e02151049b"
 dependencies = [
  "bitflags",
  "fallible-iterator",
@@ -4441,16 +4466,7 @@ dependencies = [
  "hashlink",
  "libsqlite3-sys",
  "smallvec",
-]
-
-[[package]]
-name = "rusqlite_migration"
-version = "2.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6bec955369ac93728d3864d56b5d663ec7495f83648c560750a56c50fefcbf8"
-dependencies = [
- "log",
- "rusqlite",
+ "sqlite-wasm-rs",
 ]
 
 [[package]]
@@ -4643,6 +4659,15 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+
+[[package]]
+name = "sds"
+version = "0.1.0"
+source = "git+https://github.com/logos-messaging/sds-rs?rev=648283e44a9323ae0484b07de25f357228af6ca4#648283e44a9323ae0484b07de25f357228af6ca4"
+dependencies = [
+ "rand_core 0.10.1",
+ "sha2 0.11.0",
+]
 
 [[package]]
 name = "sec1"
@@ -4973,6 +4998,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "sqlcipher-src"
+version = "420.0.0+sqlcipher-4.20.0-sqlite-3.54.1-libtomcrypt-1.18.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd6b5280ed2593d07b2816ec531821c15c306903bcca224716f1fbcc2bbfedfe"
+
+[[package]]
+name = "sqlite-wasm-rs"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6cd504cecbfe7eef649988840f9a6cb768d11085efec138f8e99f160632d867"
+dependencies = [
+ "cc",
+ "rsqlite-vfs",
+ "sqlcipher-src",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5040,6 +5082,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "syn"
+version = "3.0.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ae9ccbea3a7b0b09443036490c8f34a8b1b760fd345e5c0dae0aac718faea79"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
 name = "syn-solidity"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5092,22 +5145,22 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.18"
+version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4288b5bcbc7920c07a1149a35cf9590a2aa808e0bc1eafaade0b80947865fbc4"
+checksum = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.18"
+version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebc4ee7f67670e9b64d05fa4253e753e016c6c95ff35b89b7941d6b856dec1d5"
+checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 3.0.10",
 ]
 
 [[package]]

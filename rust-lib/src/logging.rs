@@ -62,9 +62,8 @@ const KEEP_RUNS: usize = 10;
 /// bury the handful of lifecycle events this exists to surface.
 ///
 /// `chat_module` is one of the targets because most of a run's story is this
-/// module's own: libchat and the generic client together raise eleven events,
-/// nearly all on failure paths, so a healthy run through them alone says
-/// nothing.
+/// module's own: what libchat and the generic client log is mostly warnings on
+/// failure paths, so a healthy run through them alone says little.
 fn filter_for(level: &str) -> String {
     format!("warn,chat_module={level},libchat={level},logos_generic_chat={level}")
 }

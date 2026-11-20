@@ -7,13 +7,13 @@
   # public (master-built) cache belongs here; ci is CI-only by design.
   nixConfig = {
     extra-substituters = [ "https://cache.nix.logos.co/public" ];
-    extra-trusted-public-keys = [ "public:l4HrXgL4nw246+LBh2SOJyhz64BoGegOYLheT/iIAPU=" ];
+    extra-trusted-public-keys = [ "public:zaDAOkd+E3cQyFm9J7qejQYd9HoLJc1SJvnk68hNWeI=" ];
   };
 
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder/0.3.1";
 
-    logos-delivery-module.url = "github:logos-co/logos-delivery-module/v0.3.0-rc.3";
+    logos-delivery-module.url = "github:logos-co/logos-delivery-module/18631861d7b86ae785407db067b763f453a711c3";
   };
 
   outputs = inputs@{ self, logos-module-builder, logos-delivery-module, ... }:
