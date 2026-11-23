@@ -227,7 +227,7 @@ sections:
         check_file: "alice-addr.txt"
         post_text: |
           `get_address` returns the LIDL `tstr` type, so its payload is the string
-          directly at `.result` — Alice's installation address, what a peer needs to
+          directly at `.result` — the address of Alice's account, what a peer needs to
           open a conversation with her. Her key package was published to the registry
           during `init`, so the address alone lets Bob reach her.
       - title: "Bob opens a conversation with Alice"

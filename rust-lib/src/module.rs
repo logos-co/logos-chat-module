@@ -31,9 +31,9 @@ use rusqlite::Connection;
 use crate::delivery::{SdkDelivery, SdkPublisher, Subscribes};
 use crate::persistence::AppState;
 
-/// The chat client as this module configures it: an installation of an
-/// ephemeral account, the delivery_module-backed [`SdkDelivery`] transport, the
-/// devnet contact registry and account logs, and an in-memory store. Its
+/// The chat client as this module configures it: an installation of the
+/// account init runs as, the delivery_module-backed [`SdkDelivery`] transport,
+/// the devnet contact registry and account logs, and an in-memory store. Its
 /// conversations last one session (see [`LIBCHAT_PERSISTENCE_ENABLED`]).
 pub(crate) type Client =
     ChatClient<SdkDelivery, ContactRegistry<SdkPublisher>, HttpAuthClient, SqliteStore>;
@@ -206,9 +206,9 @@ pub(crate) struct Display {
     /// `None` until `actions::initialize` opens it.
     pub chat_db: Option<Connection>,
     pub delivery_state: DeliveryState,
-    /// The local installation address (libchat `ChatClient::addr`), cached so
-    /// `get_address` needn't touch the client. A peer needs this value to open a
-    /// DirectV1 conversation with this installation.
+    /// The address of the account this installation runs as (libchat
+    /// `ChatClient::addr`), cached so `get_address` needn't touch the client. A
+    /// peer needs this value to open a DirectV1 conversation with it.
     pub address: String,
 }
 

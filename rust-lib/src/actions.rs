@@ -11,7 +11,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use components::HttpAuthClient;
-use logos_account::{Account, AccountError, ChatWrite, Ed25519VerifyingKey};
+use logos_account::{
+    Account, AccountAddr, AccountError, AccountProvider, AccountPublisher, AccountResolver,
+    ChatRead, ChatWrite, Ed25519VerifyingKey,
+};
 use logos_generic_chat::{
     ChatClientBuilder, ClientError, ContactRegistry, GroupMetadata, Installation,
     PendingInstallation, RegistryPublishMode, SqliteStore, StorageConfig,
@@ -60,6 +63,14 @@ pub(crate) enum InitError {
     Internal(String),
     #[error("{0}")]
     Delivery(String),
+    #[error("account {0:?} is not an address: 64 lowercase hex characters")]
+    InvalidAccount(String),
+    #[error("reading account {0}: {1}")]
+    AccountUnreadable(String, AccountError),
+    #[error("account {0} has no log on {registry}", registry = DEFAULT_REGISTRY_URL)]
+    NoAccountLog(String),
+    #[error("account {0}'s log does not endorse get_installation_key()")]
+    NotEndorsed(String),
 }
 
 /// Character cap for a conversation-list preview. Mirrored on the UI so live and
@@ -68,7 +79,7 @@ const PREVIEW_MAX_CHARS: usize = 160;
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
-pub(crate) fn initialize() -> Result<ModuleState, InitError> {
+pub(crate) fn initialize(account: Option<&str>) -> Result<ModuleState, InitError> {
     // A host that never set a persistence base path still stamps a context, with
     // the path left empty, so emptiness is the "host not configured" signal.
     let persistence_path = crate::context()
@@ -123,14 +134,13 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     // with no workers and no way to stop it. Building the client subscribes the
     // core's inbound addresses, which queue on `subscribe_rx` until the node starts.
     //
-    // Identity is ephemeral (see `LIBCHAT_PERSISTENCE_ENABLED`): each launch
-    // publishes a fresh account whose log endorses a new installation key, so a
-    // peer given only the account address resolves this installation and opens
-    // a DirectV1 conversation. The same server checks every other participant
+    // The installation is ephemeral (see `LIBCHAT_PERSISTENCE_ENABLED`): each
+    // launch runs as a new key, which the account's log endorses, so a peer
+    // given only the account address resolves this installation and opens a
+    // DirectV1 conversation. The same server checks every other participant
     // against their account's log.
     let auth = HttpAuthClient::new(DEFAULT_REGISTRY_URL);
-    let installation = register_installation(auth.clone())
-        .map_err(|e| InitError::Internal(format!("publish account failed: {e}")))?;
+    let installation = next_installation(&NEXT_INSTALLATION, auth.clone(), account)?;
     let transport = SdkDelivery::new(
         inbound_rx,
         reports_rx,
@@ -249,14 +259,86 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     })
 }
 
-/// A new installation of a new account, whose published log endorses it. The
-/// account's key goes out of scope here, so no other installation can join it.
-fn register_installation(auth: HttpAuthClient) -> Result<Installation, AccountError> {
-    let pending = PendingInstallation::generate();
-    let key = Ed25519VerifyingKey::from_canonical_slice(&pending.endorsement_request())?;
-    let mut account = Account::new(auth);
-    account.update().endorse_chat_signer(&key).publish()?;
-    Ok(pending.complete(account.addr()))
+/// The installation the next init runs as, made on first read so its key can be
+/// endorsed before init. Only an init takes it.
+static NEXT_INSTALLATION: NextInstallation = NextInstallation::new();
+
+struct NextInstallation(Mutex<Option<PendingInstallation>>);
+
+impl NextInstallation {
+    const fn new() -> Self {
+        Self(Mutex::new(None))
+    }
+
+    fn lock(&self) -> MutexGuard<'_, Option<PendingInstallation>> {
+        self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The key the account must endorse.
+    fn key(&self) -> Vec<u8> {
+        self.lock()
+            .get_or_insert_with(PendingInstallation::generate)
+            .endorsement_request()
+    }
+}
+
+/// The next installation's key, as `get_installation_key` reports it.
+pub(crate) fn installation_key() -> String {
+    hex::encode(NEXT_INSTALLATION.key())
+}
+
+/// The next installation, as one of `account` once its log on `auth` endorses
+/// it. Without an account, a new one endorses it, and its key goes out of scope
+/// here, so no other installation can join it. A refused account leaves the
+/// installation next.
+fn next_installation<P>(
+    next: &NextInstallation,
+    auth: P,
+    account: Option<&str>,
+) -> Result<Installation, InitError>
+where
+    P: AccountProvider + AccountPublisher,
+{
+    let key = Ed25519VerifyingKey::from_canonical_slice(&next.key())
+        .map_err(|e| InitError::Internal(format!("installation key: {e}")))?;
+    let account = match account {
+        Some(account) => endorsing_account(auth, account, &key)?,
+        None => {
+            let mut account = Account::new(auth);
+            account
+                .update()
+                .endorse_chat_signer(&key)
+                .publish()
+                .map_err(|e| InitError::Internal(format!("publish account failed: {e}")))?;
+            account.addr()
+        }
+    };
+    // Only an init takes it, and inits run one at a time.
+    let pending = next
+        .lock()
+        .take()
+        .ok_or_else(|| InitError::Internal("the next installation is gone".into()))?;
+    Ok(pending.complete(account))
+}
+
+/// `account`, once its log on `provider` endorses `key`.
+fn endorsing_account(
+    provider: impl AccountProvider,
+    account: &str,
+    key: &Ed25519VerifyingKey,
+) -> Result<AccountAddr, InitError> {
+    let addr: AccountAddr = account
+        .parse()
+        .map_err(|_| InitError::InvalidAccount(account.to_string()))?;
+    let mut resolver = AccountResolver::new(provider);
+    let record = resolver
+        .resolve(&addr)
+        .map_err(|e| InitError::AccountUnreadable(account.to_string(), e))?
+        .ok_or_else(|| InitError::NoAccountLog(account.to_string()))?;
+    if !record.chat_signers().contains(key) {
+        return Err(InitError::NotEndorsed(account.to_string()));
+    }
+    Ok(addr)
 }
 
 /// The preset this process last created delivery_module's node with. This module
@@ -495,8 +577,8 @@ fn protocol(convo_id: &str) -> Option<String> {
 
 // ── Identity ─────────────────────────────────────────────────────────────────
 
-/// The local installation address, which a peer needs to open a DirectV1
-/// conversation with this installation (pass it to their `create_conversation`).
+/// The address of the account this installation runs as, which a peer needs to
+/// open a DirectV1 conversation with it (pass it to their `create_conversation`).
 /// Read from the cached display value, so it returns the empty string before
 /// `init`.
 pub(crate) fn get_address() -> String {
@@ -973,6 +1055,8 @@ fn mark_delivered(d: &mut Display, convo_id: &str, message_id: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use logos_account::test_support::TestAccountProvider;
+
     use super::*;
 
     const KEY: &str = "rust-chat-test";
@@ -1168,5 +1252,71 @@ mod tests {
         record_node_started(&mut d, true, "");
         record_node_started(&mut d, false, "another consumer's start failed");
         assert_eq!(d.delivery_state.state, DeliveryStateKind::Online);
+    }
+
+    fn key_of(next: &NextInstallation) -> Ed25519VerifyingKey {
+        Ed25519VerifyingKey::from_canonical_slice(&next.key()).unwrap()
+    }
+
+    /// A provider holding the log of a new account that endorses `key`, and
+    /// that account's address.
+    fn serving_account_endorsing(key: &Ed25519VerifyingKey) -> (TestAccountProvider, String) {
+        let mut account = Account::new(TestAccountProvider::default());
+        let log = account.update().endorse_chat_signer(key).publish().unwrap();
+        let mut provider = TestAccountProvider::default();
+        provider.publish(&account.addr(), &log).unwrap();
+        (provider, account.addr().to_string())
+    }
+
+    #[test]
+    fn the_next_installation_runs_as_the_account_endorsing_it() {
+        let next = NextInstallation::new();
+        let (provider, saro) = serving_account_endorsing(&key_of(&next));
+        let endorsed = next.key();
+
+        let installation = next_installation(&next, provider, Some(&saro)).unwrap();
+
+        assert_eq!(installation.account().to_string(), saro);
+        assert_ne!(next.key(), endorsed);
+    }
+
+    #[test]
+    fn a_refused_account_leaves_the_key_to_endorse() {
+        let next = NextInstallation::new();
+        let (provider, saro) = serving_account_endorsing(&key_of(&NextInstallation::new()));
+        let key = next.key();
+
+        let refused = next_installation(&next, provider, Some(&saro));
+
+        assert!(
+            matches!(&refused, Err(InitError::NotEndorsed(account)) if *account == saro),
+            "{refused:?}"
+        );
+        assert_eq!(next.key(), key);
+    }
+
+    #[test]
+    fn an_account_with_no_log_is_refused() {
+        let next = NextInstallation::new();
+        let (_, saro) = serving_account_endorsing(&key_of(&next));
+
+        let refused = next_installation(&next, TestAccountProvider::default(), Some(&saro));
+
+        assert!(
+            matches!(&refused, Err(InitError::NoAccountLog(account)) if *account == saro),
+            "{refused:?}"
+        );
+    }
+
+    #[test]
+    fn an_account_that_is_not_an_address_is_refused() {
+        let next = NextInstallation::new();
+
+        let refused = next_installation(&next, TestAccountProvider::default(), Some("saro"));
+
+        assert!(
+            matches!(&refused, Err(InitError::InvalidAccount(account)) if account == "saro"),
+            "{refused:?}"
+        );
     }
 }

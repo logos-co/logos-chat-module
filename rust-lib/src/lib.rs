@@ -21,8 +21,8 @@
 //! `Result<serde_json::Value, String>`: `Ok(value)` carries any payload (a
 //! conversation id or `Null`), `Err(message)` a human-readable reason.
 //! The record getters return the structs generated from the contract's records;
-//! `get_address`/`get_log_path` return a plain string, empty when not
-//! initialised.
+//! `get_installation_key`/`get_address`/`get_log_path` return a plain string;
+//! the last two are empty when not initialised.
 //!
 //! Events reach consumers over the lp_* IPC channel: the operations below call
 //! the generated `emit_*` functions (see the included scaffold), which the host
@@ -81,7 +81,8 @@ impl ChatModule for ChatModuleImpl {
             named => named,
         };
 
-        match module().install_with(actions::initialize) {
+        let account = config.account.filter(|account| !account.is_empty());
+        match module().install_with(|| actions::initialize(account.as_deref())) {
             Err(_) => Err(ERR_LOCK_POISONED.to_string()),
             Ok(Ok(InstallOutcome::Installed)) => {
                 tracing::info!("init: state installed, joining delivery preset {preset}");
@@ -132,6 +133,10 @@ impl ChatModule for ChatModuleImpl {
     /// answer. Deliberately silent, since a caller polls this.
     fn health(&mut self) -> bool {
         true
+    }
+
+    fn get_installation_key(&mut self) -> String {
+        actions::installation_key()
     }
 
     fn get_address(&mut self) -> String {
