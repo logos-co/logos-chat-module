@@ -165,6 +165,13 @@ module chat_module {
   ; conversation with this installation via create_conversation. Empty before
   ; init.
   method get_address() -> tstr
+  ; The name the account at address presents itself under, from its log on the
+  ; chat registry. Empty before init, while the log has not been read, and for
+  ; an account that set none. Answers at once: a name not read in the last 30
+  ; minutes is read in the background, and display_name_changed reports it
+  ; when it differs. An account picks its own name, so show it beside
+  ; something it cannot pick, such as its address.
+  method get_display_name(address: tstr) -> tstr
 
   ; --- conversations & messages ---
   ; Open a 1:1 conversation with the peer at peer_address (their get_address).
@@ -260,4 +267,7 @@ module chat_module {
   ; work, and delivery keeps trying a send for a minute. delivery_adopted is as
   ; in the Status record, and settled by the time the state reaches "online".
   event delivery_state_changed(delivery_state: tstr, detail: tstr, delivery_adopted: bool)
+  ; A read of the log of the account at address found a display name other
+  ; than the one get_display_name reported. display_name is the new one.
+  event display_name_changed(address: tstr, display_name: tstr)
 }

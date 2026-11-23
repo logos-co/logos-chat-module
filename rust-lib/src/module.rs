@@ -29,6 +29,7 @@ use logos_generic_chat::{ChatClient, ContactRegistry, SqliteStore};
 use rusqlite::Connection;
 
 use crate::delivery::{SdkDelivery, SdkPublisher, Subscribes};
+use crate::names::Names;
 use crate::persistence::AppState;
 
 /// The chat client as this module configures it: an installation of an
@@ -133,6 +134,9 @@ pub(crate) struct ModuleState {
     /// The subscriptions delivery_module has not answered, which the event
     /// consumer waits on; `shutdown()` closes them before joining it.
     pub subscribes: Subscribes,
+    /// Display-name worker handle. It exits once `Display::names` is reset,
+    /// after at most the registry read in flight.
+    pub names_thread: Option<JoinHandle<()>>,
 }
 
 /// Unreachable under `panic = "abort"` — the process dies before a
@@ -210,6 +214,7 @@ pub(crate) struct Display {
     /// `get_address` needn't touch the client. A peer needs this value to open a
     /// DirectV1 conversation with this installation.
     pub address: String,
+    pub names: Names,
 }
 
 impl Default for Display {
@@ -219,6 +224,7 @@ impl Default for Display {
             chat_db: None,
             delivery_state: DeliveryState::stopped(),
             address: String::new(),
+            names: Names::default(),
         }
     }
 }
