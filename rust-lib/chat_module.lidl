@@ -36,6 +36,11 @@ module chat_module {
     ; "DirectV1" or "GroupV3". Absent when this installation has not recorded
     ; it.
     ? protocol: tstr
+    ; A direct conversation's other side: its account's address, as
+    ; create_conversation was given it or as its first message reported it.
+    ; Absent for a group, and for an invite whose first message has not arrived;
+    ; conversation_updated reports when it is learned.
+    ? peer: tstr
     ; A group's shared name, set at creation and identical for every member.
     ; Absent for direct conversations and unnamed groups; distinct from the
     ; local-only `nickname`.
@@ -238,8 +243,9 @@ module chat_module {
   ; unnamed groups.
   event conversation_created(convo_id: tstr, is_outgoing: bool, peer_label: tstr, kind: tstr, name: tstr, desc: tstr)
   ; A conversation's local metadata changed here: a nickname was set, a member
-  ; was invited, or an invite back into a history_only conversation cleared
-  ; the flag. Re-read it with list_conversations.
+  ; was invited, a direct conversation's peer was learned, or an invite back
+  ; into a history_only conversation cleared the flag. Re-read it with
+  ; list_conversations.
   event conversation_updated(convo_id: tstr)
   ; This instance applied a commit that changed the group's roster. Call
   ; list_group_members for the roster it applied.

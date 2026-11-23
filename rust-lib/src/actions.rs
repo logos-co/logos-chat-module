@@ -738,6 +738,7 @@ pub(crate) fn list_conversations() -> Vec<Conversation> {
                 last_activity_ms: s.messages.last().map_or(0, |m| m.timestamp_ms as i64),
                 kind: s.kind.as_str().to_string(),
                 protocol: s.protocol.clone(),
+                peer: s.peer.clone(),
                 name: s.name.clone(),
                 description: s.description.clone(),
                 preview: s
@@ -991,7 +992,8 @@ pub(crate) fn record_message_received(
                 older_messages: 0,
                 history_only: false,
             });
-        if session.kind == ConversationKind::Direct && session.peer.is_none() {
+        let peer_learned = session.kind == ConversationKind::Direct && session.peer.is_none();
+        if peer_learned {
             session.peer = Some(account.to_owned());
             chat_changed = true;
         }
@@ -1010,6 +1012,9 @@ pub(crate) fn record_message_received(
             ts as i64,
             account,
         );
+        if peer_learned {
+            crate::emit_conversation_updated(convo_id);
+        }
     });
 }
 
@@ -1245,6 +1250,20 @@ mod tests {
             with_display(|d| d.state.chats.get(CONVO).map(|s| s.history_only)),
             Some(false)
         );
+    }
+
+    #[test]
+    fn a_direct_conversation_reports_the_peer_its_first_message_came_from() {
+        const CONVO: &str = "incoming-direct";
+        with_display_mut(|d| d.state.chats.insert(CONVO.into(), direct_chat(CONVO)));
+
+        record_message_received(CONVO, b"hi saro", "raya-account", "raya-device");
+
+        let peer = list_conversations()
+            .into_iter()
+            .find(|c| c.convo_id == CONVO)
+            .and_then(|c| c.peer);
+        assert_eq!(peer.as_deref(), Some("raya-account"));
     }
 
     #[test]
