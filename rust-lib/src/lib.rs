@@ -21,8 +21,8 @@
 //! `Result<serde_json::Value, String>`: `Ok(value)` carries any payload (a
 //! conversation id or `Null`), `Err(message)` a human-readable reason.
 //! The record getters return the structs generated from the contract's records;
-//! `get_installation_name`/`get_address`/`get_log_path` return a plain string,
-//! empty when not initialised.
+//! `get_address`/`get_log_path` return a plain string, empty when not
+//! initialised.
 //!
 //! Events reach consumers over the lp_* IPC channel: the operations below call
 //! the generated `emit_*` functions (see the included scaffold), which the host
@@ -130,16 +130,6 @@ impl ChatModule for ChatModuleImpl {
     /// answer. Deliberately silent, since a caller polls this.
     fn health(&mut self) -> bool {
         true
-    }
-
-    fn get_installation_name(&mut self) -> String {
-        actions::installation_name()
-    }
-
-    fn set_installation_name(&mut self, name: String) -> Result<Value, String> {
-        actions::set_installation_name(&name)
-            .map(|()| Value::Null)
-            .map_err(|e| e.to_string())
     }
 
     fn get_address(&mut self) -> String {

@@ -25,13 +25,14 @@ use std::path::Path;
 
 use message_store::{Direction, Message, MessageStore};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
-use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
+use rusqlite::{params, Connection, TransactionBehavior};
 
 /// The module's own tables. A change to them is a new migration appended here.
 /// A database's `user_version` is how many of them it has run.
 const MIGRATIONS: &[&str] = &[
     include_str!("migrations/001_app_state.sql"),
     include_str!("migrations/002_protocol.sql"),
+    include_str!("migrations/003_drop_settings.sql"),
 ];
 
 /// Why `chat.db` did not open.
@@ -134,9 +135,6 @@ pub(crate) struct ChatSession {
 #[derive(Debug, Default)]
 pub(crate) struct AppState {
     pub chats: HashMap<String, ChatSession>,
-    /// User-overridden installation name. `None` falls back to
-    /// `ChatClient::installation_name()`. Superseded once Accounts land.
-    pub installation_name: Option<String>,
     /// Locally-deleted convo IDs. Inbound messages for these are
     /// dropped — libchat retains the crypto state regardless.
     pub deleted: HashSet<String>,
@@ -204,19 +202,7 @@ pub(crate) fn load_state(conn: &Connection) -> rusqlite::Result<AppState> {
         .prepare("SELECT chat_id FROM deleted_chats")?
         .query_map([], |row| row.get(0))?
         .collect::<rusqlite::Result<HashSet<String>>>()?;
-    let installation_name = conn
-        .query_row(
-            "SELECT value FROM settings WHERE key = 'installation_name'",
-            [],
-            |row| row.get(0),
-        )
-        .optional()?;
-
-    Ok(AppState {
-        chats,
-        installation_name,
-        deleted,
-    })
+    Ok(AppState { chats, deleted })
 }
 
 /// Write a chat's row, inserting it or replacing what it held.
@@ -269,22 +255,6 @@ pub(crate) fn delete_chat(conn: &mut Connection, chat_id: &str) -> rusqlite::Res
         [chat_id],
     )?;
     tx.commit()
-}
-
-/// Write the installation-name override, or clear it with `None`.
-pub(crate) fn save_installation_name(
-    conn: &Connection,
-    name: Option<&str>,
-) -> rusqlite::Result<()> {
-    match name {
-        Some(name) => conn.execute(
-            "INSERT INTO settings (key, value) VALUES ('installation_name', ?1)
-             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-            [name],
-        ),
-        None => conn.execute("DELETE FROM settings WHERE key = 'installation_name'", []),
-    }?;
-    Ok(())
 }
 
 /// Mark the message `message_id` of `convo_id` delivered. `false` when no
@@ -356,12 +326,12 @@ mod tests {
         let tables: u32 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type = 'table'
-                 AND name IN ('chats', 'deleted_chats', 'settings')",
+                 AND name IN ('chats', 'deleted_chats')",
                 [],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(tables, 3);
+        assert_eq!(tables, 2);
         drop(conn);
 
         let conn = open(&path, KEY).unwrap();
@@ -412,12 +382,10 @@ mod tests {
                 ..chat("direct", ConversationKind::Direct)
             };
             record_message(&mut conn, Some(&direct), &message("direct", "hi saro")).unwrap();
-            save_installation_name(&conn, Some("saro-laptop")).unwrap();
         }
 
         let state = load_state(&open(&path, KEY).unwrap()).unwrap();
 
-        assert_eq!(state.installation_name.as_deref(), Some("saro-laptop"));
         let group = &state.chats["group"];
         assert_eq!(group.kind, ConversationKind::Group);
         assert_eq!(group.nickname.as_deref(), Some("club"));
@@ -473,17 +441,6 @@ mod tests {
             .messages("direct", None, 10)
             .unwrap()
             .is_empty());
-    }
-
-    #[test]
-    fn a_cleared_installation_name_falls_back() {
-        let dir = tempfile::tempdir().unwrap();
-        let conn = open(&dir.path().join("chat.db"), KEY).unwrap();
-        save_installation_name(&conn, Some("saro-laptop")).unwrap();
-
-        save_installation_name(&conn, None).unwrap();
-
-        assert_eq!(load_state(&conn).unwrap().installation_name, None);
     }
 
     #[test]
