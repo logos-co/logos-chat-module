@@ -8,10 +8,10 @@
 //!   blocking on the network (publish is async).
 //! * [`with_display`]/[`with_display_mut`] guard the display history
 //!   ([`Display`]): the conversation log and `chat.db` behind it, delivery
-//!   state, and cached identity name. The read methods
-//!   (`get_messages`/`list_conversations`/`status`/`get_installation_name`)
-//!   lock only this, so they return promptly even while the client lock is held
-//!   for a long send.
+//!   state, and cached address. The read methods
+//!   (`get_messages`/`list_conversations`/`status`/`get_address`) lock only
+//!   this, so they return promptly even while the client lock is held for a
+//!   long send.
 //!
 //! A mutation locks the client (for the libchat call) then the display (to
 //! record the result) — never the reverse — so the two locks can't deadlock.
@@ -206,9 +206,6 @@ pub(crate) struct Display {
     /// `None` until `actions::initialize` opens it.
     pub chat_db: Option<Connection>,
     pub delivery_state: DeliveryState,
-    /// libchat's intrinsic installation name, cached so `get_installation_name`
-    /// needn't touch the client (which is behind the other lock).
-    pub intrinsic_name: String,
     /// The local installation address (libchat `ChatClient::addr`), cached so
     /// `get_address` needn't touch the client. A peer needs this value to open a
     /// DirectV1 conversation with this installation.
@@ -221,7 +218,6 @@ impl Default for Display {
             state: AppState::default(),
             chat_db: None,
             delivery_state: DeliveryState::stopped(),
-            intrinsic_name: String::new(),
             address: String::new(),
         }
     }
@@ -266,16 +262,6 @@ pub(crate) fn short_label(chat_id: &str) -> &str {
         .nth(8)
         .map_or(chat_id.len(), |(i, _)| i);
     &chat_id[..end]
-}
-
-/// Display name for the local installation: user override if set, otherwise
-/// libchat's intrinsic name (cached in `Display::intrinsic_name`, since the
-/// owning client is behind the other lock).
-pub(crate) fn effective_installation_name(d: &Display) -> String {
-    d.state
-        .installation_name
-        .clone()
-        .unwrap_or_else(|| d.intrinsic_name.clone())
 }
 
 #[cfg(test)]

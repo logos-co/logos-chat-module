@@ -150,12 +150,6 @@ module chat_module {
   method health() -> bool
 
   ; --- identity ---
-  ; This installation's display name: the one set with set_installation_name,
-  ; or the chat core's own name for the installation when none was set.
-  method get_installation_name() -> tstr
-  ; Set this installation's display name; empty restores the default. Local to
-  ; this installation — it is not carried to peers.
-  method set_installation_name(name: tstr) -> result
   ; The local installation address, shared out-of-band so a peer can open a
   ; conversation with this installation via create_conversation. Empty before
   ; init.

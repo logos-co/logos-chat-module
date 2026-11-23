@@ -158,7 +158,6 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         .build()
         .map_err(|e| InitError::Internal(format!("client build failed: {e}")))?;
 
-    let intrinsic_name = client.installation_name();
     // The address a peer needs to open a DirectV1 conversation with us: the
     // account address. Cached in the display so `get_address` needn't take the
     // client lock.
@@ -233,13 +232,11 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     );
     let event_thread = crate::inbound::spawn_events(events, subscribes.clone());
 
-    // Seed the display state read by the getters (the client owns its identity;
-    // its intrinsic name is cached here for get_installation_name).
+    // Seed the display state read by the getters.
     with_display_mut(|d| {
         d.state = state;
         d.chat_db = Some(chat_db);
         d.delivery_state = DeliveryState::initialising();
-        d.intrinsic_name = intrinsic_name;
         d.address = address;
     });
 
@@ -497,20 +494,6 @@ fn protocol(convo_id: &str) -> Option<String> {
 }
 
 // ── Identity ─────────────────────────────────────────────────────────────────
-
-pub(crate) fn set_installation_name(name: &str) -> Result<(), CoreError> {
-    with_display_mut(|d| {
-        let name = non_empty(name);
-        let chat_db = d.chat_db.as_ref().ok_or(CoreError::NotInit)?;
-        persistence::save_installation_name(chat_db, name.as_deref())?;
-        d.state.installation_name = name;
-        Ok(())
-    })
-}
-
-pub(crate) fn installation_name() -> String {
-    with_display(crate::module::effective_installation_name)
-}
 
 /// The local installation address, which a peer needs to open a DirectV1
 /// conversation with this installation (pass it to their `create_conversation`).
