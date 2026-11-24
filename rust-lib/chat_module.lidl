@@ -139,18 +139,26 @@ module chat_module {
   ; each host its own session directory, and need no port coordination: the
   ; delivery node picks its own.
   ;
-  ; Conversations persist across restarts purely as history. Each init is a new
-  ; installation with a new address, so a conversation from a previous session
-  ; reads back with its messages and history_only set: it can be labelled and
-  ; deleted, but it cannot be sent into or invited to, and it has no roster,
-  ; until a member invites this installation back into the group.
-  ; Restoring such conversations is being worked on.
+  ; The first init makes this module's account and keeps its key in the
+  ; instance directory, and every later init runs as it, so the address and
+  ; the display name outlive a restart. The key is stored obfuscated, not
+  ; encrypted: whoever can read the instance directory can run as the account.
+  ;
+  ; Each init is a new installation of that account, which the account's log on
+  ; the chat registry endorses in place of the earlier ones, so a conversation
+  ; opened with the address after a restart reaches it. The log has room for
+  ; about 2,380 inits, fewer for each display name set; once it is full, init
+  ; fails. Conversations persist across restarts purely as history: one from a
+  ; previous session reads back with its messages and history_only set. It can
+  ; be labelled and deleted, but it cannot be sent into or invited to, and it
+  ; has no roster, until a member invites this installation back into the
+  ; group. Restoring such conversations is being worked on.
   method init(config: ChatConfig) -> result
   ; Stop the module: end the inbound worker, drop the chat client, and close its
   ; storage. Succeeds when the module was never initialised.
-  ; A later init() starts a fresh session from the persisted state. The
-  ; installation ends here: the next one has a new address, and this one's
-  ; conversations read back history_only.
+  ; A later init() starts a fresh session from the persisted state, as the same
+  ; account. The installation ends here: the next init's installation replaces
+  ; it, and this one's conversations read back history_only.
   method shutdown() -> result
   ; The file this module is writing its log to, in the instance directory the
   ; host assigned. Empty before init, and on a host that assigned none.
@@ -161,17 +169,30 @@ module chat_module {
   method health() -> bool
 
   ; --- identity ---
-  ; The local installation address, shared out-of-band so a peer can open a
-  ; conversation with this installation via create_conversation. Empty before
-  ; init.
+  ; The address of this module's account, shared out-of-band so a peer can open
+  ; a conversation with it via create_conversation. It stays the same across
+  ; restarts. Empty before init.
   method get_address() -> tstr
   ; The name the account at address presents itself under, from its log on the
   ; chat registry. Empty before init, while the log has not been read, and for
   ; an account that set none. Answers at once: a name not read in the last 30
   ; minutes is read in the background, and display_name_changed reports it
   ; when it differs. An account picks its own name, so show it beside
-  ; something it cannot pick, such as its address.
+  ; something it cannot pick, such as its address. For get_address it is the
+  ; name set_display_name last published, or the one init read, and is never
+  ; read from the registry.
   method get_display_name(address: tstr) -> tstr
+  ; Publish display_name as this account's name, in its log on the chat
+  ; registry, and raise display_name_changed for get_address. The name is
+  ; public, and the log keeps every name the account has had. It is trimmed,
+  ; and the call fails when nothing visible is left, when it holds a line
+  ; break, a control character or a text-direction override, or when it is
+  ; over 64 bytes of UTF-8. Since an empty name fails, a name can be replaced
+  ; but not removed. Setting the name the account already has publishes nothing
+  ; and raises nothing. A peer that read the earlier name keeps showing it
+  ; until its copy is 30 minutes old and the name is asked for again. Fails
+  ; before init.
+  method set_display_name(display_name: tstr) -> result
 
   ; --- conversations & messages ---
   ; Open a 1:1 conversation with the peer at peer_address (their get_address).
@@ -268,6 +289,7 @@ module chat_module {
   ; in the Status record, and settled by the time the state reaches "online".
   event delivery_state_changed(delivery_state: tstr, detail: tstr, delivery_adopted: bool)
   ; A read of the log of the account at address found a display name other
-  ; than the one get_display_name reported. display_name is the new one.
+  ; than the one get_display_name reported, or set_display_name published a
+  ; new one for get_address. display_name is the new one.
   event display_name_changed(address: tstr, display_name: tstr)
 }

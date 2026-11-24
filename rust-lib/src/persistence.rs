@@ -18,14 +18,15 @@
 //! ## Privacy
 //!
 //! The key is derived from the instance persistence path, so the file is
-//! obfuscated, not protected.
+//! obfuscated, not protected. That includes the account key it keeps: whoever
+//! can read the instance directory can run as the account.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use message_store::{Direction, Message, MessageStore};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
-use rusqlite::{params, Connection, TransactionBehavior};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
 /// The module's own tables. A change to them is a new migration appended here.
 /// A database's `user_version` is how many of them it has run.
@@ -33,6 +34,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/001_app_state.sql"),
     include_str!("migrations/002_protocol.sql"),
     include_str!("migrations/003_drop_settings.sql"),
+    include_str!("migrations/004_account.sql"),
 ];
 
 /// Why `chat.db` did not open.
@@ -257,6 +259,19 @@ pub(crate) fn delete_chat(conn: &mut Connection, chat_id: &str) -> rusqlite::Res
     tx.commit()
 }
 
+/// The seed of this module's account key, `None` before the first start keeps one.
+pub(crate) fn account_seed(conn: &Connection) -> rusqlite::Result<Option<[u8; 32]>> {
+    conn.query_row("SELECT seed FROM account", [], |row| row.get(0))
+        .optional()
+}
+
+/// Keep the seed of this module's account key. Fails when one is kept already,
+/// since the account it names would be lost.
+pub(crate) fn save_account_seed(conn: &Connection, seed: &[u8; 32]) -> rusqlite::Result<()> {
+    conn.execute("INSERT INTO account (id, seed) VALUES (0, ?1)", [seed])?;
+    Ok(())
+}
+
 /// Mark the message `message_id` of `convo_id` delivered. `false` when no
 /// message has that id, or it was marked already.
 pub(crate) fn mark_delivered(
@@ -361,6 +376,23 @@ mod tests {
         assert!(!header.starts_with(b"SQLite format 3"));
         assert!(open(&path, "rust-chat-other").is_err());
         assert!(open(&path, KEY).is_ok());
+    }
+
+    #[test]
+    fn the_account_seed_is_kept_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("chat.db");
+        let seed = [7; 32];
+        {
+            let conn = open(&path, KEY).unwrap();
+            assert_eq!(account_seed(&conn).unwrap(), None);
+            save_account_seed(&conn, &seed).unwrap();
+        }
+
+        let conn = open(&path, KEY).unwrap();
+        assert_eq!(account_seed(&conn).unwrap(), Some(seed));
+        assert!(save_account_seed(&conn, &[8; 32]).is_err());
+        assert_eq!(account_seed(&conn).unwrap(), Some(seed));
     }
 
     #[test]

@@ -29,8 +29,11 @@ panic = "abort"
 # `debug-data` gives get_debug_data what a conversation reports about itself.
 logos-generic-chat = { git = "https://github.com/logos-messaging/logos-chat.git", package = "logos-generic-chat", rev = "e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e", features = ["debug-data"] }
 # The account (package `account`, under the name libchat's own crates give it):
-# each launch publishes a fresh one whose log endorses this installation's key.
+# the one this module keeps, whose log endorses each launch's installation.
 logos-account  = { git = "https://github.com/logos-messaging/logos-chat.git", package = "account", rev = "e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e" }
+# The account's signing key, kept in `chat.db` as its seed, and the log's
+# entries, whose indices a revoke names. `account` exports neither type.
+account-log    = { git = "https://github.com/logos-messaging/logos-chat.git", package = "account-log", rev = "e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e" }
 # `HttpAuthClient`, which publishes the account's log and checks other
 # participants against theirs, on the registry's server.
 components     = { git = "https://github.com/logos-messaging/logos-chat.git", package = "components", rev = "e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e" }

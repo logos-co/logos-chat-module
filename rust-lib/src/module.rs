@@ -25,6 +25,7 @@ use std::thread::JoinHandle;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use components::HttpAuthClient;
+use logos_account::Account;
 use logos_generic_chat::{ChatClient, ContactRegistry, SqliteStore};
 use rusqlite::Connection;
 
@@ -32,14 +33,15 @@ use crate::delivery::{SdkDelivery, SdkPublisher, Subscribes};
 use crate::names::Names;
 use crate::persistence::AppState;
 
-/// The chat client as this module configures it: an installation of an
-/// ephemeral account, the delivery_module-backed [`SdkDelivery`] transport, the
-/// devnet contact registry and account logs, and an in-memory store. Its
-/// conversations last one session (see [`LIBCHAT_PERSISTENCE_ENABLED`]).
+/// The chat client as this module configures it: an installation of the
+/// account kept in `chat.db`, the delivery_module-backed [`SdkDelivery`]
+/// transport, the devnet contact registry and account logs, and an in-memory
+/// store. Its conversations last one session (see
+/// [`LIBCHAT_PERSISTENCE_ENABLED`]).
 pub(crate) type Client =
     ChatClient<SdkDelivery, ContactRegistry<SdkPublisher>, HttpAuthClient, SqliteStore>;
 
-/// Whether libchat's state persists across restarts. Off: identity and
+/// Whether libchat's state persists across restarts. Off: the installation and
 /// MLS/crypto state are ephemeral. DirectV1 has no reload path in libchat yet
 /// (a DirectV1 conversation's MLS state is never reloaded), so persisting would
 /// strand crypto state a restart can't resume. The SQLCipher store
@@ -121,6 +123,8 @@ impl DeliveryState {
 
 pub(crate) struct ModuleState {
     pub client: Client,
+    /// The account kept in `chat.db`, which `set_display_name` publishes under.
+    pub account: Account<HttpAuthClient>,
     /// Signal flag for the inbound bridge worker. The worker observes this between
     /// poll iterations so shutdown() bounds wait time at one poll period.
     pub inbound_stop: Arc<AtomicBool>,
@@ -210,10 +214,13 @@ pub(crate) struct Display {
     /// `None` until `actions::initialize` opens it.
     pub chat_db: Option<Connection>,
     pub delivery_state: DeliveryState,
-    /// The local installation address (libchat `ChatClient::addr`), cached so
+    /// The account's address (libchat `ChatClient::addr`), cached so
     /// `get_address` needn't touch the client. A peer needs this value to open a
-    /// DirectV1 conversation with this installation.
+    /// DirectV1 conversation with this account.
     pub address: String,
+    /// The account's own name, as its log last published it, so the account's
+    /// own address is never read back from the registry.
+    pub own_name: String,
     pub names: Names,
 }
 
@@ -224,6 +231,7 @@ impl Default for Display {
             chat_db: None,
             delivery_state: DeliveryState::stopped(),
             address: String::new(),
+            own_name: String::new(),
             names: Names::default(),
         }
     }

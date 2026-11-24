@@ -1278,6 +1278,7 @@ name = "chat_module"
 version = "0.4.0"
 dependencies = [
  "account",
+ "account-log",
  "base64",
  "chrono",
  "components",

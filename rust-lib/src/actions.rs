@@ -10,8 +10,14 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use account_log::{
+    AccountEntry, AccountLog, AccountLogDraft, AccountLogError, Ed25519SigningKey, EntryData,
+};
 use components::HttpAuthClient;
-use logos_account::{Account, AccountError, ChatWrite, Ed25519VerifyingKey};
+use logos_account::{
+    Account, AccountError, AccountProvider, AccountPublisher, AccountResolver, ChatRead, ChatWrite,
+    Ed25519VerifyingKey, ProfileRead, ProfileWrite,
+};
 use logos_generic_chat::{
     ChatClientBuilder, ClientError, ContactRegistry, DebugData, GroupMetadata, Installation,
     PendingInstallation, RegistryPublishMode, SqliteStore, StorageConfig,
@@ -19,6 +25,7 @@ use logos_generic_chat::{
 use message_store::Direction;
 
 use crate::delivery::{delivery_outcome, SdkDelivery, SdkPublisher, Subscribes};
+use crate::display_name::DisplayNameError;
 use crate::{Conversation, GroupMember, Message, Status};
 
 /// The devnet registry: DirectV1 publishes this installation's key package there
@@ -56,6 +63,10 @@ pub(crate) enum CoreError {
     HistoryOnly,
     #[error("chat.db: {0}")]
     Store(#[from] rusqlite::Error),
+    #[error(transparent)]
+    DisplayName(#[from] DisplayNameError),
+    #[error("publishing the account's log failed: {0}")]
+    Account(#[from] AccountError),
 }
 
 /// Failure modes for [`initialize`].
@@ -130,16 +141,17 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     // with no workers and no way to stop it. Building the client subscribes the
     // core's inbound addresses, which queue on `subscribe_rx` until the node starts.
     //
-    // Identity is ephemeral (see `LIBCHAT_PERSISTENCE_ENABLED`): each launch
-    // publishes a fresh account whose log endorses a new installation key, so a
-    // peer given only the account address resolves this installation and opens
-    // a DirectV1 conversation. The same server checks every other participant
-    // against their account's log.
+    // The account outlives a launch, kept in `chat.db`, but the installation does
+    // not (see `LIBCHAT_PERSISTENCE_ENABLED`): each launch publishes the account's
+    // log endorsing a new installation key, so a peer given only the account
+    // address resolves this installation and opens a DirectV1 conversation. The
+    // same server checks every other participant against their account's log.
+    let chat_db = persistence::open(&PathBuf::from(format!("{persistence_path}/chat.db")), &key)
+        .map_err(|e| InitError::Internal(format!("open chat.db failed: {e}")))?;
     let registry_url = registry_url(env_override(REGISTRY_URL_ENV));
     tracing::info!("contact registry: {registry_url}");
     let auth = HttpAuthClient::new(&registry_url);
-    let installation = register_installation(auth.clone())
-        .map_err(|e| InitError::Internal(format!("publish account failed: {e}")))?;
+    let start = start_installation(&chat_db, auth.clone())?;
     let transport = SdkDelivery::new(
         inbound_rx,
         reports_rx,
@@ -159,7 +171,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         &registry_url,
         RegistryPublishMode::Http,
     );
-    let (client, events) = ChatClientBuilder::new(installation)
+    let (client, events) = ChatClientBuilder::new(start.installation)
         .transport(transport)
         .registration(registry)
         .auth(auth)
@@ -175,8 +187,6 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     // The chat list and its messages outlive the client's in-memory state, so a
     // conversation from a previous session reads back, kept for its history only
     // unless the client still holds it.
-    let chat_db = persistence::open(&PathBuf::from(format!("{persistence_path}/chat.db")), &key)
-        .map_err(|e| InitError::Internal(format!("open chat.db failed: {e}")))?;
     let mut state = persistence::load_state(&chat_db)
         .map_err(|e| InitError::Internal(format!("read chat.db failed: {e}")))?;
     let live = client
@@ -248,11 +258,13 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         d.chat_db = Some(chat_db);
         d.delivery_state = DeliveryState::initialising();
         d.address = address;
+        d.own_name = start.name;
         d.names = Names::new(name_reads);
     });
 
     Ok(ModuleState {
         client,
+        account: start.account,
         inbound_stop: stop,
         inbound_thread: Some(inbound_thread),
         event_thread: Some(event_thread),
@@ -261,14 +273,90 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     })
 }
 
-/// A new installation of a new account, whose published log endorses it. The
-/// account's key goes out of scope here, so no other installation can join it.
-fn register_installation(auth: HttpAuthClient) -> Result<Installation, AccountError> {
+/// What a launch runs as.
+struct Start<P> {
+    /// The account kept in `chat.db`.
+    account: Account<P>,
+    /// A new installation, which the account's log endorses.
+    installation: Installation,
+    /// The name the account's log gives it, empty for none.
+    name: String,
+}
+
+/// Run as the account kept in `chat.db`, making and keeping one on the first
+/// launch, with a new installation that its log endorses in place of the
+/// earlier ones.
+///
+/// An installation does not survive a restart. Its key alone could not be
+/// invited back into a group it was in, since the group still counts that key
+/// as a member. So each launch makes a new installation. The earlier ones are
+/// revoked because a new conversation adds every installation the log
+/// endorses, and fails when one has no key package left on the registry.
+/// Neither is needed once an installation survives a restart.
+fn start_installation<P>(chat_db: &rusqlite::Connection, provider: P) -> Result<Start<P>, InitError>
+where
+    P: AccountProvider + AccountPublisher + Clone,
+{
+    let seed = persistence::account_seed(chat_db)
+        .map_err(|e| InitError::Internal(format!("read account from chat.db failed: {e}")))?;
+    let signing_key = match seed {
+        Some(seed) => Ed25519SigningKey::from_seed(&seed),
+        None => {
+            let signing_key = Ed25519SigningKey::generate();
+            // Kept before anything is published under it, so no published
+            // account is lost to a failed write.
+            persistence::save_account_seed(chat_db, &signing_key.seed())
+                .map_err(|e| InitError::Internal(format!("keep account in chat.db failed: {e}")))?;
+            signing_key
+        }
+    };
+    let mut account = Account::from_signing_key(signing_key, provider.clone());
+    let addr = account.addr();
+
+    let mut resolver = AccountResolver::new(provider);
+    let (earlier, name) = match resolver.resolve(&addr) {
+        Ok(Some(log)) => (
+            chat_signer_entries(log.as_ref())
+                .map_err(|e| InitError::Internal(format!("read account log failed: {e}")))?,
+            log.display_name().unwrap_or_default().to_owned(),
+        ),
+        Ok(None) => (Vec::new(), String::new()),
+        Err(e) => return Err(InitError::Internal(format!("read account log failed: {e}"))),
+    };
+
     let pending = PendingInstallation::generate();
-    let key = Ed25519VerifyingKey::from_canonical_slice(&pending.endorsement_request())?;
-    let mut account = Account::new(auth);
-    account.update().endorse_chat_signer(&key).publish()?;
-    Ok(pending.complete(account.addr()))
+    let key = Ed25519VerifyingKey::from_canonical_slice(&pending.endorsement_request())
+        .map_err(|e| InitError::Internal(format!("read installation key failed: {e}")))?;
+    earlier
+        .iter()
+        .fold(account.update(), |update, &index| update.revoke(index))
+        .endorse_chat_signer(&key)
+        .publish()
+        .map_err(|e| InitError::Internal(format!("publish account failed: {e}")))?;
+    Ok(Start {
+        installation: pending.complete(addr),
+        account,
+        name,
+    })
+}
+
+/// The indices of the entries in `log` that endorse its chat signers, which is
+/// what a revoke names.
+fn chat_signer_entries(log: &AccountLog) -> Result<Vec<u32>, AccountLogError> {
+    let signers: Vec<[u8; 32]> = log.chat_signers().iter().map(|k| k.to_bytes()).collect();
+    // Matched by key alone: only this module writes this account's log, and its
+    // drafts never leave a key live twice, so each key names one entry.
+    Ok(AccountLogDraft::from_log(log)?
+        .live_entries()
+        .into_iter()
+        .filter_map(|live| match live.entry {
+            AccountEntry::Add {
+                data: EntryData::Ed25519Key(key),
+                ..
+            } if signers.contains(key) => Some(live.index),
+            _ => None,
+        })
+        .collect())
 }
 
 /// A set, non-empty environment variable's value.
@@ -459,7 +547,12 @@ pub(crate) fn shutdown(mut ms: ModuleState) {
 /// Run `f` with the libchat client under the module lock, mapping "no client"
 /// (not initialised) and the unreachable poisoned lock to a [`CoreError`].
 fn with_client<R>(f: impl FnOnce(&mut Client) -> R) -> Result<R, CoreError> {
-    match module().with_state_mut(|ms| f(&mut ms.client)) {
+    with_state(|ms| f(&mut ms.client))
+}
+
+/// Run `f` with the module state under the module lock, as [`with_client`].
+fn with_state<R>(f: impl FnOnce(&mut ModuleState) -> R) -> Result<R, CoreError> {
+    match module().with_state_mut(f) {
         Ok(Some(r)) => Ok(r),
         Ok(None) => Err(CoreError::NotInit),
         Err(_) => Err(CoreError::Internal("module lock poisoned".into())),
@@ -554,8 +647,8 @@ fn protocol(convo_id: &str) -> Option<String> {
 
 // ── Identity ─────────────────────────────────────────────────────────────────
 
-/// The local installation address, which a peer needs to open a DirectV1
-/// conversation with this installation (pass it to their `create_conversation`).
+/// The account's address, which a peer needs to open a DirectV1 conversation
+/// with this account (pass it to their `create_conversation`).
 /// Read from the cached display value, so it returns the empty string before
 /// `init`.
 pub(crate) fn get_address() -> String {
@@ -565,7 +658,37 @@ pub(crate) fn get_address() -> String {
 /// The name the account at `address` presents itself under, as
 /// `get_display_name` reports it.
 pub(crate) fn display_name(address: &str) -> String {
-    with_display_mut(|d| d.names.get(address))
+    with_display_mut(|d| {
+        if address == d.address {
+            d.own_name.clone()
+        } else {
+            d.names.get(address)
+        }
+    })
+}
+
+/// Publish `name` as the account's own, and raise `display_name_changed` for
+/// its address. The name it already has publishes nothing.
+pub(crate) fn set_display_name(name: &str) -> Result<(), CoreError> {
+    let name = crate::display_name::validate(name)?;
+    // Under the module lock, so two renames publish one after the other and the
+    // name held is the one published last.
+    let published = with_state(|ms| -> Result<bool, CoreError> {
+        if with_display(|d| d.own_name == name) {
+            return Ok(false);
+        }
+        ms.account.update().set_display_name(name).publish()?;
+        with_display_mut(|d| d.own_name = name.to_owned());
+        Ok(true)
+    })??;
+    if published {
+        tracing::info!("published a new display name");
+        // The name held, not `name`: a later rename can report before this one,
+        // and the last report must name what is held.
+        let (address, held) = with_display(|d| (d.address.clone(), d.own_name.clone()));
+        crate::emit_display_name_changed(&address, &held);
+    }
+    Ok(())
 }
 
 // ── Conversations ────────────────────────────────────────────────────────────
@@ -1080,6 +1203,10 @@ fn mark_delivered(d: &mut Display, convo_id: &str, message_id: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
+    use account_log::{AccountAddr, SignedAccountLog};
+
     use super::*;
 
     const KEY: &str = "rust-chat-test";
@@ -1133,6 +1260,100 @@ mod tests {
             registry_url(Some("https://kc.example.org".into())),
             "https://kc.example.org"
         );
+    }
+
+    /// One registry that every launch reads and publishes to.
+    #[derive(Clone, Default)]
+    struct Registry(Arc<Mutex<HashMap<AccountAddr, SignedAccountLog>>>);
+
+    impl AccountProvider for Registry {
+        type Error = String;
+        fn fetch(&self, addr: &AccountAddr) -> Result<Option<SignedAccountLog>, String> {
+            Ok(self.0.lock().unwrap().get(addr).cloned())
+        }
+    }
+
+    impl AccountPublisher for Registry {
+        type Error = String;
+        fn publish(&mut self, addr: &AccountAddr, log: &SignedAccountLog) -> Result<(), String> {
+            log.verify(addr).map_err(|e| e.to_string())?;
+            self.0.lock().unwrap().insert(addr.clone(), log.clone());
+            Ok(())
+        }
+    }
+
+    /// A registry that cannot be reached.
+    #[derive(Clone)]
+    struct Unreachable;
+
+    impl AccountProvider for Unreachable {
+        type Error = String;
+        fn fetch(&self, _: &AccountAddr) -> Result<Option<SignedAccountLog>, String> {
+            Err("unreachable".into())
+        }
+    }
+
+    impl AccountPublisher for Unreachable {
+        type Error = String;
+        fn publish(&mut self, _: &AccountAddr, _: &SignedAccountLog) -> Result<(), String> {
+            Err("unreachable".into())
+        }
+    }
+
+    fn chat_signers(
+        registry: &Registry,
+        addr: &AccountAddr,
+    ) -> (Vec<Ed25519VerifyingKey>, Vec<Ed25519VerifyingKey>) {
+        let log = registry.fetch(addr).unwrap().unwrap().verify(addr).unwrap();
+        (log.chat_signers(), log.revoked_chat_signers())
+    }
+
+    #[test]
+    fn a_restart_keeps_the_account_and_replaces_its_installation() {
+        let dir = tempfile::tempdir().unwrap();
+        let chat_db = persistence::open(&dir.path().join("chat.db"), KEY).unwrap();
+        let registry = Registry::default();
+
+        let mut first = start_installation(&chat_db, registry.clone()).unwrap();
+        let addr = first.account.addr();
+        first
+            .account
+            .update()
+            .set_display_name("Saro")
+            .publish()
+            .unwrap();
+        let (endorsed, revoked) = chat_signers(&registry, &addr);
+        assert_eq!((endorsed.len(), revoked.len()), (1, 0));
+
+        let second = start_installation(&chat_db, registry.clone()).unwrap();
+
+        assert_eq!(second.account.addr(), addr);
+        assert_eq!(second.installation.account(), &addr);
+        assert_eq!(second.name, "Saro");
+        let (now_endorsed, now_revoked) = chat_signers(&registry, &addr);
+        assert_eq!(now_revoked, endorsed);
+        assert_eq!(now_endorsed.len(), 1);
+        assert_ne!(now_endorsed, endorsed);
+
+        // The log now holds a revoke, and the next one still names the right entry.
+        start_installation(&chat_db, registry.clone()).unwrap();
+        let (last_endorsed, last_revoked) = chat_signers(&registry, &addr);
+        assert_eq!(last_revoked, [endorsed, now_endorsed].concat());
+        assert_eq!(last_endorsed.len(), 1);
+        assert!(!last_revoked.contains(&last_endorsed[0]));
+    }
+
+    #[test]
+    fn a_launch_that_cannot_publish_keeps_the_account_it_made() {
+        let dir = tempfile::tempdir().unwrap();
+        let chat_db = persistence::open(&dir.path().join("chat.db"), KEY).unwrap();
+
+        assert!(start_installation(&chat_db, Unreachable).is_err());
+        let seed = persistence::account_seed(&chat_db).unwrap().expect("kept");
+
+        let start = start_installation(&chat_db, Registry::default()).unwrap();
+        let kept = AccountAddr::from(&Ed25519SigningKey::from_seed(&seed).verifying_key());
+        assert_eq!(start.account.addr(), kept);
     }
 
     fn direct_chat(chat_id: &str) -> ChatSession {
