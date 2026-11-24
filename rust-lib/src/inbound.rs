@@ -41,9 +41,9 @@ use crate::persistence::ConversationKind;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 
-/// What the bridge hears about sends: the request id delivery_module accepted
-/// each of this module's sends under, with the receipt `publish` returned for
-/// it, and delivery_module's `messagePropagated` and `messageError`, which every
+/// What the bridge hears about sends: the message hash delivery_module returned
+/// for each of this module's sends, with the receipt `publish` returned for it,
+/// and delivery_module's `messagePropagated` and `messageError`, which every
 /// subscriber gets for every module's sends. `reports` is where the client
 /// learns the outcome.
 pub(crate) struct SendEvents {
@@ -145,8 +145,8 @@ fn run_bridge(
             }
         });
 
-        while let Ok((request_id, receipt)) = sends.accepted.try_recv() {
-            report(outcomes.accepted(request_id, receipt));
+        while let Ok((message_hash, receipt)) = sends.accepted.try_recv() {
+            report(outcomes.accepted(message_hash, receipt));
         }
         drain(&mut propagated, |evt| {
             let Some(propagated) =
@@ -155,7 +155,7 @@ fn run_bridge(
                 tracing::warn!("inbound: messagePropagated payload missing or malformed");
                 return;
             };
-            report(outcomes.propagated(propagated.request_id, propagated.message_hash));
+            report(outcomes.propagated(propagated.message_hash));
         });
         drain(&mut failed, |evt| {
             let Some(failed) =
@@ -164,7 +164,10 @@ fn run_bridge(
                 tracing::warn!("inbound: messageError payload missing or malformed");
                 return;
             };
-            report(outcomes.failed(failed.request_id, failed.error));
+            report(outcomes.failed(
+                failed.message_hash,
+                format!("{}: {}", failed.kind, failed.error),
+            ));
         });
 
         forward_subscriptions(&subscribe_rx, &subscribes);
@@ -254,26 +257,27 @@ impl SeenMessages {
 }
 
 /// An early outcome waits for one send's reply, so the queue needs room for what
-/// every module's sends report in that time. delivery_module holds at most 1000
-/// sends at once by default (`DefaultMaxTaskCacheSize`) and reports at most two
+/// every module's sends report in that time. delivery_module refuses a send while
+/// 50 are in flight (logos-delivery's `MaxSendsInFlight`) and reports at most two
 /// outcomes for each, `messagePropagated` and then `messageError`. Outcomes never
 /// claimed, other modules' and the late failure of a propagated send, age out.
-const UNCLAIMED_OUTCOMES: usize = 2 * 1_000;
+const UNCLAIMED_OUTCOMES: usize = 2 * 50;
 
 /// What delivery_module reported for a send.
 enum SendOutcome {
-    /// It reached the network as the message with this hash.
-    Propagated(String),
+    /// It reached the network.
+    Propagated,
     /// delivery_module gave up on it before it propagated, for this reason. A
     /// mixed send can fail after its exit published it.
     Failed(String),
 }
 
 impl SendOutcome {
-    /// What the client learns of this module's send under `receipt`.
-    fn report(self, receipt: PublishReceipt) -> DeliveryReport {
+    /// What the client learns of this module's send of `message_hash` under
+    /// `receipt`.
+    fn report(self, receipt: PublishReceipt, message_hash: &str) -> DeliveryReport {
         let delivery_info = match self {
-            SendOutcome::Propagated(message_hash) => crate::delivery::delivery_info(&message_hash),
+            SendOutcome::Propagated => crate::delivery::delivery_info(message_hash),
             SendOutcome::Failed(reason) => {
                 tracing::warn!("delivery_module failed a send: {reason}");
                 None
@@ -287,53 +291,63 @@ impl SendOutcome {
 }
 
 /// Matches delivery_module's send outcomes to the receipts of this module's
-/// sends. An outcome can arrive before the answer that names its request.
+/// sends, by message hash. An outcome can arrive before the answer that names
+/// its message.
 #[derive(Default)]
 struct SendOutcomes {
     /// This module's sends, neither propagated nor failed yet.
     pending: HashMap<String, PublishReceipt>,
-    /// Outcomes of requests not known to be this module's, oldest first.
+    /// Outcomes of messages not known to be this module's, oldest first.
     unclaimed: VecDeque<(String, SendOutcome)>,
 }
 
 impl SendOutcomes {
-    /// Record a send delivery_module accepted from this module under
-    /// `request_id`. Returns its report when its outcome has already arrived.
-    fn accepted(&mut self, request_id: String, receipt: PublishReceipt) -> Option<DeliveryReport> {
-        let Some(at) = self.unclaimed.iter().position(|(id, _)| *id == request_id) else {
-            self.pending.insert(request_id, receipt);
+    /// Record a send delivery_module accepted from this module as
+    /// `message_hash`. Returns its report when its outcome has already arrived.
+    fn accepted(
+        &mut self,
+        message_hash: String,
+        receipt: PublishReceipt,
+    ) -> Option<DeliveryReport> {
+        let Some(at) = self
+            .unclaimed
+            .iter()
+            .position(|(hash, _)| *hash == message_hash)
+        else {
+            self.pending.insert(message_hash, receipt);
             return None;
         };
         let (_, outcome) = self.unclaimed.remove(at)?;
-        Some(outcome.report(receipt))
+        Some(outcome.report(receipt, &message_hash))
     }
 
-    /// Record a request that reached the network as `message_hash`. Returns the
-    /// report for this module's send.
-    fn propagated(&mut self, request_id: String, message_hash: String) -> Option<DeliveryReport> {
-        self.settle(request_id, SendOutcome::Propagated(message_hash))
+    /// Record a message that reached the network. Returns the report for this
+    /// module's send.
+    fn propagated(&mut self, message_hash: String) -> Option<DeliveryReport> {
+        self.settle(message_hash, SendOutcome::Propagated)
     }
 
-    /// Record a failed request. Returns the report for this module's send that
-    /// had not propagated. delivery_module also fails a request that did, once no
-    /// store node confirms it, which by then is no longer pending.
-    fn failed(&mut self, request_id: String, reason: String) -> Option<DeliveryReport> {
-        self.settle(request_id, SendOutcome::Failed(reason))
+    /// Record a failed message. Returns the report for this module's send that
+    /// had not propagated. delivery_module also fails a message that did, as
+    /// `NotStored` once no store node confirms it, which by then is no longer
+    /// pending.
+    fn failed(&mut self, message_hash: String, reason: String) -> Option<DeliveryReport> {
+        self.settle(message_hash, SendOutcome::Failed(reason))
     }
 
-    fn settle(&mut self, request_id: String, outcome: SendOutcome) -> Option<DeliveryReport> {
-        let Some(receipt) = self.pending.remove(&request_id) else {
-            self.hold(request_id, outcome);
+    fn settle(&mut self, message_hash: String, outcome: SendOutcome) -> Option<DeliveryReport> {
+        let Some(receipt) = self.pending.remove(&message_hash) else {
+            self.hold(message_hash, outcome);
             return None;
         };
-        Some(outcome.report(receipt))
+        Some(outcome.report(receipt, &message_hash))
     }
 
-    fn hold(&mut self, request_id: String, outcome: SendOutcome) {
+    fn hold(&mut self, message_hash: String, outcome: SendOutcome) {
         if self.unclaimed.len() == UNCLAIMED_OUTCOMES {
             self.unclaimed.pop_front();
         }
-        self.unclaimed.push_back((request_id, outcome));
+        self.unclaimed.push_back((message_hash, outcome));
     }
 }
 
@@ -485,73 +499,73 @@ mod tests {
     #[test]
     fn a_propagated_send_reports_its_message_hash() {
         let mut outcomes = SendOutcomes::default();
-        assert!(outcomes.accepted("ours".into(), receipt(1)).is_none());
+        assert!(outcomes.accepted("0x0a".into(), receipt(1)).is_none());
 
         assert_eq!(
-            names(outcomes.propagated("ours".into(), "0x0a".into())),
+            names(outcomes.propagated("0x0a".into())),
             Some((receipt(1), Some(info(&[0x0a]))))
         );
         assert!(outcomes
-            .failed("ours".into(), "no store confirmation".into())
+            .failed("0x0a".into(), "NotStored: no store confirmation".into())
             .is_none());
     }
 
     #[test]
     fn a_failed_send_reports_no_delivery_id() {
         let mut outcomes = SendOutcomes::default();
-        assert!(outcomes.accepted("ours".into(), receipt(1)).is_none());
+        assert!(outcomes.accepted("0x0a".into(), receipt(1)).is_none());
 
         assert_eq!(
-            names(outcomes.failed("ours".into(), "no peers".into())),
+            names(outcomes.failed("0x0a".into(), "NotPropagated: no peers".into())),
             Some((receipt(1), None))
         );
-        assert!(outcomes.failed("ours".into(), "no peers".into()).is_none());
+        assert!(outcomes
+            .failed("0x0a".into(), "NotPropagated: no peers".into())
+            .is_none());
     }
 
     /// delivery_module emits its send events to every subscriber, whoever sent.
     #[test]
     fn another_modules_send_reports_nothing() {
         let mut outcomes = SendOutcomes::default();
-        assert!(outcomes.accepted("ours".into(), receipt(1)).is_none());
+        assert!(outcomes.accepted("0x0a".into(), receipt(1)).is_none());
 
+        assert!(outcomes.propagated("0x0b".into()).is_none());
         assert!(outcomes
-            .propagated("theirs".into(), "0x0a".into())
-            .is_none());
-        assert!(outcomes
-            .failed("theirs".into(), "no peers".into())
+            .failed("0x0b".into(), "NotPropagated: no peers".into())
             .is_none());
     }
 
     #[test]
-    fn an_outcome_that_arrives_before_its_request_id_is_kept_for_it() {
+    fn an_outcome_that_arrives_before_its_message_hash_is_kept_for_it() {
         let mut outcomes = SendOutcomes::default();
-        assert!(outcomes.propagated("first".into(), "0x0a".into()).is_none());
+        assert!(outcomes.propagated("0x0a".into()).is_none());
         assert!(outcomes
-            .failed("second".into(), "no peers".into())
+            .failed("0x0b".into(), "NotPropagated: no peers".into())
             .is_none());
 
         assert_eq!(
-            names(outcomes.accepted("second".into(), receipt(2))),
+            names(outcomes.accepted("0x0b".into(), receipt(2))),
             Some((receipt(2), None))
         );
         assert_eq!(
-            names(outcomes.accepted("first".into(), receipt(1))),
+            names(outcomes.accepted("0x0a".into(), receipt(1))),
             Some((receipt(1), Some(info(&[0x0a]))))
         );
     }
 
     /// Propagation precedes a failure for want of store confirmation, so the
-    /// earlier outcome is the one a late request id takes.
+    /// earlier outcome is the one a late message hash takes.
     #[test]
-    fn a_late_request_id_takes_its_first_outcome() {
+    fn a_late_message_hash_takes_its_first_outcome() {
         let mut outcomes = SendOutcomes::default();
-        assert!(outcomes.propagated("ours".into(), "0x0a".into()).is_none());
+        assert!(outcomes.propagated("0x0a".into()).is_none());
         assert!(outcomes
-            .failed("ours".into(), "no store confirmation".into())
+            .failed("0x0a".into(), "NotStored: no store confirmation".into())
             .is_none());
 
         assert_eq!(
-            names(outcomes.accepted("ours".into(), receipt(1))),
+            names(outcomes.accepted("0x0a".into(), receipt(1))),
             Some((receipt(1), Some(info(&[0x0a]))))
         );
     }

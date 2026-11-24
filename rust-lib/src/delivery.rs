@@ -151,7 +151,7 @@ pub(crate) struct SdkPublisher {
     subscribe_tx: Sender<String>,
     /// The subscriptions sent to delivery_module, until it answers them.
     subscribes: Subscribes,
-    /// The request id delivery_module accepted each send under, with the receipt
+    /// The message hash delivery_module returned for each send, with the receipt
     /// `publish` returned for it, for the inbound worker to match against what
     /// delivery_module reports of the send later.
     accepted_tx: Sender<(String, PublishReceipt)>,
@@ -250,9 +250,9 @@ impl DeliveryService for SdkPublisher {
         let topic = content_topic_for(&envelope.delivery_address);
         // Fire-and-forget: the synchronous `send` would block the dispatch thread on
         // delivery's accept handshake, so hand off async and return a receipt. What
-        // becomes of the payload is reported under it: its id once delivery_module's
-        // events name the request id the callback receives, or none when the send
-        // fails.
+        // becomes of the payload is reported under it: its id once delivery_module
+        // reports the message hash the callback receives as propagated, or none
+        // when the send fails.
         let receipt = PublishReceipt::from(
             self.sends
                 .fetch_add(1, Ordering::Relaxed)
@@ -266,15 +266,15 @@ impl DeliveryService for SdkPublisher {
             .delivery_module
             .send_async(&topic, &envelope.data, move |res| {
                 match delivery_outcome(res) {
-                    Ok(Value::String(request_id)) => {
-                        if accepted_tx.send((request_id, sent.clone())).is_ok() {
+                    Ok(Value::String(message_hash)) => {
+                        if accepted_tx.send((message_hash, sent.clone())).is_ok() {
                             return;
                         }
                         // The bridge has stopped, so nothing else will report the send.
                         tracing::warn!("delivery_module accepted a send nothing will report");
                     }
                     Ok(other) => {
-                        tracing::error!("delivery_module.send returned no request id: {other}")
+                        tracing::error!("delivery_module.send returned no message hash: {other}")
                     }
                     Err(e) => tracing::error!("delivery_module.send failed: {e}"),
                 }

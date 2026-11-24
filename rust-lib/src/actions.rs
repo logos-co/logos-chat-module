@@ -103,7 +103,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     // delivery_module's `messageReceived`, the client's worker drains the rx (via
     // `Transport::inbound`). The subscribe channel carries the subscriptions the core
     // makes before the node has started to the bridge, which forwards them to
-    // delivery_module once it has. The accepted channel carries the request id of
+    // delivery_module once it has. The accepted channel carries the message hash of
     // each send delivery_module accepted, which the bridge matches against the
     // outcomes it reports, and the reports channel carries what the client learns of
     // a send (via `Transport::delivery_reports`). The fetched channel carries what a
