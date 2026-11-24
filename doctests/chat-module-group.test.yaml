@@ -35,6 +35,8 @@ what_you_learn:
   - "How every member shares one conversation id, and how `get_messages` attributes each inbound message to its sender's account address"
   - "How each conversation names the protocol it runs"
   - "How a sender learns that another member received its message"
+  - "How members confirm they hold one group state, by the epoch and fingerprint in `get_debug_data`"
+  - "How each member tells every other member's `sync` against its own"
 
 prerequisites:
   - |
@@ -353,6 +355,35 @@ sections:
           A group's `protocol` is `GroupV3`, and a direct conversation's is
           `DirectV1`. The module keeps it in chat.db, so a conversation from
           an earlier session still names it.
+      - title: "Every member holds the same group state"
+        run: |
+          gid=$(cat group-id.txt)
+          ok=""
+          for i in $(seq 1 60); do
+            views=$(for who in alice bob carol; do
+              ./logos/bin/logosctl --config-dir "$who" call chat_module get_debug_data "$gid" 2>/dev/null \
+                | jq -r '.result.value | select(. != null) | "epoch=\(.epoch) fingerprint=\(.epoch_fingerprint) members=\(.members | length)"' || true
+            done)
+            if [ "$(printf '%s\n' "$views" | grep -c '^epoch=[0-9][0-9]* fingerprint=[0-9a-f][0-9a-f]* members=3$')" = 3 ] \
+              && [ "$(printf '%s\n' "$views" | sort -u | wc -l)" = 1 ]; then
+              ok=1; echo "SAME_GROUP_STATE $(printf '%s\n' "$views" | head -n 1)"; break
+            fi
+            sleep 4
+          done
+          [ -n "$ok" ] || { echo "the members never agreed on one group state: $views" >&2; exit 1; }
+        code_block: |
+          # each member reports the group's epoch, its fingerprint and the members
+          logosctl --config-dir alice call chat_module get_debug_data "$GROUP_ID"
+          logosctl --config-dir bob   call chat_module get_debug_data "$GROUP_ID"
+          logosctl --config-dir carol call chat_module get_debug_data "$GROUP_ID"
+        expect_contains:
+          - "SAME_GROUP_STATE epoch="
+        post_text: |
+          `get_debug_data` reports what the group says about itself for
+          debugging. Its `epoch` advances with every commit a member applies,
+          and `epoch_fingerprint` names the group state at that epoch. Members
+          that applied the same commits hold the same pair; two members at one
+          epoch with different fingerprints have forked.
 
   - title: "Messages fan out to every member, with senders attributed"
     step: true
@@ -452,6 +483,42 @@ sections:
           hello-group and raises `message_delivered`. In a group that comes with
           the first member who received the message, not the last, and says
           nothing of whether anyone read it.
+      - title: "Each member sees the senders on its own state"
+        run: |
+          gid=$(cat group-id.txt)
+          a=$(cat alice-addr.txt); c=$(cat carol-addr.txt)
+          for who in alice bob carol; do
+            me=$(cat "${who}-addr.txt")
+            ok=""
+            for i in $(seq 1 60); do
+              data=$(./logos/bin/logosctl --config-dir "$who" call chat_module get_debug_data "$gid" 2>/dev/null || true)
+              if printf '%s' "$data" | jq -e --arg a "$a" --arg c "$c" --arg me "$me" '
+                  [.result.value.members[]?] as $rows
+                  | ([$a, $c, $me] | unique | length) as $want
+                  | ([$rows[] | select(.account | IN($a, $c, $me)) | select(.sync == "synced")] | length) == $want
+                    and all($rows[]; .sync != "forked")' >/dev/null 2>&1; then
+                ok=1; echo "$(echo "$who" | tr a-z A-Z)_SEES_SENDERS_SYNCED"; break
+              fi
+              sleep 4
+            done
+            [ -n "$ok" ] || { echo "$who never saw the senders synced: $data" >&2; exit 1; }
+          done
+        code_block: |
+          # Alice, Carol and the member asking read "sync": "synced"
+          logosctl --config-dir alice call chat_module get_debug_data "$GROUP_ID"
+          logosctl --config-dir bob   call chat_module get_debug_data "$GROUP_ID"
+          logosctl --config-dir carol call chat_module get_debug_data "$GROUP_ID"
+        expect_contains:
+          - "ALICE_SEES_SENDERS_SYNCED"
+          - "BOB_SEES_SENDERS_SYNCED"
+          - "CAROL_SEES_SENDERS_SYNCED"
+        post_text: |
+          Each entry of `members` names the member's `account` and their
+          `sync` against this instance: `synced`, `behind`, `ahead`, `forked`,
+          or `unconfirmed` until it has heard from them. A GroupV3 message
+          carries its sender's epoch data, so every member reads Alice and
+          Carol, who have sent, as `synced`. An instance's own entry is always
+          `synced`.
 
   - title: "Stop the daemons"
     step: true
