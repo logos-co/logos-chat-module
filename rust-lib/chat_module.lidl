@@ -167,18 +167,21 @@ module chat_module {
   ; Returns the new conversation's id.
   method create_conversation(peer_address: tstr) -> result
   ; Create a group conversation with this installation as its only member;
-  ; grow it with add_group_member. Every member sees the returned convo_id.
+  ; grow it with add_group_members. Every member sees the returned convo_id.
   ; name and desc are the group's shared metadata, visible to every member;
   ; both may be empty for an unnamed group.
   method create_group_conversation(name: tstr, desc: tstr) -> result
-  ; Invite every installation the account at peer_address endorses into an
-  ; existing group conversation. The add is committed at once and applied, with
-  ; the welcome sent, about two minutes later; the peer observes the
-  ; conversation once its instance has joined. Raises conversation_updated
-  ; here, and members_changed once this instance applies the add. Fails on an
-  ; unknown convo_id, and while an earlier add here is still to be applied; an
-  ; add naming only current members does nothing and succeeds.
-  method add_group_member(convo_id: tstr, peer_address: tstr) -> result
+  ; Invite every installation the accounts at peer_addresses endorse into an
+  ; existing group conversation, in one commit. The add is committed at once and
+  ; applied, with the welcomes sent, about two minutes later, unless another
+  ; member's commit for the same epoch is applied instead, which drops the whole
+  ; add; each peer observes the conversation once its instance has joined.
+  ; Raises conversation_updated here, and members_changed once this instance
+  ; applies the add. Fails on an unknown convo_id, and while an earlier add here
+  ; is still to be applied. An address that is malformed or cannot be invited
+  ; fails the call and adds no one. An add naming no one, or only current
+  ; members, does nothing and succeeds.
+  method add_group_members(convo_id: tstr, peer_addresses: [tstr]) -> result
   ; Every conversation this installation holds, in no particular order — sort
   ; by last_activity_ms for a conversation list.
   method list_conversations() -> [Conversation]

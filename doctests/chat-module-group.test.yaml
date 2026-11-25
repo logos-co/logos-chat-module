@@ -6,15 +6,15 @@ release: ""
 intro: |
   This tutorial shows `chat_module`'s group API end to end, by example. A
   group conversation starts with its creator as the only member and grows
-  one peer at a time: the creator (or any existing member) invites a peer by
-  address, and the invited instance joins once the welcome reaches it. Every
+  by invitation: the creator (or any existing member) invites peers by
+  address, and each invited instance joins once its welcome reaches it. Every
   member sees the **same** conversation id, and each received message carries
   the sender's account address.
 
   So the tutorial runs three headless [`logosctl`](https://github.com/logos-co/logos-logoscore-cli)
   daemons (Alice, Bob, and Carol), each loading `chat_module` and its runtime
   dependency `delivery_module`, and drives them through the `logosctl call`
-  CLI: `init`, `get_address`, `create_group_conversation`, `add_group_member`,
+  CLI: `init`, `get_address`, `create_group_conversation`, `add_group_members`,
   `send_message`, and reading the shared thread back with
   `list_conversations` / `get_messages`.
 
@@ -23,14 +23,14 @@ intro: |
   inviter included, applies a commit only two minutes after it first holds
   one, so that members holding competing commits settle on the same one. The
   inviter sends the welcome when it applies its commit, so expect a join to
-  land a little over two minutes after the `add_group_member` call over the
+  land a little over two minutes after the `add_group_members` call over the
   live network. The poll loops below are budgeted for that.
 
 what_you_build: "A verified three-member, end-to-end-encrypted group conversation across three headless chat_module instances, grown member by member, with sender-attributed message fan-out."
 
 what_you_learn:
   - "Run three isolated `logosctl` daemons on one host, selected by `--config-dir`"
-  - "Create a named group with `create_group_conversation` and grow it with `add_group_member` — including an add proposed by a non-creator member"
+  - "Create a named group with `create_group_conversation` and grow it with `add_group_members` — including an add proposed by a non-creator member"
   - "Why a group join lands asynchronously (commit, a two-minute wait to apply it, then the welcome), and how to observe it by polling `list_conversations`"
   - "How every member shares one conversation id, and how `get_messages` attributes each inbound message to its sender's account address"
   - "How each conversation names the protocol it runs"
@@ -250,18 +250,21 @@ sections:
       - title: "Alice invites Bob"
         run: |
           gid=$(cat group-id.txt)
-          out=$(./logos/bin/logosctl --config-dir alice call chat_module add_group_member "$gid" @bob-addr.txt)
+          out=$(./logos/bin/logosctl --config-dir alice call chat_module add_group_members "$gid" "json:[\"$(cat bob-addr.txt)\"]")
           echo "$out"
-          echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "add_group_member failed: $out" >&2; exit 1; }
+          echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "add_group_members failed: $out" >&2; exit 1; }
           echo "BOB_INVITED"
         code_block: |
-          logosctl --config-dir alice call chat_module add_group_member "$GROUP_ID" @bob-addr.txt
+          logosctl --config-dir alice call chat_module add_group_members "$GROUP_ID" "json:[\"$(cat bob-addr.txt)\"]"
         expect_contains:
           - "BOB_INVITED"
         post_text: |
           The call returns as soon as Alice's instance has published the add's
           commit; the welcome follows when it applies the commit, two minutes
-          later.
+          later. The addresses go in as a JSON list (`json:` tells `logosctl` to
+          parse the argument): every address in one call joins through one
+          commit, while a second call from Alice fails until the first is
+          applied.
       - title: "Bob joins and sees the shared name"
         run: |
           gid=$(cat group-id.txt)
@@ -283,12 +286,12 @@ sections:
       - title: "Bob invites Carol (a non-creator add)"
         run: |
           gid=$(cat group-id.txt)
-          out=$(./logos/bin/logosctl --config-dir bob call chat_module add_group_member "$gid" @carol-addr.txt)
+          out=$(./logos/bin/logosctl --config-dir bob call chat_module add_group_members "$gid" "json:[\"$(cat carol-addr.txt)\"]")
           echo "$out"
-          echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "add_group_member failed: $out" >&2; exit 1; }
+          echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "add_group_members failed: $out" >&2; exit 1; }
           echo "CAROL_INVITED"
         code_block: |
-          logosctl --config-dir bob call chat_module add_group_member "$GROUP_ID" @carol-addr.txt
+          logosctl --config-dir bob call chat_module add_group_members "$GROUP_ID" "json:[\"$(cat carol-addr.txt)\"]"
         expect_contains:
           - "CAROL_INVITED"
         post_text: |

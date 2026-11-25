@@ -565,7 +565,7 @@ pub(crate) fn create_conversation(peer_address: &str) -> Result<String, CoreErro
 }
 
 /// Create a GroupV3 conversation with this installation as its only member;
-/// peers are invited afterwards via [`add_group_member`]. `name` and `desc` are
+/// peers are invited afterwards via [`add_group_members`]. `name` and `desc` are
 /// the group's shared metadata, carried to every joiner; both may be empty.
 /// Returns the conversation id, which every member observes once joined.
 pub(crate) fn create_group_conversation(name: &str, desc: &str) -> Result<String, CoreError> {
@@ -607,15 +607,16 @@ pub(crate) fn create_group_conversation(name: &str, desc: &str) -> Result<String
     Ok(chat_id)
 }
 
-/// Invite every installation the account at `peer_address` endorses into an
-/// existing group conversation. This installation commits the add at once and
-/// sends the welcome when it finalizes that commit, about two minutes later, so
-/// the peer joins some time after this returns. Until then a further add from
-/// this installation fails, unless it names only current members.
-pub(crate) fn add_group_member(convo_id: &str, peer_address: &str) -> Result<(), CoreError> {
+/// Invite every installation the accounts at `peer_addresses` endorse into an
+/// existing group conversation, in one commit. This installation commits the
+/// add at once and sends the welcomes when it finalizes that commit, about two
+/// minutes later, so the peers join some time after this returns. Until then a
+/// further add from this installation fails, unless it names only current
+/// members.
+pub(crate) fn add_group_members(convo_id: &str, peer_addresses: &[&str]) -> Result<(), CoreError> {
     check_live(convo_id)?;
 
-    with_client(|client| client.add_group_participants(convo_id, &[peer_address]))??;
+    with_client(|client| client.add_group_participants(convo_id, peer_addresses))??;
     crate::emit_conversation_updated(convo_id);
     Ok(())
 }
