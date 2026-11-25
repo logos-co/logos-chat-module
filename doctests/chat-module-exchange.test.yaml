@@ -28,7 +28,7 @@ what_you_build: "A verified end-to-end, end-to-end-encrypted message round-trip 
 
 what_you_learn:
   - "Run two isolated `logosctl` daemons on one host, selected by `--config-dir`"
-  - "Bring a `chat_module` instance online with `init()` and poll `status()` for `delivery_state == online`"
+  - "Bring a `chat_module` instance online with `init()` and poll `status()` until its delivery node has started"
   - "Drive the full round-trip over the CLI (share an address, open a conversation, reply) and observe receipt by polling `list_conversations` / `get_messages` instead of events"
   - "How the `result`-bearing methods wrap their payload as `{success, value, error}` while the collection/status getters return their value directly"
   - "What a restart keeps: the conversation and its messages, but not the installation that could send into it"
@@ -43,7 +43,7 @@ prerequisites:
     ```
   - "**A Linux or macOS machine.** Nix provides every toolchain (Qt, CMake, cargo, rustc) during the builds."
   - "**`jq`** on `PATH` (used to read the JSON the CLI prints). GitHub runners ship it; locally, run the spec inside `nix shell nixpkgs#jq`."
-  - "**Network access.** The two delivery nodes discover each other over the `logos.dev` Waku fleet, which needs no RLN membership to send; an isolated sandbox won't complete the exchange. Expect ~5-40s to reach Online and up to ~2 min for messages to propagate."
+  - "**Network access.** The two delivery nodes discover each other over the `logos.dev` Waku fleet, which needs no RLN membership to send; an isolated sandbox won't complete the exchange. Expect ~5-40s for each delivery node to start and up to ~2 min for messages to propagate."
 
 sections:
   - title: "Build logosctl and the two modules"
@@ -173,39 +173,45 @@ sections:
           Neither storage nor ports need an argument: each instance uses the
           directory its daemon assigned it, and its delivery node listens on
           ports it picks itself.
-      - title: "Wait for both to reach Online"
+      - title: "Wait for both delivery nodes to start"
         run: |
           for who in alice bob; do
-            online=""
+            started=""
             for i in $(seq 1 60); do
               out=$(./logos/bin/logosctl --config-dir "$who" call chat_module status 2>/dev/null || true)
               case "$out" in
-                *'"delivery_state":"online"'*) online=1; echo "${who}_ONLINE"; break;;
+                *'"delivery_state":"online"'*|*'"delivery_state":"offline"'*) started=1; echo "${who}_STARTED"; break;;
                 *'"delivery_state":"error"'*) echo "$who delivery error: $out" >&2; tail -n 40 "$who/logs/daemon.log" >&2; exit 1;;
               esac
               sleep 2
             done
-            if [ -z "$online" ]; then echo "$who never came online" >&2; tail -n 40 "$who/logs/daemon.log" >&2; exit 1; fi
+            if [ -z "$started" ]; then echo "$who never started its delivery node" >&2; tail -n 40 "$who/logs/daemon.log" >&2; exit 1; fi
           done
           # The bridge forwards initial topic subscriptions after observing Online.
           # Give those asynchronous subscriptions time to reach delivery before
           # Bob sends Alice a one-shot invite.
           sleep 5
         code_block: |
-          # poll status() until delivery_state == online (fail fast on "error")
+          # poll status() until the node has started: delivery_state "online"
+          # or "offline" (fail fast on "error")
           logosctl --config-dir alice call chat_module status
           logosctl --config-dir bob   call chat_module status
           # wait for the initial delivery topic subscriptions
           sleep 5
         expect_contains:
-          - "alice_ONLINE"
-          - "bob_ONLINE"
+          - "alice_STARTED"
+          - "bob_STARTED"
         post_text: |
           `status()` returns the `Status` record directly under `result`
           (`{"status":"ok","result":{"delivery_state":"online",...}}`), unlike the
           `result`-bearing methods below, which nest their payload one level deeper.
           The initial topic subscriptions are asynchronous, so allow a short
           settling interval before sending the first invite.
+
+          A started node reports `online` or `offline`: `offline` follows `online`
+          while delivery reports the node disconnected. Calls still work then, and
+          delivery keeps trying a send for a minute. The wait takes either state,
+          because `online` can last less than one poll.
 
   - title: "The round-trip"
     step: true
