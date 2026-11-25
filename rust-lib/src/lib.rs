@@ -160,12 +160,16 @@ impl ChatModule for ChatModuleImpl {
             .map_err(|e| e.to_string())
     }
 
-    fn add_group_member(
+    fn add_group_members(
         &mut self,
         convo_id: String,
-        peer_address: String,
+        peer_addresses: Value,
     ) -> Result<Value, String> {
-        actions::add_group_member(&convo_id, &peer_address)
+        // The SDK has checked it is a list of strings, but hands it over untyped.
+        let peer_addresses: Vec<String> =
+            serde_json::from_value(peer_addresses).map_err(|e| e.to_string())?;
+        let peer_addresses: Vec<&str> = peer_addresses.iter().map(String::as_str).collect();
+        actions::add_group_members(&convo_id, &peer_addresses)
             .map(|()| Value::Null)
             .map_err(|e| e.to_string())
     }
