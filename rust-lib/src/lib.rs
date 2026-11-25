@@ -80,11 +80,14 @@ impl ChatModule for ChatModuleImpl {
             "" => "logos.test",
             named => named,
         };
+        let registry = actions::registry_url(config.registry_url.as_deref());
 
-        match module().install_with(actions::initialize) {
+        match module().install_with(|| actions::initialize(registry)) {
             Err(_) => Err(ERR_LOCK_POISONED.to_string()),
             Ok(Ok(InstallOutcome::Installed)) => {
-                tracing::info!("init: state installed, joining delivery preset {preset}");
+                tracing::info!(
+                    "init: state installed on registry {registry}, joining delivery preset {preset}"
+                );
                 // State is installed and the module lock is released; only now
                 // bootstrap delivery, so its async completion callbacks acquire
                 // a free lock instead of re-entering the one init holds.
