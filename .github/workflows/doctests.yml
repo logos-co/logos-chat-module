@@ -3,24 +3,36 @@ name: Doc-Tests
 # Runs chat_module's usage doc-tests via the shared doctest CLI, against the
 # commit under test. Each spec is an executable tutorial that builds this
 # module's `.lgx`, installs it into headless `logosctl` daemons, and drives a real
-# exchange over the live delivery network: the two-instance 1:1 round-trip and
+# exchange over a delivery network: the two-instance 1:1 round-trip and
 # the three-instance group conversation. Because they exercise the module end
 # to end, the job also serves as an integration check and fails if an exchange
 # does not complete.
 #
 # The Linux leg runs several real delivery instances on one host (distinct data
-# dirs) and needs outbound network to reach the logos.dev Waku fleet. The
-# Windows leg loads chat and delivery in a native logosctl session, calls
-# status(), and publishes its own offline execution report.
+# dirs). On pull requests and pushes they join a local fleet the job starts in
+# docker (doctests/fleet/), so a run does not depend on a public fleet being up.
+# The nightly run joins the logos.dev fleet the specs name, and so can a manual
+# run. Every run uses the devnet contact registry. The Windows leg loads chat
+# and delivery in a native logosctl session, calls status(), and publishes its
+# own offline execution report.
 
 on:
   pull_request:
   push:
     branches: [master, main]
+  schedule:
+    - cron: '17 5 * * *'
   workflow_dispatch:
+    inputs:
+      network:
+        description: Delivery network the Linux leg joins
+        type: choice
+        options: [local, logos.dev]
+        default: local
 
+# A scheduled or manual run neither cancels nor is cancelled by a push run.
 concurrency:
-  group: doctests-${{ github.ref }}
+  group: doctests-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -32,6 +44,10 @@ jobs:
     environment: ${{ github.ref == 'refs/heads/master' && 'public-cache' || '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      # The delivery network the specs join: "local", the fleet started below,
+      # or "logos.dev".
+      NETWORK: ${{ github.event_name == 'schedule' && 'logos.dev' || inputs.network || 'local' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -65,12 +81,20 @@ jobs:
           nix build --no-link "$ref#delivery_module-lgx" -L
           nix build --no-link 'github:logos-co/logos-logoscore-cli#ctl' -L
 
+      - name: Start the local delivery fleet
+        if: env.NETWORK == 'local'
+        run: docker compose -f doctests/fleet/docker-compose.yml up -d --wait --wait-timeout 120
+
       # The runner is the shared `doctest` CLI invoked via its flake. --release-for
       # pins the {release} placeholder for logos-chat-module to the commit under
       # test, so `github:logos-co/logos-chat-module{release}#lgx` in the spec builds
       # this PR/push. --continue-on-fail so the run walks every step and the report
       # is complete; the job still exits non-zero if any step failed.
       - name: Run doc-tests
+        env:
+          # chat_module creates its delivery node from this file instead of the
+          # specs' delivery_preset. Empty counts as unset.
+          LOGOS_CHAT_DELIVERY_CONFIG_PATH: ${{ env.NETWORK == 'local' && format('{0}/doctests/fleet/delivery.json', github.workspace) || '' }}
         run: |
           nix run github:logos-co/logos-doctest -- run \
             doctests/chat-module-exchange.test.yaml \
@@ -79,6 +103,15 @@ jobs:
             --continue-on-fail \
             --release-for logos-chat-module=${{ steps.commit.outputs.sha }} \
             --report "${{ runner.temp }}/chat-module-doctest-report.html"
+
+      # The specs pass on logos.dev too, so messages in the local Store node are
+      # what shows the daemons used the fleet.
+      - name: Check the exchanges went through the local fleet
+        if: env.NETWORK == 'local'
+        run: |
+          docker compose -f doctests/fleet/docker-compose.yml exec -T store \
+            curl -fsS 'http://127.0.0.1:8645/store/v3/messages?pageSize=1' |
+            jq -e '.messages | length > 0'
 
       - name: Stage report for upload
         if: always()
@@ -99,6 +132,23 @@ jobs:
           path: report-out/index.html
           if-no-files-found: warn
 
+      - name: Collect the local fleet's logs
+        if: always() && env.NETWORK == 'local'
+        run: |
+          compose="docker compose -f doctests/fleet/docker-compose.yml"
+          $compose stop
+          $compose ps -a
+          $compose logs --no-color --timestamps > "${{ runner.temp }}/fleet.log"
+          $compose down
+
+      - name: Upload the local fleet's logs
+        if: always() && env.NETWORK == 'local'
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-module-doctest-fleet-logs
+          path: ${{ runner.temp }}/fleet.log
+          if-no-files-found: warn
+
       - name: Verify markdown generation
         run: |
           for spec in chat-module-exchange chat-module-group chat-module-windows; do
@@ -113,7 +163,9 @@ jobs:
 
   windows:
     # The same shared runner used for delivery: build on Linux, execute the
-    # Windows section of the spec natively, and upload its HTML report.
+    # Windows section of the spec natively, and upload its HTML report. It joins
+    # no network, so the nightly logos.dev run skips it.
+    if: github.event_name != 'schedule'
     uses: logos-co/logos-windows-ci/.github/workflows/windows-ci.yml@v1
     secrets: inherit
     with:
@@ -165,6 +217,8 @@ jobs:
           set -euo pipefail
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BASE="pr-${{ github.event.pull_request.number }}"
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            BASE="nightly"
           else
             BASE="master"
           fi
@@ -222,8 +276,9 @@ jobs:
             const body =
               `${marker}\n` +
               `### chat-module doc-test reports\n\n` +
-              `Ubuntu runs the live 1:1 and group exchanges; Windows loads and ` +
-              `calls the staged chat module with its delivery dependency. ` +
+              `Ubuntu runs the 1:1 and group exchanges on a local delivery ` +
+              `fleet; Windows loads and calls the staged chat module with its ` +
+              `delivery dependency. ` +
               `Reports show the commands and output for this commit ` +
               `(\`${context.sha.slice(0,7)}\`):\n\n` +
               `${links}\n\n` +
