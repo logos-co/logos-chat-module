@@ -102,7 +102,9 @@ module chat_module {
   type ChatConfig {
     ; The delivery network to create delivery_module's node on. A node that
     ; already exists keeps its own, which Status.delivery_adopted reports. Empty
-    ; or absent means "logos.test".
+    ; or absent means "logos.test". Ignored when the module's environment sets
+    ; LOGOS_CHAT_DELIVERY_CONFIG_PATH, a JSON file whose object is passed to
+    ; delivery_module's createNode instead.
     ? delivery_preset: tstr
     ; How much of the chat core's own account of a run to log:
     ; "error" | "warn" | "info" | "debug" | "trace". Absent or unrecognised
@@ -122,6 +124,10 @@ module chat_module {
   ; failed before its node started: the call then starts delivery again, on its
   ; own delivery_preset. The delivery node outlives shutdown(), so a new
   ; delivery_preset does not reach it.
+  ;
+  ; The account is published to the contact registry at
+  ; https://devnet.chat-kc.logos.co, or at LOGOS_CHAT_CONTACT_REGISTRY_URL when
+  ; the module's environment sets it; init fails when that is unreachable.
   ;
   ; Storage lives under the instance directory the host assigns; init fails when
   ; the host assigned none. Two instances therefore run side by side by giving

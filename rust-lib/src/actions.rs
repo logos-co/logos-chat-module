@@ -22,11 +22,17 @@ use crate::delivery::{delivery_outcome, SdkDelivery, SdkPublisher, Subscribes};
 use crate::{Conversation, GroupMember, Message, Status};
 
 /// The devnet registry: DirectV1 publishes this installation's key package there
-/// and fetches a peer's, and every account's log lives there too. Hardcoded for
-/// now; a configurable endpoint is a future enhancement (the wiring is behind
-/// libchat's `RegistrationService` and `AuthService`, so swapping it later is
-/// localized).
+/// and fetches a peer's, and every account's log lives there too. Used unless
+/// [`REGISTRY_URL_ENV`] names another one.
 const DEFAULT_REGISTRY_URL: &str = "https://devnet.chat-kc.logos.co";
+
+/// Environment variable overriding [`DEFAULT_REGISTRY_URL`], read at `init`.
+const REGISTRY_URL_ENV: &str = "LOGOS_CHAT_CONTACT_REGISTRY_URL";
+
+/// Environment variable naming a JSON file whose object is passed to
+/// delivery_module's `createNode` as is, in place of the config built from
+/// `delivery_preset`. Read at `init`.
+const DELIVERY_CONFIG_PATH_ENV: &str = "LOGOS_CHAT_DELIVERY_CONFIG_PATH";
 
 use crate::module::{
     module, now_ms, short_label, with_display, with_display_mut, Client, DeliveryState,
@@ -128,7 +134,9 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     // peer given only the account address resolves this installation and opens
     // a DirectV1 conversation. The same server checks every other participant
     // against their account's log.
-    let auth = HttpAuthClient::new(DEFAULT_REGISTRY_URL);
+    let registry_url = registry_url(env_override(REGISTRY_URL_ENV));
+    tracing::info!("contact registry: {registry_url}");
+    let auth = HttpAuthClient::new(&registry_url);
     let installation = register_installation(auth.clone())
         .map_err(|e| InitError::Internal(format!("publish account failed: {e}")))?;
     let transport = SdkDelivery::new(
@@ -147,7 +155,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     // would surface only as a peer failing to resolve us much later.
     let registry = ContactRegistry::new(
         transport.publisher(),
-        DEFAULT_REGISTRY_URL,
+        &registry_url,
         RegistryPublishMode::Http,
     );
     let (client, events) = ChatClientBuilder::new(installation)
@@ -262,13 +270,59 @@ fn register_installation(auth: HttpAuthClient) -> Result<Installation, AccountEr
     Ok(pending.complete(account.addr()))
 }
 
-/// The preset this process last created delivery_module's node with. This module
-/// never stops the node, so an init after `shutdown` is refused by the node an
-/// earlier init created: this module's own, not an adopted one.
-static OWN_NODE_PRESET: Mutex<Option<String>> = Mutex::new(None);
+/// A set, non-empty environment variable's value.
+fn env_override(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|v| !v.trim().is_empty())
+}
 
-fn own_node_preset() -> MutexGuard<'static, Option<String>> {
-    OWN_NODE_PRESET.lock().unwrap_or_else(|e| e.into_inner())
+/// The contact registry to use: `override_url` when given, else the devnet one.
+fn registry_url(override_url: Option<String>) -> String {
+    override_url.unwrap_or_else(|| DEFAULT_REGISTRY_URL.to_owned())
+}
+
+/// The `createNode` config and a label naming its source, for logs and for
+/// telling this module's own node from an adopted one.
+///
+/// With `config_path`, the file's contents must parse as a JSON object and are
+/// used verbatim; otherwise the config is the layered shape for `preset`.
+///
+/// # Errors
+/// When the file cannot be read, or does not hold a JSON object.
+fn delivery_config(preset: &str, config_path: Option<&str>) -> Result<(String, String), String> {
+    let Some(path) = config_path else {
+        // The layered app-developer shape from delivery_module's docs. Only
+        // wrapper keys may sit at the top level: any bare key (a top-level
+        // logLevel included) reroutes the config to the legacy flat parser,
+        // whose port defaults are fixed values — the layered path defaults
+        // every unpinned listening port to 0 (OS-assigned), which is what keeps
+        // instances sharing a host apart.
+        let config = serde_json::json!({
+            "mode": "Core",
+            "preset": preset,
+            "messagingOverrides": { "logLevel": "ERROR" },
+        });
+        return Ok((config.to_string(), format!("preset {preset}")));
+    };
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("{DELIVERY_CONFIG_PATH_ENV}: cannot read {path}: {e}"))?;
+    let config: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("{DELIVERY_CONFIG_PATH_ENV}: {path} is not valid JSON: {e}"))?;
+    if !config.is_object() {
+        return Err(format!(
+            "{DELIVERY_CONFIG_PATH_ENV}: {path} must hold a JSON object"
+        ));
+    }
+    Ok((config.to_string(), format!("config file {path}")))
+}
+
+/// The config source (see [`delivery_config`]) this process last created
+/// delivery_module's node from. This module never stops the node, so an init
+/// after `shutdown` is refused by the node an earlier init created: this
+/// module's own, not an adopted one.
+static OWN_NODE_SOURCE: Mutex<Option<String>> = Mutex::new(None);
+
+fn own_node_source() -> MutexGuard<'static, Option<String>> {
+    OWN_NODE_SOURCE.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 /// Bootstrap delivery_module's node and report readiness, asynchronously.
@@ -295,45 +349,43 @@ fn own_node_preset() -> MutexGuard<'static, Option<String>> {
 /// this module then joins that node and reports it as adopted. Drop these calls
 /// once the host bootstraps delivery_module and exposes it ready-to-use.
 pub(crate) fn start_delivery_bootstrap(preset: &str) {
-    // The layered app-developer shape from delivery_module's docs. Only wrapper
-    // keys may sit at the top level: any bare key (a top-level logLevel included)
-    // reroutes the config to the legacy flat parser, whose port defaults are
-    // fixed values — the layered path defaults every unpinned listening port to
-    // 0 (OS-assigned), which is what keeps instances sharing a host apart.
-    let config_json = serde_json::json!({
-        "mode": "Core",
-        "preset": preset,
-        "messagingOverrides": { "logLevel": "ERROR" },
-    })
-    .to_string();
+    let config_path = env_override(DELIVERY_CONFIG_PATH_ENV);
+    let (config_json, source) = match delivery_config(preset, config_path.as_deref()) {
+        Ok(config) => config,
+        Err(e) => {
+            tracing::error!("init: {e}");
+            set_delivery_error(e);
+            return;
+        }
+    };
+    tracing::info!("init: creating the delivery node from {source}");
 
-    let preset = preset.to_owned();
     crate::modules()
         .delivery_module
         .create_node_async(&config_json, move |res| match delivery_outcome(res) {
             Ok(_) => {
-                *own_node_preset() = Some(preset);
+                *own_node_source() = Some(source);
                 start_node();
             }
-            Err(reason) => join_existing_node(preset, reason),
+            Err(reason) => join_existing_node(source, reason),
         });
 }
 
 /// After a refused createNode: start the node that already exists, adopted
-/// unless this process created it with `preset`, or fail with createNode's
+/// unless this process created it from `source`, or fail with createNode's
 /// `reason` when there is none. delivery_module refuses a second createNode
 /// before it reads the config, and answers getNodeInfo only while a node
 /// exists, so an answer means the refusal was for that node.
-fn join_existing_node(preset: String, reason: String) {
+fn join_existing_node(source: String, reason: String) {
     crate::modules()
         .delivery_module
         .get_node_info_async("Version", move |res| match delivery_outcome(res) {
             Ok(_) => {
-                let adopted = own_node_preset().as_deref() != Some(preset.as_str());
+                let adopted = own_node_source().as_deref() != Some(source.as_str());
                 if adopted {
                     tracing::warn!(
                         "delivery_module already has a node this module did not create \
-                         with preset {preset}; joining it with the settings it was created with"
+                         from {source}; joining it with the settings it was created with"
                     );
                 }
                 with_display_mut(|d| d.delivery_state.adopted = adopted);
@@ -1030,6 +1082,57 @@ mod tests {
     use super::*;
 
     const KEY: &str = "rust-chat-test";
+
+    #[test]
+    fn delivery_config_without_a_file_uses_the_preset() {
+        let (config, source) = delivery_config("logos.dev", None).unwrap();
+        let config: serde_json::Value = serde_json::from_str(&config).unwrap();
+        assert_eq!(config["mode"], "Core");
+        assert_eq!(config["preset"], "logos.dev");
+        assert_eq!(config["messagingOverrides"]["logLevel"], "ERROR");
+        assert_eq!(source, "preset logos.dev");
+    }
+
+    #[test]
+    fn delivery_config_file_takes_precedence_over_the_preset() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("delivery.json");
+        let file = r#"{"mode":"Core","messagingOverrides":{"cluster-id":42,"entry-node":["/ip4/127.0.0.1/tcp/30303/p2p/16Uiu2"]}}"#;
+        std::fs::write(&path, file).unwrap();
+        let path = path.to_str().unwrap();
+
+        let (config, source) = delivery_config("logos.test", Some(path)).unwrap();
+        let config: serde_json::Value = serde_json::from_str(&config).unwrap();
+        assert_eq!(
+            config,
+            serde_json::from_str::<serde_json::Value>(file).unwrap()
+        );
+        assert_eq!(source, format!("config file {path}"));
+    }
+
+    #[test]
+    fn delivery_config_file_must_hold_a_json_object() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing.json");
+        let invalid = dir.path().join("invalid.json");
+        let array = dir.path().join("array.json");
+        std::fs::write(&invalid, "{ not json").unwrap();
+        std::fs::write(&array, "[1, 2]").unwrap();
+
+        for path in [&missing, &invalid, &array] {
+            let err = delivery_config("logos.test", Some(path.to_str().unwrap())).unwrap_err();
+            assert!(err.starts_with(DELIVERY_CONFIG_PATH_ENV), "{err}");
+        }
+    }
+
+    #[test]
+    fn registry_url_falls_back_to_devnet() {
+        assert_eq!(registry_url(None), DEFAULT_REGISTRY_URL);
+        assert_eq!(
+            registry_url(Some("https://kc.example.org".into())),
+            "https://kc.example.org"
+        );
+    }
 
     fn direct_chat(chat_id: &str) -> ChatSession {
         ChatSession {
