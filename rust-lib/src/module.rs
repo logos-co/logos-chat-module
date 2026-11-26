@@ -92,12 +92,6 @@ pub(crate) struct DeliveryState {
     /// The node already existed and was not created by this process with its
     /// preset, so it keeps whatever settings it was created with.
     pub adopted: bool,
-    /// The preset this module created the node with, empty when none was
-    /// named or the node was adopted.
-    pub preset: String,
-    /// The `LOGOS_CHAT_DELIVERY_CONFIG_PATH` file this module created the node
-    /// from, empty when the config came from the preset or the node was adopted.
-    pub config_path: String,
 }
 
 impl DeliveryState {
@@ -108,8 +102,6 @@ impl DeliveryState {
             starting: false,
             started: false,
             adopted: false,
-            preset: String::new(),
-            config_path: String::new(),
         }
     }
 
@@ -120,8 +112,6 @@ impl DeliveryState {
             starting: false,
             started: false,
             adopted: false,
-            preset: String::new(),
-            config_path: String::new(),
         }
     }
 }

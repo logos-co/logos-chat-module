@@ -280,36 +280,15 @@ fn registry_url(override_url: Option<String>) -> String {
     override_url.unwrap_or_else(|| DEFAULT_REGISTRY_URL.to_owned())
 }
 
-/// The `createNode` config this module creates the node with, and where it
-/// came from.
-#[derive(Debug, PartialEq, Eq)]
-struct DeliveryConfig {
-    json: String,
-    /// The preset the config names: `delivery_preset`, or the file's top-level
-    /// `preset`; empty when the file names none.
-    preset: String,
-    /// The `LOGOS_CHAT_DELIVERY_CONFIG_PATH` file, empty for the preset config.
-    config_path: String,
-}
-
-impl DeliveryConfig {
-    /// A label for logs, also telling this module's own node from an adopted one.
-    fn source(&self) -> String {
-        if self.config_path.is_empty() {
-            format!("preset {}", self.preset)
-        } else {
-            format!("config file {}", self.config_path)
-        }
-    }
-}
-
-/// The `createNode` config: with `config_path`, the file's contents, which
-/// must parse as a JSON object and are used verbatim; otherwise the layered
-/// shape for `preset`.
+/// The `createNode` config and a label naming its source, for logs and for
+/// telling this module's own node from an adopted one.
+///
+/// With `config_path`, the file's contents must parse as a JSON object and are
+/// used verbatim; otherwise the config is the layered shape for `preset`.
 ///
 /// # Errors
 /// When the file cannot be read, or does not hold a JSON object.
-fn delivery_config(preset: &str, config_path: Option<&str>) -> Result<DeliveryConfig, String> {
+fn delivery_config(preset: &str, config_path: Option<&str>) -> Result<(String, String), String> {
     let Some(path) = config_path else {
         // The layered app-developer shape from delivery_module's docs. Only
         // wrapper keys may sit at the top level: any bare key (a top-level
@@ -322,11 +301,7 @@ fn delivery_config(preset: &str, config_path: Option<&str>) -> Result<DeliveryCo
             "preset": preset,
             "messagingOverrides": { "logLevel": "ERROR" },
         });
-        return Ok(DeliveryConfig {
-            json: config.to_string(),
-            preset: preset.to_owned(),
-            config_path: String::new(),
-        });
+        return Ok((config.to_string(), format!("preset {preset}")));
     };
     let text = std::fs::read_to_string(path)
         .map_err(|e| format!("{DELIVERY_CONFIG_PATH_ENV}: cannot read {path}: {e}"))?;
@@ -337,11 +312,7 @@ fn delivery_config(preset: &str, config_path: Option<&str>) -> Result<DeliveryCo
             "{DELIVERY_CONFIG_PATH_ENV}: {path} must hold a JSON object"
         ));
     }
-    Ok(DeliveryConfig {
-        preset: config["preset"].as_str().unwrap_or_default().to_owned(),
-        json: config.to_string(),
-        config_path: path.to_owned(),
-    })
+    Ok((config.to_string(), format!("config file {path}")))
 }
 
 /// The config source (see [`delivery_config`]) this process last created
@@ -379,7 +350,7 @@ fn own_node_source() -> MutexGuard<'static, Option<String>> {
 /// once the host bootstraps delivery_module and exposes it ready-to-use.
 pub(crate) fn start_delivery_bootstrap(preset: &str) {
     let config_path = env_override(DELIVERY_CONFIG_PATH_ENV);
-    let config = match delivery_config(preset, config_path.as_deref()) {
+    let (config_json, source) = match delivery_config(preset, config_path.as_deref()) {
         Ok(config) => config,
         Err(e) => {
             tracing::error!("init: {e}");
@@ -387,16 +358,11 @@ pub(crate) fn start_delivery_bootstrap(preset: &str) {
             return;
         }
     };
-    let source = config.source();
     tracing::info!("init: creating the delivery node from {source}");
-    with_display_mut(|d| {
-        d.delivery_state.preset = config.preset.clone();
-        d.delivery_state.config_path = config.config_path.clone();
-    });
 
     crate::modules()
         .delivery_module
-        .create_node_async(&config.json, move |res| match delivery_outcome(res) {
+        .create_node_async(&config_json, move |res| match delivery_outcome(res) {
             Ok(_) => {
                 *own_node_source() = Some(source);
                 start_node();
@@ -422,13 +388,7 @@ fn join_existing_node(source: String, reason: String) {
                          from {source}; joining it with the settings it was created with"
                     );
                 }
-                with_display_mut(|d| {
-                    d.delivery_state.adopted = adopted;
-                    if adopted {
-                        d.delivery_state.preset.clear();
-                        d.delivery_state.config_path.clear();
-                    }
-                });
+                with_display_mut(|d| d.delivery_state.adopted = adopted);
                 start_node();
             }
             Err(_) => set_delivery_error(format!("delivery_module.createNode failed: {reason}")),
@@ -889,8 +849,6 @@ pub(crate) fn status() -> Status {
         delivery_state: d.delivery_state.state.as_str().to_string(),
         detail: d.delivery_state.detail.clone(),
         delivery_adopted: d.delivery_state.adopted,
-        delivery_preset: d.delivery_state.preset.clone(),
-        delivery_config_path: d.delivery_state.config_path.clone(),
     })
 }
 
@@ -1127,14 +1085,12 @@ mod tests {
 
     #[test]
     fn delivery_config_without_a_file_uses_the_preset() {
-        let config = delivery_config("logos.dev", None).unwrap();
-        let json: serde_json::Value = serde_json::from_str(&config.json).unwrap();
-        assert_eq!(json["mode"], "Core");
-        assert_eq!(json["preset"], "logos.dev");
-        assert_eq!(json["messagingOverrides"]["logLevel"], "ERROR");
-        assert_eq!(config.preset, "logos.dev");
-        assert_eq!(config.config_path, "");
-        assert_eq!(config.source(), "preset logos.dev");
+        let (config, source) = delivery_config("logos.dev", None).unwrap();
+        let config: serde_json::Value = serde_json::from_str(&config).unwrap();
+        assert_eq!(config["mode"], "Core");
+        assert_eq!(config["preset"], "logos.dev");
+        assert_eq!(config["messagingOverrides"]["logLevel"], "ERROR");
+        assert_eq!(source, "preset logos.dev");
     }
 
     #[test]
@@ -1145,25 +1101,13 @@ mod tests {
         std::fs::write(&path, file).unwrap();
         let path = path.to_str().unwrap();
 
-        let config = delivery_config("logos.test", Some(path)).unwrap();
-        let json: serde_json::Value = serde_json::from_str(&config.json).unwrap();
+        let (config, source) = delivery_config("logos.test", Some(path)).unwrap();
+        let config: serde_json::Value = serde_json::from_str(&config).unwrap();
         assert_eq!(
-            json,
+            config,
             serde_json::from_str::<serde_json::Value>(file).unwrap()
         );
-        assert_eq!(config.preset, "");
-        assert_eq!(config.config_path, path);
-        assert_eq!(config.source(), format!("config file {path}"));
-    }
-
-    #[test]
-    fn delivery_config_file_reports_the_preset_it_names() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("delivery.json");
-        std::fs::write(&path, r#"{"mode":"Core","preset":"logos.dev"}"#).unwrap();
-
-        let config = delivery_config("logos.test", Some(path.to_str().unwrap())).unwrap();
-        assert_eq!(config.preset, "logos.dev");
+        assert_eq!(source, format!("config file {path}"));
     }
 
     #[test]
