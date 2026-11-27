@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::JoinHandle;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use components::HttpAuthClient;
+use components::{CachedAuth, HttpAuthClient};
 use logos_account::Account;
 use logos_generic_chat::{ChatClient, ContactRegistry, SqliteStore};
 use rusqlite::Connection;
@@ -39,7 +39,7 @@ use crate::persistence::AppState;
 /// store. Its conversations last one session (see
 /// [`LIBCHAT_PERSISTENCE_ENABLED`]).
 pub(crate) type Client =
-    ChatClient<SdkDelivery, ContactRegistry<SdkPublisher>, HttpAuthClient, SqliteStore>;
+    ChatClient<SdkDelivery, ContactRegistry<SdkPublisher>, CachedAuth<HttpAuthClient>, SqliteStore>;
 
 /// Whether libchat's state persists across restarts. Off: the installation and
 /// MLS/crypto state are ephemeral. DirectV1 has no reload path in libchat yet

@@ -9,11 +9,12 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Duration;
 
 use account_log::{
     AccountEntry, AccountLog, AccountLogDraft, AccountLogError, Ed25519SigningKey, EntryData,
 };
-use components::HttpAuthClient;
+use components::{CachedAuth, HttpAuthClient};
 use logos_account::{
     Account, AccountError, AccountProvider, AccountPublisher, AccountResolver, ChatRead, ChatWrite,
     Ed25519VerifyingKey, ProfileRead, ProfileWrite,
@@ -40,6 +41,10 @@ const REGISTRY_URL_ENV: &str = "LOGOS_CHAT_CONTACT_REGISTRY_URL";
 /// delivery_module's `createNode` as is, in place of the config built from
 /// `delivery_preset`. Read at `init`.
 const DELIVERY_CONFIG_PATH_ENV: &str = "LOGOS_CHAT_DELIVERY_CONFIG_PATH";
+
+/// How long a held account log confirms a peer's signer before re-fetching,
+/// and so how long a revoked signer can still pass.
+const AUTH_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 
 use crate::module::{
     module, now_ms, short_label, with_display, with_display_mut, Client, DeliveryState,
@@ -174,7 +179,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
     let (client, events) = ChatClientBuilder::new(start.installation)
         .transport(transport)
         .registration(registry)
-        .auth(auth)
+        .auth(CachedAuth::new(auth, AUTH_CACHE_TTL))
         .storage(storage)
         .build()
         .map_err(|e| InitError::Internal(format!("client build failed: {e}")))?;

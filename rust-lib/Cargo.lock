@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "account"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/logos-chat.git?rev=e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e#e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=25f062ab564a81684315aabdde09dd80be50bc0d#25f062ab564a81684315aabdde09dd80be50bc0d"
 dependencies = [
  "account-log",
  "thiserror",
@@ -14,7 +14,7 @@ dependencies = [
 [[package]]
 name = "account-log"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/logos-chat.git?rev=e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e#e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=25f062ab564a81684315aabdde09dd80be50bc0d#25f062ab564a81684315aabdde09dd80be50bc0d"
 dependencies = [
  "crypto",
  "hex",
@@ -1266,7 +1266,7 @@ dependencies = [
 [[package]]
 name = "chat-sqlite"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/logos-chat.git?rev=e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e#e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=25f062ab564a81684315aabdde09dd80be50bc0d#25f062ab564a81684315aabdde09dd80be50bc0d"
 dependencies = [
  "libchat",
  "rusqlite",
@@ -1343,7 +1343,7 @@ dependencies = [
 [[package]]
 name = "components"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/logos-chat.git?rev=e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e#e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=25f062ab564a81684315aabdde09dd80be50bc0d#25f062ab564a81684315aabdde09dd80be50bc0d"
 dependencies = [
  "account",
  "account-log",
@@ -1517,7 +1517,7 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 [[package]]
 name = "crypto"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/logos-chat.git?rev=e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e#e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=25f062ab564a81684315aabdde09dd80be50bc0d#25f062ab564a81684315aabdde09dd80be50bc0d"
 dependencies = [
  "ed25519-dalek",
  "generic-array 1.4.1",
@@ -2918,7 +2918,7 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 [[package]]
 name = "libchat"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/logos-chat.git?rev=e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e#e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=25f062ab564a81684315aabdde09dd80be50bc0d#25f062ab564a81684315aabdde09dd80be50bc0d"
 dependencies = [
  "alloy",
  "base64",
@@ -3257,7 +3257,7 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 [[package]]
 name = "logos-generic-chat"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/logos-chat.git?rev=e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e#e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=25f062ab564a81684315aabdde09dd80be50bc0d#25f062ab564a81684315aabdde09dd80be50bc0d"
 dependencies = [
  "account",
  "chat-sqlite",
@@ -3323,7 +3323,7 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 [[package]]
 name = "message-store"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/logos-chat.git?rev=e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e#e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e"
+source = "git+https://github.com/logos-messaging/logos-chat.git?rev=25f062ab564a81684315aabdde09dd80be50bc0d#25f062ab564a81684315aabdde09dd80be50bc0d"
 dependencies = [
  "rusqlite",
 ]
@@ -4664,7 +4664,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 [[package]]
 name = "sds"
 version = "0.1.0"
-source = "git+https://github.com/logos-messaging/sds-rs?rev=648283e44a9323ae0484b07de25f357228af6ca4#648283e44a9323ae0484b07de25f357228af6ca4"
+source = "git+https://github.com/logos-messaging/sds-rs?rev=5c50a1a6ee1500df02f2b376cfd404f89f3d5b52#5c50a1a6ee1500df02f2b376cfd404f89f3d5b52"
 dependencies = [
  "rand_core 0.10.1",
  "sha2 0.11.0",

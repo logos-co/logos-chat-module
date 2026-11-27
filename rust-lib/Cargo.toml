@@ -27,18 +27,18 @@ panic = "abort"
 # crate, not the `logos-chat` facade that bundles an embedded logos delivery.
 # Every libchat crate is pinned to the same rev, so their shared types agree.
 # `debug-data` gives get_debug_data what a conversation reports about itself.
-logos-generic-chat = { git = "https://github.com/logos-messaging/logos-chat.git", package = "logos-generic-chat", rev = "e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e", features = ["debug-data"] }
+logos-generic-chat = { git = "https://github.com/logos-messaging/logos-chat.git", package = "logos-generic-chat", rev = "25f062ab564a81684315aabdde09dd80be50bc0d", features = ["debug-data"] }
 # The account (package `account`, under the name libchat's own crates give it):
 # the one this module keeps, whose log endorses each launch's installation.
-logos-account  = { git = "https://github.com/logos-messaging/logos-chat.git", package = "account", rev = "e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e" }
+logos-account  = { git = "https://github.com/logos-messaging/logos-chat.git", package = "account", rev = "25f062ab564a81684315aabdde09dd80be50bc0d" }
 # The account's signing key, kept in `chat.db` as its seed, and the log's
 # entries, whose indices a revoke names. `account` exports neither type.
-account-log    = { git = "https://github.com/logos-messaging/logos-chat.git", package = "account-log", rev = "e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e" }
+account-log    = { git = "https://github.com/logos-messaging/logos-chat.git", package = "account-log", rev = "25f062ab564a81684315aabdde09dd80be50bc0d" }
 # `HttpAuthClient`, which publishes the account's log and checks other
 # participants against theirs, on the registry's server.
-components     = { git = "https://github.com/logos-messaging/logos-chat.git", package = "components", rev = "e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e" }
+components     = { git = "https://github.com/logos-messaging/logos-chat.git", package = "components", rev = "25f062ab564a81684315aabdde09dd80be50bc0d" }
 # The chat history, in `chat.db`.
-message-store  = { git = "https://github.com/logos-messaging/logos-chat.git", package = "message-store", rev = "e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e" }
+message-store  = { git = "https://github.com/logos-messaging/logos-chat.git", package = "message-store", rev = "25f062ab564a81684315aabdde09dd80be50bc0d" }
 # The connection `message-store` borrows. SQLCipher, so `chat.db` is keyed:
 # without the feature `PRAGMA key` is ignored and the file is written in plain
 # text, so enable it on our own dep rather than rely on libchat's.
@@ -83,4 +83,4 @@ xeddsa         = "=1.0.2"
 # A directory the run-log tests can rotate and prune in.
 tempfile = "3"
 # Accounts kept in memory, for the tests of the names read from their logs.
-logos-account = { git = "https://github.com/logos-messaging/logos-chat.git", package = "account", rev = "e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e", features = ["test-support"] }
+logos-account = { git = "https://github.com/logos-messaging/logos-chat.git", package = "account", rev = "25f062ab564a81684315aabdde09dd80be50bc0d", features = ["test-support"] }
