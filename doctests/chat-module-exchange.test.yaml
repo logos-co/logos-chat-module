@@ -13,8 +13,9 @@ intro: |
   So the tutorial runs two headless [`logosctl`](https://github.com/logos-co/logos-logoscore-cli)
   daemons (Alice and Bob), each loading `chat_module` and its runtime dependency
   `delivery_module`, and drives them through the `logosctl call` CLI: `init`,
-  `get_address`, `create_conversation`, `send_message`, and reading the thread
-  back with `list_conversations` / `get_messages`.
+  `get_address`, `set_display_name` / `get_display_name`, `create_conversation`,
+  `send_message`, and reading the thread back with `list_conversations` /
+  `get_messages`.
 
   `logosctl call` is request/response, so it never receives the module's push
   events; instead each side **polls** its own persisted state (`status`,
@@ -31,7 +32,8 @@ what_you_learn:
   - "Bring a `chat_module` instance online with `init()` and poll `status()` until its delivery node has started"
   - "Drive the full round-trip over the CLI (share an address, open a conversation, reply) and observe receipt by polling `list_conversations` / `get_messages` instead of events"
   - "How the `result`-bearing methods wrap their payload as `{success, value, error}` while the collection/status getters return their value directly"
-  - "What a restart keeps: the conversation and its messages, but not the installation that could send into it"
+  - "Name an account with `set_display_name`, and read a peer's name with `get_display_name`"
+  - "What a restart keeps: the account, with its address and name, and the conversation and its messages, but not the installation that could send into it"
 
 prerequisites:
   - |
@@ -233,9 +235,39 @@ sections:
         check_file: "alice-addr.txt"
         post_text: |
           `get_address` returns the LIDL `tstr` type, so its payload is the string
-          directly at `.result` — Alice's installation address, what a peer needs to
-          open a conversation with her. Her key package was published to the registry
-          during `init`, so the address alone lets Bob reach her.
+          directly at `.result`: Alice's account address, what a peer needs to open
+          a conversation with her. Her installation's key package was published to
+          the registry during `init`, so the address alone lets Bob reach her.
+      - title: "Alice names her account"
+        run: |
+          out=$(./logos/bin/logosctl --config-dir alice call chat_module set_display_name Alice)
+          echo "$out"
+          echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "set_display_name failed: $out" >&2; exit 1; }
+        code_block: |
+          logosctl --config-dir alice call chat_module set_display_name Alice
+        expect_contains:
+          - '"status":"ok"'
+        post_text: |
+          The name goes into her account's log on the registry, next to the
+          installation `init` endorsed, so anyone with her address can read it.
+      - title: "Bob reads her name"
+        run: |
+          for i in $(seq 1 20); do
+            name=$(./logos/bin/logosctl --config-dir bob call chat_module get_display_name @alice-addr.txt 2>/dev/null | jq -j '.result' || true)
+            if [ "$name" = "Alice" ]; then echo "BOB_SEES_ALICE"; exit 0; fi
+            sleep 3
+          done
+          echo "bob never read alice's name" >&2
+          exit 1
+        code_block: |
+          logosctl --config-dir bob call chat_module get_display_name @alice-addr.txt
+        expect_contains:
+          - "BOB_SEES_ALICE"
+        post_text: |
+          `get_display_name` answers at once from what Bob holds, which is nothing
+          the first time: that ask reads Alice's log in the background, and the
+          next one answers `Alice`. An event-driven consumer gets the name as
+          `display_name_changed` instead of asking again.
       - title: "Bob opens a conversation with Alice"
         run: |
           out=$(./logos/bin/logosctl --config-dir bob call chat_module create_conversation @alice-addr.txt)
@@ -343,11 +375,12 @@ sections:
   - title: "Alice restarts"
     step: true
     text: |
-      `chat_module` keeps its conversations and their messages in its instance
-      directory, which a daemon started again on the same `--config-dir` assigns
-      it again. The chat core's state does not survive: each `init` is a new
-      installation, so the conversation reads back but can no longer be sent
-      into.
+      `chat_module` keeps its account, its conversations and their messages in
+      its instance directory, which a daemon started again on the same
+      `--config-dir` assigns it again. The chat core's state does not survive:
+      each `init` is a new installation of the same account, so the conversation
+      reads back but can no longer be sent into, while a conversation Bob opens
+      with the same address reaches the new installation.
     steps:
       - title: "Stop Alice's daemon"
         text: "`daemon stop` returns once the daemon has exited."
@@ -393,6 +426,21 @@ sections:
           Nothing is polled here: `init` reads the conversation list and each
           conversation's newest messages back before it returns, with no network.
           The conversation comes back with `history_only` set.
+      - title: "Her address and name are the same"
+        run: |
+          addr=$(./logos/bin/logosctl --config-dir alice call chat_module get_address | jq -j '.result')
+          [ "$addr" = "$(cat alice-addr.txt)" ] || { echo "alice's address changed: $addr" >&2; exit 1; }
+          name=$(./logos/bin/logosctl --config-dir alice call chat_module get_display_name @alice-addr.txt | jq -j '.result')
+          [ "$name" = "Alice" ] || { echo "alice's name did not read back: $name" >&2; exit 1; }
+          echo "ALICE_KEPT_ACCOUNT"
+        code_block: |
+          logosctl --config-dir alice call chat_module get_address
+          logosctl --config-dir alice call chat_module get_display_name @alice-addr.txt
+        expect_contains:
+          - "ALICE_KEPT_ACCOUNT"
+        post_text: |
+          `init` ran as the account the first start made, and read its name from
+          the account's log, so both answer at once.
       - title: "Sending into it fails"
         run: |
           cid=$(cat alice-convo.txt)
@@ -410,6 +458,83 @@ sections:
           The restarted Alice is a new installation that is not a member of the
           conversation, so `send_message` fails and says why. The conversation
           stays readable, and can still be labelled or deleted.
+      - title: "Wait for her delivery node to start again"
+        run: |
+          started=""
+          for i in $(seq 1 60); do
+            out=$(./logos/bin/logosctl --config-dir alice call chat_module status 2>/dev/null || true)
+            case "$out" in
+              *'"delivery_state":"online"'*|*'"delivery_state":"offline"'*) started=1; echo "ALICE_STARTED_AGAIN"; break;;
+              *'"delivery_state":"error"'*) echo "alice delivery error: $out" >&2; tail -n 40 alice/logs/daemon.log >&2; exit 1;;
+            esac
+            sleep 2
+          done
+          if [ -z "$started" ]; then echo "alice never started her delivery node again" >&2; tail -n 40 alice/logs/daemon.log >&2; exit 1; fi
+          # As before the first invite: her inbox subscription follows Online.
+          sleep 5
+        code_block: |
+          # poll status() until the node has started: delivery_state "online"
+          # or "offline" (fail fast on "error")
+          logosctl --config-dir alice call chat_module status
+          # wait for her inbox subscription
+          sleep 5
+        expect_contains:
+          - "ALICE_STARTED_AGAIN"
+        post_text: |
+          Bob's invite is one message to her new installation's inbox, which she
+          hears only once her node has subscribed to it.
+      - title: "Bob opens a new conversation with her"
+        run: |
+          out=$(./logos/bin/logosctl --config-dir bob call chat_module create_conversation @alice-addr.txt)
+          echo "$out"
+          echo "$out" | jq -e '.result.success == true' >/dev/null || { echo "create_conversation failed: $out" >&2; exit 1; }
+          echo "$out" | jq -j '.result.value' > bob-convo-2.txt
+        code_block: |
+          logosctl --config-dir bob call chat_module create_conversation @alice-addr.txt
+        expect_contains:
+          - '"status":"ok"'
+        post_text: |
+          The same address as before. Alice's `init` revoked her earlier
+          installation in her account's log and endorsed the new one, so Bob's
+          invite goes to the installation that is running.
+      - title: "The restarted Alice joins and hears from Bob"
+        run: |
+          cid=$(cat bob-convo-2.txt)
+          joined=
+          for i in $(seq 1 50); do
+            if ./logos/bin/logosctl --config-dir alice call chat_module list_conversations 2>/dev/null \
+              | jq -e --arg id "$cid" '[.result[]? | select(.convo_id == $id) | .history_only] == [false]' >/dev/null; then
+              joined=1; break
+            fi
+            sleep 3
+          done
+          if [ -z "$joined" ]; then
+            echo "the restarted alice never joined bob's new conversation" >&2
+            find alice -name 'chat_module_*.log' -exec cat {} + >&2
+            exit 1
+          fi
+          ./logos/bin/logosctl --config-dir bob call chat_module send_message "$cid" hello-again
+          for i in $(seq 1 50); do
+            msgs=$(./logos/bin/logosctl --config-dir alice call chat_module get_messages "$cid" 2>/dev/null || true)
+            case "$msgs" in *'"content":"hello-again"'*) echo "ALICE_GOT_NEW_CONVO"; exit 0;; esac
+            sleep 3
+          done
+          echo "the restarted alice never received bob's message" >&2
+          for who in alice bob; do
+            echo "--- $who: chat_module's run log" >&2
+            find "$who" -name 'chat_module_*.log' -exec cat {} + >&2
+          done
+          exit 1
+        code_block: |
+          logosctl --config-dir alice call chat_module list_conversations
+          logosctl --config-dir bob   call chat_module send_message "$BOB_CONVO_2" hello-again
+          logosctl --config-dir alice call chat_module get_messages "$BOB_CONVO_2"
+        expect_contains:
+          - "ALICE_GOT_NEW_CONVO"
+        post_text: |
+          Bob sends once Alice has joined, as in the first round-trip. The new
+          conversation is live on both sides, next to the old one kept as
+          history.
 
   - title: "Stop the daemons"
     step: true

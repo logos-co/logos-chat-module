@@ -34,6 +34,7 @@
 
 mod actions;
 mod delivery;
+mod display_name;
 mod inbound;
 mod logging;
 mod module;
@@ -139,6 +140,12 @@ impl ChatModule for ChatModuleImpl {
 
     fn get_display_name(&mut self, address: String) -> String {
         actions::display_name(&address)
+    }
+
+    fn set_display_name(&mut self, display_name: String) -> Result<Value, String> {
+        actions::set_display_name(&display_name)
+            .map(|()| Value::Null)
+            .map_err(|e| e.to_string())
     }
 
     fn create_conversation(&mut self, peer_address: String) -> Result<Value, String> {

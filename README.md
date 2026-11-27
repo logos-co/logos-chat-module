@@ -65,6 +65,10 @@ What it does, and how you learn the module is ready, is on
 [`init`](https://logos-co.github.io/logos-chat-module/latest/pages/api_reference.html#init)
 in the API reference.
 
+The first `init` makes the module's account and keeps its key in the instance
+directory, so the address `get_address` reports and the name `set_display_name`
+gives it outlive a restart. The key is obfuscated there, not encrypted.
+
 A generated client passes the record itself. From the CLI, prefix the record's
 JSON with `json:` so `logoscore call` sends it as an object:
 
