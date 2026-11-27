@@ -1,0 +1,12 @@
+{
+  "mode": "Core",
+  "messagingOverrides": {
+    "logLevel": "ERROR",
+    "clusterId": 198,
+    "numShardsInCluster": 8,
+    "entryNodes": ["/ip4/127.0.0.1/tcp/60001/p2p/16Uiu2HAmFpYD9dAW3AUx2ym8SxUgyQfERRGw2tVv7YDqKR5o9D9K"],
+    "storenode": "/ip4/127.0.0.1/tcp/60002/p2p/16Uiu2HAkyP16jZ9yZoNMiy92cpsmGZi2A8X7nYauEdbzbiJTJu9E",
+    "discv5Discovery": false,
+    "nat": "none"
+  }
+}

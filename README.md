@@ -121,6 +121,20 @@ pin it to a pushed commit instead):
 nix run github:logos-co/logos-doctest -- run doctests/chat-module-exchange.test.yaml
 ```
 
+CI runs them on a local delivery fleet rather than logos.dev, so a pull request
+does not depend on a public fleet being up: [`doctests/fleet/`](doctests/fleet/)
+starts a boot node and a Store node in docker, and
+`LOGOS_CHAT_DELIVERY_CONFIG_PATH` points every daemon's `chat_module` at them. A
+nightly run on master joins logos.dev. Every run uses the devnet contact
+registry. To run a spec on the local fleet:
+
+```bash
+docker compose -f doctests/fleet/docker-compose.yml up -d --wait
+LOGOS_CHAT_DELIVERY_CONFIG_PATH=$PWD/doctests/fleet/delivery.json \
+  nix run github:logos-co/logos-doctest -- run doctests/chat-module-exchange.test.yaml
+docker compose -f doctests/fleet/docker-compose.yml down
+```
+
 ## Documentation
 
 The module's documentation is published at

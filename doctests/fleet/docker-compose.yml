@@ -1,0 +1,60 @@
+# A local delivery fleet for the doc-tests: a boot node the chat daemons enter
+# through and a Store node. Fixed node keys give fixed peer ids, which
+# delivery.json names. It runs on cluster 198, the test cluster of
+# logos-delivery's e2e tests, with eight shards as on logos.dev. RLN is off: the
+# nodes do not enable it and delivery.json names no preset. The chat daemons run
+# on the host and dial the ports published on 127.0.0.1.
+name: chat-module-fleet
+
+services:
+  boot:
+    # logos-delivery v0.40.0, the release the pinned delivery_module builds on.
+    image: ${WAKU_IMAGE:-quay.io/wakuorg/nwaku-pr:v0.40.0@sha256:324a0ec32439366bddc3eda96f42ca70ea42c5607cb264ec213dea0cf9ddd830}
+    command:
+      - --cluster-id=198
+      - --num-shards-in-network=8
+      - --relay=true
+      - --filter=false
+      - --lightpush=false
+      - --peer-exchange=false
+      - --discv5-discovery=false
+      - --nat=none
+      - --nodekey=3e6fd28987c2b18facafd2a81b973d4834c3313c93dcd1c02463ce349d8f843f # 16Uiu2HAmFpYD9dAW3AUx2ym8SxUgyQfERRGw2tVv7YDqKR5o9D9K
+      - --tcp-port=60001
+      - --rest=true
+      - --rest-address=0.0.0.0
+      - --rest-admin=true
+    ports:
+      - "127.0.0.1:60001:60001"
+    healthcheck: &relay-peered
+      # Relay is READY only with a relay peer, so both nodes turn healthy once
+      # they are peered with each other.
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8645/health | grep -q '\"Relay\":\"READY\"'"]
+      interval: 2s
+      retries: 30
+
+  store:
+    image: ${WAKU_IMAGE:-quay.io/wakuorg/nwaku-pr:v0.40.0@sha256:324a0ec32439366bddc3eda96f42ca70ea42c5607cb264ec213dea0cf9ddd830}
+    command:
+      - --cluster-id=198
+      - --num-shards-in-network=8
+      - --relay=true
+      - --filter=false
+      - --lightpush=false
+      - --peer-exchange=false
+      - --discv5-discovery=false
+      - --nat=none
+      - --nodekey=577dbb1aa7bf0d12a4163c4b7c9fdf7c945248fb50787dd05b682d46d5cb4f33 # 16Uiu2HAkyP16jZ9yZoNMiy92cpsmGZi2A8X7nYauEdbzbiJTJu9E
+      - --tcp-port=60002
+      - --rest=true
+      - --rest-address=0.0.0.0
+      - --rest-admin=true
+      - --store=true
+      - --store-message-db-url=sqlite:///data/store.sqlite3
+      - --store-message-retention-policy=time:86400
+      - --entry-node=/dns4/boot/tcp/60001/p2p/16Uiu2HAmFpYD9dAW3AUx2ym8SxUgyQfERRGw2tVv7YDqKR5o9D9K
+    ports:
+      - "127.0.0.1:60002:60002"
+    depends_on:
+      - boot
+    healthcheck: *relay-peered
