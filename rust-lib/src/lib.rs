@@ -84,7 +84,7 @@ impl ChatModule for ChatModuleImpl {
         match module().install_with(actions::initialize) {
             Err(_) => Err(ERR_LOCK_POISONED.to_string()),
             Ok(Ok(InstallOutcome::Installed)) => {
-                tracing::info!("init: state installed, joining delivery preset {preset}");
+                tracing::info!("init: state installed, bootstrapping delivery");
                 // State is installed and the module lock is released; only now
                 // bootstrap delivery, so its async completion callbacks acquire
                 // a free lock instead of re-entering the one init holds.
@@ -93,9 +93,7 @@ impl ChatModule for ChatModuleImpl {
             }
             Ok(Ok(InstallOutcome::AlreadyInstalled)) => {
                 if actions::claim_delivery_retry() {
-                    tracing::info!(
-                        "init: delivery never started, joining delivery preset {preset}"
-                    );
+                    tracing::info!("init: delivery never started, bootstrapping it again");
                     actions::start_delivery_bootstrap(preset);
                 } else {
                     tracing::warn!(

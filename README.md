@@ -72,6 +72,33 @@ JSON with `json:` so `logoscore call` sends it as an object:
 logoscore call chat_module init 'json:{"delivery_preset":"logos.test","log_level":"debug"}'
 ```
 
+Two environment variables, read at `init` from the environment the module
+process inherits from its host, point the module at other infrastructure:
+
+| Variable | Effect |
+|---|---|
+| `LOGOS_CHAT_DELIVERY_CONFIG_PATH` | Path to a JSON file whose object is passed to `delivery_module`'s `createNode` as is, instead of the config built from `delivery_preset`. An unreadable file or one that is not a JSON object puts delivery in the `error` state. |
+| `LOGOS_CHAT_CONTACT_REGISTRY_URL` | Contact registry to publish to and resolve accounts from, instead of `https://devnet.chat-kc.logos.co`. |
+
+For example, to join your own delivery nodes:
+
+```bash
+cat > delivery.json <<'EOF'
+{
+  "mode": "Core",
+  "preset": "logos.dev",
+  "messagingOverrides": {
+    "entry-node": ["/ip4/203.0.113.10/tcp/30303/p2p/16Uiu2HAm..."],
+    "storenode": "/ip4/203.0.113.10/tcp/30303/p2p/16Uiu2HAm..."
+  }
+}
+EOF
+LOGOS_CHAT_DELIVERY_CONFIG_PATH=$PWD/delivery.json logosctl daemon start
+```
+
+Keep the config in `delivery_module`'s layered shape (only `mode`, `preset`
+and `messagingOverrides` at the top level), so the node picks its own ports.
+
 ## Doc-tests
 
 The specs under [`doctests/`](doctests/) are executable usage tutorials: each
