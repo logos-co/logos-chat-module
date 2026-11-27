@@ -57,7 +57,11 @@ See [Documentation](#documentation) below to build the site locally.
 
 End-to-end chat needs a `delivery_module` available to the host at runtime; the
 flake pins [`logos-delivery-module`](https://github.com/logos-co/logos-delivery-module)
-v0.4.0-rc.1, which runs logos-delivery past v0.40.0. Load `chat_module` via `logoscore` or Basecamp.
+master, which runs logos-delivery past v0.41.0-rc.2. Sending on `logos.test` or
+`logos.dev` also needs delivery's three RLN modules, `rln_module`, `rln_lez_module`
+and `membership_allocation_client_module`, installed beside it (see delivery's
+[RLN guide](https://github.com/logos-co/logos-delivery-module/blob/master/docs/pages/rln.md)).
+Load `chat_module` via `logoscore` or Basecamp.
 
 Bring-up is `init(config)`, taking a `ChatConfig` record whose every field is
 optional: `delivery_preset` (empty or absent → `logos.test`) and `log_level`.

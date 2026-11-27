@@ -5,9 +5,13 @@
     "url": "https://logos-co.github.io/logos-chat-module/latest/"
   },
   {
-    "version": "0.3.0",
-    "url": "https://logos-co.github.io/logos-chat-module/v0.3.0/",
+    "version": "0.4.0",
+    "url": "https://logos-co.github.io/logos-chat-module/v0.4.0/",
     "preferred": true
+  },
+  {
+    "version": "0.3.0",
+    "url": "https://logos-co.github.io/logos-chat-module/v0.3.0/"
   },
   {
     "version": "0.2.2",
