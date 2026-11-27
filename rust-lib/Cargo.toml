@@ -79,3 +79,5 @@ xeddsa         = "=1.0.2"
 [dev-dependencies]
 # A directory the run-log tests can rotate and prune in.
 tempfile = "3"
+# Accounts kept in memory, for the tests of the names read from their logs.
+logos-account = { git = "https://github.com/logos-messaging/logos-chat.git", package = "account", rev = "e1d76cf8c62bae2c215ed0dcc3c8ac9e8107fd9e", features = ["test-support"] }

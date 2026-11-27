@@ -37,6 +37,7 @@ mod delivery;
 mod inbound;
 mod logging;
 mod module;
+mod names;
 mod panic_hook;
 mod persistence;
 
@@ -134,6 +135,10 @@ impl ChatModule for ChatModuleImpl {
 
     fn get_address(&mut self) -> String {
         actions::get_address()
+    }
+
+    fn get_display_name(&mut self, address: String) -> String {
+        actions::display_name(&address)
     }
 
     fn create_conversation(&mut self, peer_address: String) -> Result<Value, String> {

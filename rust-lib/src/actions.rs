@@ -38,6 +38,7 @@ use crate::module::{
     module, now_ms, short_label, with_display, with_display_mut, Client, DeliveryState,
     DeliveryStateKind, Display, ModuleState, LIBCHAT_PERSISTENCE_ENABLED,
 };
+use crate::names::Names;
 use crate::persistence::{self, display_message, ChatSession, ConversationKind};
 
 /// Failure modes for the steady-state methods (post-`initialize`).
@@ -239,6 +240,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         sends,
     );
     let event_thread = crate::inbound::spawn_events(events, subscribes.clone());
+    let (name_reads, names_thread) = crate::names::spawn(HttpAuthClient::new(&registry_url));
 
     // Seed the display state read by the getters.
     with_display_mut(|d| {
@@ -246,6 +248,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         d.chat_db = Some(chat_db);
         d.delivery_state = DeliveryState::initialising();
         d.address = address;
+        d.names = Names::new(name_reads);
     });
 
     Ok(ModuleState {
@@ -254,6 +257,7 @@ pub(crate) fn initialize() -> Result<ModuleState, InitError> {
         inbound_thread: Some(inbound_thread),
         event_thread: Some(event_thread),
         subscribes,
+        names_thread: Some(names_thread),
     })
 }
 
@@ -447,6 +451,9 @@ pub(crate) fn shutdown(mut ms: ModuleState) {
         let _ = handle.join();
     }
     with_display_mut(|d| *d = Display::default());
+    if let Some(handle) = ms.names_thread.take() {
+        let _ = handle.join();
+    }
 }
 
 /// Run `f` with the libchat client under the module lock, mapping "no client"
@@ -553,6 +560,12 @@ fn protocol(convo_id: &str) -> Option<String> {
 /// `init`.
 pub(crate) fn get_address() -> String {
     with_display(|d| d.address.clone())
+}
+
+/// The name the account at `address` presents itself under, as
+/// `get_display_name` reports it.
+pub(crate) fn display_name(address: &str) -> String {
+    with_display_mut(|d| d.names.get(address))
 }
 
 // ── Conversations ────────────────────────────────────────────────────────────
@@ -738,6 +751,7 @@ pub(crate) fn list_conversations() -> Vec<Conversation> {
                 last_activity_ms: s.messages.last().map_or(0, |m| m.timestamp_ms as i64),
                 kind: s.kind.as_str().to_string(),
                 protocol: s.protocol.clone(),
+                peer: s.peer.clone(),
                 name: s.name.clone(),
                 description: s.description.clone(),
                 preview: s
@@ -991,7 +1005,8 @@ pub(crate) fn record_message_received(
                 older_messages: 0,
                 history_only: false,
             });
-        if session.kind == ConversationKind::Direct && session.peer.is_none() {
+        let peer_learned = session.kind == ConversationKind::Direct && session.peer.is_none();
+        if peer_learned {
             session.peer = Some(account.to_owned());
             chat_changed = true;
         }
@@ -1010,6 +1025,9 @@ pub(crate) fn record_message_received(
             ts as i64,
             account,
         );
+        if peer_learned {
+            crate::emit_conversation_updated(convo_id);
+        }
     });
 }
 
@@ -1245,6 +1263,20 @@ mod tests {
             with_display(|d| d.state.chats.get(CONVO).map(|s| s.history_only)),
             Some(false)
         );
+    }
+
+    #[test]
+    fn a_direct_conversation_reports_the_peer_its_first_message_came_from() {
+        const CONVO: &str = "incoming-direct";
+        with_display_mut(|d| d.state.chats.insert(CONVO.into(), direct_chat(CONVO)));
+
+        record_message_received(CONVO, b"hi saro", "raya-account", "raya-device");
+
+        let peer = list_conversations()
+            .into_iter()
+            .find(|c| c.convo_id == CONVO)
+            .and_then(|c| c.peer);
+        assert_eq!(peer.as_deref(), Some("raya-account"));
     }
 
     #[test]
